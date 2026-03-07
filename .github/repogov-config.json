@@ -1,0 +1,12 @@
+{
+  "default": 300,
+  "warning_threshold": "85%",
+  "skip_dirs": [".git", "vendor"],
+  "rules": [
+    {"glob": ".github/instructions/*.md","limit": 300}
+  ],
+  "files": {
+    "AGENTS.md": 200,
+    ".github/copilot-instructions.md": 50
+  }
+}

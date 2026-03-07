@@ -1,0 +1,30 @@
+# Normalize line endings to LF for all text files by default.
+# text=auto lets Git detect text vs binary; eol=lf forces LF on checkout.
+* text=auto eol=lf
+
+# Go source and module files
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+
+# Documentation and config
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+Makefile text eol=lf
+LICENSE text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# Keep CRLF for Windows-specific files (if any)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary

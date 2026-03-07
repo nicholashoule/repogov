@@ -1,0 +1,75 @@
+# golangci-lint configuration for demojify-sanitize.
+# Run: golangci-lint run ./...
+# Install: https://golangci-lint.run/usage/install/
+
+linters:
+  # Disable all linters by default, then enable specific ones.
+  disable-all: true
+  enable:
+    - govet          # vet-style checks (shadow, printf, etc.)
+    - staticcheck    # Dominik Honnef's comprehensive static analysis
+    - errcheck       # unhandled errors
+    - gosimple       # simplification suggestions
+    - ineffassign    # assignments whose values are never used
+    - unused         # unused code
+    - gofmt          # formatting (catches gofmt -s differences)
+    - revive         # idiomatic Go checks (superset of golint)
+    - gocritic       # opinionated Go style checks
+    - godot          # require period at end of exported godoc comments
+    - misspell       # common spelling mistakes in comments and strings
+
+linters-settings:
+  revive:
+    rules:
+      # Enforce exported symbols have godoc comments.
+      - name: exported
+        arguments:
+          - "checkPrivateReceivers"
+          - "sayRepetitiveInsteadOfStutters"
+      # Allow underscore-prefixed error variables (e.g. _test.go patterns).
+      - name: var-naming
+        disabled: false
+
+  gocritic:
+    # Enable only the most useful check categories; avoid style churn.
+    enabled-tags:
+      - diagnostic
+      - performance
+    disabled-checks:
+      - commentedOutCode   # we have intentional commented examples
+      - whyNoLint          # nolint directives are self-documenting here
+
+  godot:
+    # Only check exported function comments (// SomeFunc ...).
+    scope: toplevel
+    capital: false   # allow sentences that start with lower-case identifiers
+
+  misspell:
+    locale: US
+
+issues:
+  # Show all issues, not just the first few per linter.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    # Test files: allow lowercase, unexported names in test helper functions,
+    # and accept that test data intentionally contains emoji literals.
+    - path: _test\.go
+      linters:
+        - godot
+        - revive
+
+    # The pre-commit hook script uses go:build ignore; linters see it as a
+    # standalone program, not a package member -- skip it entirely.
+    - path: scripts/hooks/pre-commit\.go
+      linters:
+        - revive
+        - gocritic
+        - godot
+
+    # The driver example is a standalone main; relax doc requirements.
+    - path: docs/examples/driver/main\.go
+      linters:
+        - godot
+        - revive
