@@ -207,7 +207,7 @@ func TestScaffold_Copilot_Init(t *testing.T) {
 
 	// limits must pass on the generated files.
 	stdout.Reset()
-	if code := runLimits(root, "", "", false, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", "", false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runLimits copilot after init: exit %d\nstdout: %s", code, stdout.String())
 	}
 }
@@ -501,7 +501,7 @@ func TestScaffold_All_Init(t *testing.T) {
 
 	// limits must pass on the generated files.
 	stdout.Reset()
-	if code := runLimits(root, "", "", false, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", "", false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runLimits after all-init: exit %d\nstdout: %s", code, stdout.String())
 	}
 }
@@ -668,7 +668,7 @@ func TestScaffold_Limits_PassAfterInit(t *testing.T) {
 	}
 	stdout.Reset()
 	// Scan .md and .mdc files; all generated files must be within limits.
-	if code := runLimits(root, "", ".md,.mdc", false, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", ".md,.mdc", false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runLimits after init: exit %d\nstdout: %s", code, stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "[PASS]") {
@@ -682,7 +682,7 @@ func TestScaffold_Limits_ExceedLimit(t *testing.T) {
 		".github/repogov-config.json": `{"default": 50}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", true, false, stdout, stderr); code != 1 {
+	if code := runLimits(root, "", ".md", false, true, false, stdout, stderr); code != 1 {
 		t.Fatalf("expected exit 1 (limit exceeded), got %d", code)
 	}
 }
@@ -694,7 +694,7 @@ func TestScaffold_Limits_WarnBeforeExceed(t *testing.T) {
 		".github/repogov-config.json": `{"default": 100, "warning_threshold": "80%"}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", false, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", ".md", false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected exit 0 (warning only), got %d\nstdout: %s", code, stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "WARN") {
@@ -707,7 +707,7 @@ func TestScaffold_Limits_NoConfig_UsesDefaults(t *testing.T) {
 		"tiny.md": nlines(5),
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", true, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", ".md", false, true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
 }
@@ -719,7 +719,7 @@ func TestScaffold_Limits_AllSentinelIncludesGo(t *testing.T) {
 	})
 	stdout, stderr := bufs()
 	// "all" sentinel removes extension filter so .go exceeds limit.
-	if code := runLimits(root, "", "all", true, false, stdout, stderr); code != 1 {
+	if code := runLimits(root, "", "all", false, true, false, stdout, stderr); code != 1 {
 		t.Fatalf("expected exit 1 (all sentinel includes big.go), got %d", code)
 	}
 }
@@ -730,7 +730,7 @@ func TestScaffold_Limits_BadConfigJSON(t *testing.T) {
 		".github/repogov-config.json": `{"default": "not-a-number"}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", true, false, stdout, stderr); code != 2 {
+	if code := runLimits(root, "", ".md", false, true, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected exit 2 (bad config), got %d", code)
 	}
 }
@@ -741,7 +741,7 @@ func TestScaffold_Limits_JSONOutput(t *testing.T) {
 		".github/repogov-config.json": `{"default": 300}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", false, true, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", ".md", false, false, true, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var results []interface{}

@@ -141,7 +141,7 @@ func TestRunLimits_Pass(t *testing.T) {
 		".github/repogov-config.json": `{"default": 300, "warning_threshold": 80, "skip_dirs": [".git"]}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", true, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", ".md", false, true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 }
@@ -152,7 +152,7 @@ func TestRunLimits_Fail(t *testing.T) {
 		".github/repogov-config.json": `{"default": 50}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", true, false, stdout, stderr); code != 1 {
+	if code := runLimits(root, "", ".md", false, true, false, stdout, stderr); code != 1 {
 		t.Fatalf("expected 1, got %d", code)
 	}
 }
@@ -163,7 +163,7 @@ func TestRunLimits_ExtWithoutDot(t *testing.T) {
 		".github/repogov-config.json": `{"default": 300}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", "md", true, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", "md", false, true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 }
@@ -174,7 +174,7 @@ func TestRunLimits_BadConfig(t *testing.T) {
 		".github/repogov-config.json": `{"default": "not-a-number"}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", true, false, stdout, stderr); code != 2 {
+	if code := runLimits(root, "", ".md", false, true, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected 2, got %d", code)
 	}
 }
@@ -182,7 +182,7 @@ func TestRunLimits_BadConfig(t *testing.T) {
 func TestRunLimits_NoConfig(t *testing.T) {
 	root := writeTempDir(t, map[string]string{"a.md": nlines(5)})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", true, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", ".md", false, true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 }
@@ -193,7 +193,7 @@ func TestRunLimits_CustomConfig(t *testing.T) {
 		"custom.json": `{"default": 300}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, filepath.Join(root, "custom.json"), ".md", true, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, filepath.Join(root, "custom.json"), ".md", false, true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 }
@@ -204,7 +204,7 @@ func TestRunLimits_JSON_Pass(t *testing.T) {
 		".github/repogov-config.json": `{"default": 300}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", false, true, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", ".md", false, false, true, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var results []repogov.Result
@@ -219,7 +219,7 @@ func TestRunLimits_JSON_Fail(t *testing.T) {
 		".github/repogov-config.json": `{"default": 50}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", false, true, stdout, stderr); code != 1 {
+	if code := runLimits(root, "", ".md", false, false, true, stdout, stderr); code != 1 {
 		t.Fatalf("expected 1, got %d", code)
 	}
 	var results []repogov.Result
@@ -234,7 +234,7 @@ func TestRunLimits_Verbose(t *testing.T) {
 		".github/repogov-config.json": `{"default": 300}`,
 	})
 	stdout, stderr := bufs()
-	if code := runLimits(root, "", ".md", false, false, stdout, stderr); code != 0 {
+	if code := runLimits(root, "", ".md", false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if !strings.Contains(stdout.String(), "[PASS]") {
