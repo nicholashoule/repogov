@@ -132,13 +132,9 @@ repogov version
 When `-config` is not provided, `repogov` searches in this order:
 
 1. `<root>/repogov-config.json`
-2. `<root>/repogov.json`
-3. `<root>/repogov-config.yaml` / `.yml`
-4. `<root>/repogov.yaml` / `.yml`
-5. `<root>/.github/repogov-config.json`
-6. `<root>/.github/repogov.json`
-7. `<root>/.github/repogov-config.yaml` / `.yml`
-8. `<root>/.github/repogov.yaml` / `.yml`
+2. `<root>/repogov-config.yaml` / `.yml`
+3. `<root>/.github/repogov-config.json`
+4. `<root>/.github/repogov-config.yaml` / `.yml`
 
 If no file is found, built-in defaults are used (300-line default limit, 85% warning
 threshold).

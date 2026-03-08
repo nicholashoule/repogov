@@ -51,7 +51,7 @@ func Summary(results []Result) string {
 				r.Status, r.Path, r.Lines, r.Limit)
 		}
 	}
-	fmt.Fprintf(&b, "\nTotal: %d files | %d pass | %d warn | %d fail | %d skip\n",
+	fmt.Fprintf(&b, "\nLimits: %d files | %d pass | %d warn | %d fail | %d skip\n\n",
 		len(results), pass, warn, fail, skip)
 	return b.String()
 }
@@ -89,7 +89,7 @@ func LayoutSummary(results []LayoutResult) string {
 		}
 		fmt.Fprintf(&b, "  [%s] %s -- %s\n", r.Status, r.Path, r.Message)
 	}
-	fmt.Fprintf(&b, "\nLayout: %d checks | %d pass | %d warn | %d fail | %d info\n",
+	fmt.Fprintf(&b, "\nLayout: %d checks | %d pass | %d warn | %d fail | %d info\n\n",
 		len(results), pass, warn, fail, info)
 	return b.String()
 }

@@ -205,16 +205,16 @@ const defaultWarningThreshold PercentInt = 85
 
 // DefaultConfig returns a Config with sensible defaults:
 // Default=300, WarningThreshold=85, standard SkipDirs,
-// .github/instructions/*.md at 300, and .github/copilot-instructions.md
+// .github/rules/*.md at 300, and .github/copilot-instructions.md
 // at 50 lines.
 func DefaultConfig() Config {
 	return Config{
 		Default:          defaultLimit,
 		WarningThreshold: defaultWarningThreshold,
 		IncludeExts:      []string{".md", ".mdc"},
-		SkipDirs:         []string{".git", "vendor"},
+		SkipDirs:         []string{".git", "vendor", "workflows"},
 		Rules: []Rule{
-			{Glob: ".github/instructions/*.md", Limit: RuleLimit(300)},
+			{Glob: ".github/rules/*.md", Limit: RuleLimit(300)},
 			{Glob: ".cursor/rules/*.md", Limit: RuleLimit(300)},
 			{Glob: ".cursor/rules/*.mdc", Limit: RuleLimit(300)},
 			{Glob: ".windsurf/rules/*.md", Limit: RuleLimit(300)},

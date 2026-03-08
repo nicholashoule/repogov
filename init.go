@@ -157,11 +157,18 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 
 	var created []string
 
+	// For GitHub Copilot schemas, detect whether to seed into instructions/ or
+	// rules/ based on what already exists, then narrow the schema so only the
+	// chosen directory is created and referenced by generated files.
+	if schema.Root == ".github" {
+		schema = copilotNarrowSchema(filepath.Join(root, schema.Root), schema)
+	}
+
 	layoutDir := filepath.Join(root, filepath.FromSlash(schema.Root))
 
 	// Create the root layout directory.
 	if dirIsNew(layoutDir) {
-		if err := os.MkdirAll(layoutDir, 0755); err != nil {
+		if err := os.MkdirAll(layoutDir, 0o755); err != nil {
 			return nil, err
 		}
 		created = append(created, schema.Root)
@@ -171,7 +178,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	for dirName, rule := range schema.Dirs {
 		dirPath := filepath.Join(layoutDir, filepath.FromSlash(dirName))
 		isNew := dirIsNew(dirPath)
-		if err := os.MkdirAll(dirPath, 0755); err != nil {
+		if err := os.MkdirAll(dirPath, 0o755); err != nil {
 			return created, err
 		}
 		if isNew {
@@ -184,7 +191,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		if rule.Min > 0 {
 			gitkeep := filepath.Join(dirPath, ".gitkeep")
 			if _, err := os.Stat(gitkeep); os.IsNotExist(err) {
-				if err := os.WriteFile(gitkeep, []byte(""), 0644); err != nil {
+				if err := os.WriteFile(gitkeep, []byte(""), 0o644); err != nil {
 					return created, err
 				}
 				rel := filepath.ToSlash(filepath.Join(schema.Root, dirName, ".gitkeep"))
@@ -208,13 +215,13 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		filePath := filepath.Join(layoutDir, filepath.FromSlash(req))
 
 		// Ensure parent directory exists.
-		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 			return created, err
 		}
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			content := placeholderContent(req)
-			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 				return created, err
 			}
 			rel := filepath.ToSlash(filepath.Join(schema.Root, req))
@@ -223,9 +230,9 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	}
 
 	// Create copilot-instructions.md for GitHub schemas when it doesn't
-	// already exist. Always references instructions/ directory.
+	// already exist. References whichever scoped-rule directory is in schema.Dirs.
 	if schema.Root == ".github" {
-		paths, err := createCopilotInstructions(root, layoutDir, schema)
+		paths, err := createCopilotInstructions(root, layoutDir, schema, opts.descriptive)
 		if err != nil {
 			return created, err
 		}
@@ -262,20 +269,21 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 
 	// Seed instruction/rule template files.
 	//
-	// Copilot (.github): always seeds the full template set into instructions/
-	// so that scoped rules live in instructions/ (the GitHub-native location).
-	// The rules/ directory remains available for user-defined plain rules.
+	// Copilot (.github): seeds the full template set into whichever directory
+	// was selected by copilotNarrowSchema (instructions/ or rules/ — not both).
 	//
 	// All other agents (Claude, Cursor, Windsurf, …): seed the full template
-	// set into rules/ — the same rich set Copilot gets in instructions/.
+	// set into rules/ — the same rich set Copilot gets.
 	// Existing .md and .mdc files are never overwritten.
 	if schema.Root == ".github" {
-		if _, ok := schema.Dirs["instructions"]; ok {
-			paths, err := createDefaultInstructions(root, layoutDir, schema, opts, "instructions")
-			if err != nil {
-				return created, err
+		for _, seedDir := range []string{"instructions", "rules"} {
+			if _, ok := schema.Dirs[seedDir]; ok {
+				paths, err := createDefaultInstructions(root, layoutDir, schema, opts, seedDir)
+				if err != nil {
+					return created, err
+				}
+				created = append(created, paths...)
 			}
-			created = append(created, paths...)
 		}
 	} else {
 		if _, ok := schema.Dirs["rules"]; ok {
@@ -302,37 +310,47 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 // createCopilotInstructions creates .github/copilot-instructions.md with
 // references to the instructions/ directory. If the file already exists,
 // nothing is created. Returns the list of created paths.
-func createCopilotInstructions(root, layoutDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+func createCopilotInstructions(root, layoutDir string, schema LayoutSchema, descriptive bool) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	filePath := filepath.Join(layoutDir, "copilot-instructions.md")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		// File exists or stat failed for another reason; either way skip.
 		return nil, nil
 	}
 
-	content := copilotInstructionsContent(schema)
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+	content := copilotInstructionsContent(schema, descriptive)
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{filepath.ToSlash(filepath.Join(schema.Root, "copilot-instructions.md"))}, nil
 }
 
 // copilotInstructionsContent generates the content of copilot-instructions.md.
-// The Scoped Instructions section always references instructions/ — the
-// canonical location for Copilot scoped rule files. The output is kept under
+// The Scoped Instructions section references whichever of instructions/ or
+// rules/ is present in schema.Dirs (never both). The output is kept under
 // 50 lines to comply with the default copilot-instructions.md line limit.
-func copilotInstructionsContent(schema LayoutSchema) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+// descriptive controls whether the naming-convention hint references
+// *.instructions.md (true) or plain *.md (false).
+func copilotInstructionsContent(schema LayoutSchema, descriptive bool) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	var b strings.Builder
 	b.WriteString("# Copilot Instructions\n\n")
 	b.WriteString("This file provides repository-level context to GitHub Copilot and compatible AI coding agents.\n\n")
 
-	// Link to the scoped-rule directory.
+	// namingHint reflects the actual file-naming convention in use.
+	namingHint := "Use the `*.md` naming convention and set `applyTo` in the YAML frontmatter (e.g. `applyTo: \"**/*.go\"`) to scope each file.\n"
+	if descriptive {
+		namingHint = "Use the `*.instructions.md` naming convention and set `applyTo` in the YAML header (e.g. `applyTo: \"**/*.go\"`) to scope each file.\n"
+	}
+
+	// Link to the scoped-rule directory (exactly one of instructions/ or rules/).
 	if _, ok := schema.Dirs["instructions"]; ok {
 		b.WriteString("## Scoped Instructions\n\n")
 		b.WriteString("See modular instruction files in `" + schema.Root + "/instructions/` for scoped rules.\n")
-		b.WriteString("Use the `*.instructions.md` naming convention and set `applyTo` in the YAML header (e.g. `applyTo: \"**/*.go\"`) to scope each file.\n")
-		if _, ok2 := schema.Dirs["rules"]; ok2 {
-			b.WriteString("See plain rule files in `" + schema.Root + "/rules/` for additional cross-cutting rules.\n")
-		}
+		b.WriteString(namingHint)
+		b.WriteString("\n")
+	} else if _, ok := schema.Dirs["rules"]; ok {
+		b.WriteString("## Scoped Instructions\n\n")
+		b.WriteString("See modular instruction files in `" + schema.Root + "/rules/` for scoped rules.\n")
+		b.WriteString(namingHint)
 		b.WriteString("\n")
 	}
 
@@ -346,6 +364,8 @@ func copilotInstructionsContent(schema LayoutSchema) string { //nolint:gocritic 
 	b.WriteString("2. **Move to `docs/`** - Relocate detailed content to `docs/` directory\n")
 	b.WriteString("3. **Link, Don't Repeat** - Reference external docs instead of duplicating\n")
 	b.WriteString("4. **Split Only When Necessary** - Only when content is a distinct concern; use cohesive files, descriptive names, and cross-references\n\n")
+	b.WriteString("Run checks: `go run ./cmd/repogov -agent copilot`\n")
+	b.WriteString("Re-scaffold missing files: `go run ./cmd/repogov -agent copilot init`\n\n")
 
 	// File naming conventions.
 	b.WriteString("## File Naming Conventions\n\n")
@@ -371,7 +391,7 @@ func createClaudeMd(layoutDir string, _ LayoutSchema) ([]string, error) { //noli
 		return nil, nil
 	}
 	content := claudeMdContent()
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{".claude/CLAUDE.md"}, nil
@@ -391,6 +411,9 @@ func claudeMdContent() string {
 	b.WriteString("- Follow existing code style and patterns\n")
 	b.WriteString("- Keep files within configured line limits\n")
 	b.WriteString("- Write tests for new functionality\n")
+	b.WriteString("\n## Repository Commands\n\n")
+	b.WriteString("Run checks: `go run ./cmd/repogov -agent claude`\n")
+	b.WriteString("Re-scaffold missing files: `go run ./cmd/repogov -agent claude init`\n")
 	return b.String()
 }
 
@@ -414,6 +437,35 @@ func isDirEmpty(path string) bool {
 		}
 	}
 	return true
+}
+
+// detectCopilotTargetDir returns the subdirectory name that should be used for
+// Copilot scoped rule files during init: "instructions" when .github/instructions/
+// already has content; otherwise "rules" (the default, consistent with all other
+// agents). This lets init honor an existing instructions/ layout without
+// forcing it on repos that have not opted in.
+func detectCopilotTargetDir(ghDir string) string {
+	if !isDirEmpty(filepath.Join(ghDir, "instructions")) {
+		return "instructions"
+	}
+	return "rules"
+}
+
+// copilotNarrowSchema returns schema with only the chosen scoped-rule directory
+// (instructions/ or rules/) retained in Dirs; all other directories are
+// preserved. It is used during init so that exactly one sibling directory is
+// created rather than both.
+func copilotNarrowSchema(ghDir string, schema LayoutSchema) LayoutSchema { //nolint:gocritic // hugeParam: intentional value semantics
+	targetDir := detectCopilotTargetDir(ghDir)
+	narrowed := make(map[string]DirRule, len(schema.Dirs))
+	for k, v := range schema.Dirs {
+		if (k == "instructions" || k == "rules") && k != targetDir {
+			continue
+		}
+		narrowed[k] = v
+	}
+	schema.Dirs = narrowed
+	return schema
 }
 
 // detectConfigFile returns the basename and the relative path (from
@@ -505,10 +557,10 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 			// File already exists; never overwrite.
 			continue
 		}
-		if err := os.MkdirAll(targetDir, 0755); err != nil {
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			return created, err
 		}
-		if err := os.WriteFile(filePath, []byte(contentFn()), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(contentFn()), 0o644); err != nil {
 			return created, err
 		}
 		rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, actualName))
@@ -522,10 +574,10 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 		govFile := filepath.Join(targetDir, govName)
 		if _, err := os.Stat(govFile); os.IsNotExist(err) {
 			cfgName, cfgRel := detectConfigRelFrom(root, targetDir)
-			if err := os.MkdirAll(targetDir, 0755); err != nil {
+			if err := os.MkdirAll(targetDir, 0o755); err != nil {
 				return created, err
 			}
-			if err := os.WriteFile(govFile, []byte(governanceInstructionsContent(cfgName, cfgRel)), 0644); err != nil {
+			if err := os.WriteFile(govFile, []byte(governanceInstructionsContent(cfgName, cfgRel, schemaRootToAgent(schema.Root))), 0o644); err != nil {
 				return created, err
 			}
 			rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, govName))
@@ -693,7 +745,8 @@ func codereviewInstructionsContent() string {
 // governanceInstructionsContent returns default content for governance.instructions.md.
 // configName is the basename of the config file (e.g. "repogov-config.yaml") and
 // configRelPath is its relative path from .github/instructions/ (e.g. "../repogov-config.yaml").
-func governanceInstructionsContent(configName, configRelPath string) string {
+// agent is the CLI agent name (e.g. "copilot", "claude", "cursor", "windsurf").
+func governanceInstructionsContent(configName, configRelPath, agent string) string {
 	var b strings.Builder
 	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
 	b.WriteString("# Governance Instructions\n\n")
@@ -705,12 +758,30 @@ func governanceInstructionsContent(configName, configRelPath string) string {
 	b.WriteString("- WARN at the configured `warning_threshold` percentage\n\n")
 	b.WriteString("## Enforcing Limits\n\n")
 	b.WriteString("### Minimal CLI Example\n\n")
-	b.WriteString("```sh\ngo install github.com/nicholashoule/repogov/cmd/repogov@latest\n")
-	b.WriteString("repogov -root . -agent copilot init\n```\n\n")
+	b.WriteString("```sh\n")
+	b.WriteString("go run ./cmd/repogov -agent " + agent + "\n")
+	b.WriteString("go run ./cmd/repogov -agent " + agent + " init\n")
+	b.WriteString("```\n\n")
 	b.WriteString("Pre-commit hook (`.git/hooks/pre-commit`):\n\n")
 	b.WriteString("```sh\n#!/bin/sh\n")
 	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest -root . limits\n```\n")
 	return b.String()
+}
+
+// schemaRootToAgent maps a schema root directory name to its CLI -agent flag value.
+func schemaRootToAgent(root string) string {
+	switch root {
+	case ".github":
+		return "copilot"
+	case ".claude":
+		return "claude"
+	case ".cursor":
+		return "cursor"
+	case ".windsurf":
+		return "windsurf"
+	default:
+		return root
+	}
 }
 
 // libraryInstructionsContent returns default content for library.instructions.md.
@@ -949,7 +1020,7 @@ func createAgentsMd(root string, schema LayoutSchema) ([]string, error) { //noli
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		// File does not exist: create it with full generated content.
 		content := agentsMdContent(schema)
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 			return nil, err
 		}
 		return []string{"AGENTS.md"}, nil
@@ -998,7 +1069,7 @@ func updateAgentsMdContext(filePath string, schema LayoutSchema) error { //nolin
 		updated = content[:startIdx] + newSection + content[splitIdx:]
 	}
 
-	return os.WriteFile(filePath, []byte(updated), 0644)
+	return os.WriteFile(filePath, []byte(updated), 0o644)
 }
 
 // agentsMdContextSection generates the "## Context" section for AGENTS.md
@@ -1013,9 +1084,22 @@ func updateAgentsMdContext(filePath string, schema LayoutSchema) error { //nolin
 // (e.g., -agent all) so that the Context section reflects every agent
 // that was scaffolded rather than only the last one processed.
 //
+// For GitHub Copilot schemas (.github), the active scoped-rule directory
+// (instructions/ or rules/) is detected from the filesystem so the link
+// matches what was actually created during init.
+//
 // If AGENTS.md does not exist, or has no ## Context section, it is left
 // unchanged and no error is returned.
 func UpdateAgentsMdContextAll(root string, schemas []LayoutSchema) error { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	// Narrow any Copilot schema to the directory that was actually created.
+	narrowed := make([]LayoutSchema, len(schemas))
+	copy(narrowed, schemas)
+	for i, s := range narrowed {
+		if s.Root == ".github" {
+			narrowed[i] = copilotNarrowSchema(filepath.Join(root, s.Root), s)
+		}
+	}
+
 	filePath := filepath.Join(root, "AGENTS.md")
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil
@@ -1032,7 +1116,7 @@ func UpdateAgentsMdContextAll(root string, schemas []LayoutSchema) error { //nol
 		return nil
 	}
 
-	newSection := agentsMdMergedContextSection(schemas)
+	newSection := agentsMdMergedContextSection(narrowed)
 	afterSection := startIdx + len(sectionMarker)
 	nextHeadingOffset := strings.Index(content[afterSection:], "\n## ")
 
@@ -1044,7 +1128,7 @@ func UpdateAgentsMdContextAll(root string, schemas []LayoutSchema) error { //nol
 		updated = content[:startIdx] + newSection + content[splitIdx:]
 	}
 
-	return os.WriteFile(filePath, []byte(updated), 0644)
+	return os.WriteFile(filePath, []byte(updated), 0o644)
 }
 
 // rulesLabel returns a human-readable label for the rules directory link based
@@ -1172,7 +1256,7 @@ func createDefaultConfigAll(root string) ([]string, error) {
 	filePath := filepath.Join(root, "repogov-config.json")
 	cfg := DefaultConfig()
 	data := defaultConfigJSON(cfg)
-	if err := os.WriteFile(filePath, []byte(data), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{"repogov-config.json"}, nil
@@ -1193,7 +1277,7 @@ func createDefaultConfig(root, configDir string, schema LayoutSchema) ([]string,
 	filePath := filepath.Join(configDir, "repogov-config.json")
 	cfg := schemaConfig(DefaultConfig(), schema.Root)
 	data := defaultConfigJSON(cfg)
-	if err := os.WriteFile(filePath, []byte(data), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
 	}
 	rel, _ := filepath.Rel(root, filepath.Join(configDir, "repogov-config.json"))

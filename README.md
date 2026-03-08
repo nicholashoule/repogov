@@ -79,7 +79,7 @@ repogov -root . -quiet all
 
 ## Configuration
 
-Create `.github/repogov.json`:
+Create `.github/repogov-config.json`:
 
 ```json
 {
@@ -130,6 +130,9 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `SaveConfig(path, cfg)` | config.go | Write config as JSON or YAML |
 | `ValidateConfig(cfg)` | config.go | Validate config and return violations |
 | `InitLayout(root, schema)` | init.go | Scaffold platform directory structure |
+| `InitLayoutWithConfig(root, schema, cfg)` | init.go | Scaffold with config options (always-create, filters) |
+| `InitLayoutAll(root, schemas)` | init.go | Scaffold multiple platform schemas in one pass |
+| `InitLayoutAllWithConfig(root, schemas, cfg)` | init.go | Multi-schema scaffold with config options |
 | `CheckLayout(root, schema)` | layout.go | Validate directory structure |
 | `CheckLayoutContext(ctx, root, schema)` | layout.go | Context-aware layout check |
 | `DefaultCopilotLayout()` | presets.go | GitHub Copilot .github/ preset |
@@ -153,7 +156,7 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-config` | `.github/repogov.json` | Path to JSON config file |
+| `-config` | auto-discovered | Path to JSON or YAML config file (searched in repo root then `.github/`) |
 | `-root` | `.` | Repository root directory |
 | `-exts` | from config | Comma-separated extension filter override; use `all` to scan every file type (default read from `include_exts` in config) |
 | `-agent` | | Agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `all`, or comma-separated list |
@@ -205,7 +208,7 @@ func main() {
     exts := flag.String("exts", ".md", "comma-separated extensions")
     flag.Parse()
 
-    cfg, _ := repogov.LoadConfig(*root + "/.github/repogov.json")
+    cfg, _ := repogov.LoadConfig(*root + "/.github/repogov-config.json")
     results, err := repogov.CheckDir(*root, strings.Split(*exts, ","), cfg)
     if err != nil {
         fmt.Fprintf(os.Stderr, "error: %v\n", err)

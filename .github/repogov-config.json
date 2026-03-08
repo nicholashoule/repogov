@@ -2,13 +2,13 @@
   "default": 300,
   "descriptive_names": false,
   "warning_threshold": "85%",
-  "skip_dirs": [".git", "vendor"],
+  "skip_dirs": [".git", "vendor", "workflows"],
   "include_exts": [".md", ".mdc"],
   "rules": [
-    {"glob": ".github/instructions/*.md", "limit": 300}
+    {"glob": ".github/rules/*.md", "limit": 300}
   ],
   "files": {
-    ".github/copilot-instructions.md": 50,
-    "AGENTS.md": 200
+    "AGENTS.md": 200,
+    ".github/copilot-instructions.md": 50
   }
 }

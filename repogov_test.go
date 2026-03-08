@@ -59,8 +59,8 @@ func TestDefaultConfig(t *testing.T) {
 	if len(cfg.Rules) < 1 {
 		t.Fatalf("Rules count = %d, want >= 1", len(cfg.Rules))
 	}
-	if cfg.Rules[0].Glob != ".github/instructions/*.md" || cfg.Rules[0].Limit == nil || *cfg.Rules[0].Limit != 300 {
-		t.Errorf("Rules[0] = %+v, want {Glob:.github/instructions/*.md Limit:300}", cfg.Rules[0])
+	if cfg.Rules[0].Glob != ".github/rules/*.md" || cfg.Rules[0].Limit == nil || *cfg.Rules[0].Limit != 300 {
+		t.Errorf("Rules[0] = %+v, want {Glob:.github/rules/*.md Limit:300}", cfg.Rules[0])
 	}
 
 	// Verify copilot-instructions.md per-file limit.

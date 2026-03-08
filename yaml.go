@@ -29,6 +29,8 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 		sIncludeExts
 		sRules
 		sFiles
+		sInitInclude
+		sInitExclude
 	)
 
 	var (
@@ -88,6 +90,24 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 			case "files":
 				sec = sFiles
 				cfg.Files = make(map[string]int)
+			case "init_always_create":
+				b, err := strconv.ParseBool(val)
+				if err != nil {
+					return fmt.Errorf("line %d: invalid init_always_create: %w", i+1, err)
+				}
+				cfg.InitAlwaysCreate = b
+			case "descriptive_names":
+				b, err := strconv.ParseBool(val)
+				if err != nil {
+					return fmt.Errorf("line %d: invalid descriptive_names: %w", i+1, err)
+				}
+				cfg.DescriptiveNames = b
+			case "init_include_files":
+				sec = sInitInclude
+				cfg.InitIncludeFiles = []string{}
+			case "init_exclude_files":
+				sec = sInitExclude
+				cfg.InitExcludeFiles = []string{}
 			default:
 				sec = sNone
 			}
@@ -140,6 +160,18 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 				}
 				cfg.Files[yamlUnquote(key)] = n
 			}
+
+		case sInitInclude:
+			if strings.HasPrefix(trimmed, "- ") {
+				val := yamlUnquote(strings.TrimSpace(trimmed[2:]))
+				cfg.InitIncludeFiles = append(cfg.InitIncludeFiles, val)
+			}
+
+		case sInitExclude:
+			if strings.HasPrefix(trimmed, "- ") {
+				val := yamlUnquote(strings.TrimSpace(trimmed[2:]))
+				cfg.InitExcludeFiles = append(cfg.InitExcludeFiles, val)
+			}
 		}
 	}
 
@@ -187,6 +219,25 @@ func marshalYAML(cfg Config) ([]byte, error) { //nolint:gocritic // hugeParam: i
 		sort.Strings(keys)
 		for _, k := range keys {
 			fmt.Fprintf(&b, "  %s: %d\n", yamlQuote(k), cfg.Files[k])
+		}
+	}
+
+	if cfg.InitAlwaysCreate {
+		fmt.Fprintln(&b, "init_always_create: true")
+	}
+	if cfg.DescriptiveNames {
+		fmt.Fprintln(&b, "descriptive_names: true")
+	}
+	if len(cfg.InitIncludeFiles) > 0 {
+		fmt.Fprintln(&b, "init_include_files:")
+		for _, f := range cfg.InitIncludeFiles {
+			fmt.Fprintf(&b, "  - %s\n", yamlQuote(f))
+		}
+	}
+	if len(cfg.InitExcludeFiles) > 0 {
+		fmt.Fprintln(&b, "init_exclude_files:")
+		for _, f := range cfg.InitExcludeFiles {
+			fmt.Fprintf(&b, "  - %s\n", yamlQuote(f))
 		}
 	}
 

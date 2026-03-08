@@ -33,7 +33,7 @@ cmd/repogov/     -- CLI with limits/layout/all/version subcommands
 
 ## Configuration
 
-Configuration uses a JSON file (default: `.github/repogov.json`):
+Configuration uses a JSON file (default: `.github/repogov-config.json`):
 
 ```json
 {
@@ -96,6 +96,6 @@ Flags:
 ## Constraints
 
 - Zero external dependencies (stdlib only)
-- Go 1.21+
+- Go 1.22+
 - Cross-platform (Windows, Linux, macOS)
 - Auditing is read-only; `init` scaffolds new files but never overwrites existing ones

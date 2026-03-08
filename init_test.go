@@ -28,16 +28,17 @@ func TestInitLayout_CreatesStructure(t *testing.T) {
 		t.Error(".github directory was not created")
 	}
 
-	// On a fresh init Copilot always seeds into instructions/ (not rules/).
-	for _, dir := range []string{"instructions", "rules"} {
-		dirPath := filepath.Join(ghDir, dir)
-		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-			t.Errorf("subdirectory %s was not created", dir)
-		}
+	// On a fresh init Copilot seeds into rules/ only (consistent with all other
+	// agents). instructions/ is only used when it already existed before init.
+	if _, err := os.Stat(filepath.Join(ghDir, "rules")); os.IsNotExist(err) {
+		t.Error("subdirectory rules was not created")
 	}
-	// instructions/ MUST be created on a fresh init for Copilot.
-	if _, err := os.Stat(filepath.Join(ghDir, "instructions")); os.IsNotExist(err) {
-		t.Error(".github/instructions should be created on a fresh Copilot init")
+	if _, err := os.Stat(filepath.Join(ghDir, "instructions")); !os.IsNotExist(err) {
+		t.Error("subdirectory instructions should NOT be created on a fresh Copilot init")
+	}
+	// rules/ MUST be created on a fresh init for Copilot.
+	if _, err := os.Stat(filepath.Join(ghDir, "rules")); os.IsNotExist(err) {
+		t.Error(".github/rules should be created on a fresh Copilot init")
 	}
 
 	// Verify copilot-instructions.md was seeded.
@@ -74,12 +75,12 @@ func TestInitLayout_DoesNotOverwrite(t *testing.T) {
 
 	// Pre-create repogov-config.json with custom content before init.
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	customContent := `{"default":100}`
 	cfgPath := filepath.Join(ghDir, "repogov-config.json")
-	if err := os.WriteFile(cfgPath, []byte(customContent), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(customContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,10 +187,10 @@ func TestInitLayoutWithConfig_AlwaysCreate(t *testing.T) {
 	// Pre-create the .cursor/rules directory with an existing file so that
 	// isDirEmpty returns false.
 	rulesDir := filepath.Join(root, ".cursor", "rules")
-	if err := os.MkdirAll(rulesDir, 0755); err != nil {
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "existing.mdc"), []byte("# existing\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(rulesDir, "existing.mdc"), []byte("# existing\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -236,10 +237,10 @@ func TestInitLayoutWithConfig_AlwaysCreateFalse(t *testing.T) {
 
 	// Pre-create the rules directory with an existing file.
 	rulesDir := filepath.Join(root, ".cursor", "rules")
-	if err := os.MkdirAll(rulesDir, 0755); err != nil {
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "custom.mdc"), []byte("# custom\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(rulesDir, "custom.mdc"), []byte("# custom\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -263,10 +264,10 @@ func TestInitLayoutAllWithConfig_AlwaysCreate(t *testing.T) {
 
 	// Pre-create the rules directory with a file so it is not empty.
 	rulesDir := filepath.Join(root, ".cursor", "rules")
-	if err := os.MkdirAll(rulesDir, 0755); err != nil {
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "existing.mdc"), []byte("# x\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(rulesDir, "existing.mdc"), []byte("# x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -314,7 +315,7 @@ func TestInitLayoutWithConfig_Descriptive_False(t *testing.T) {
 		t.Error(".windsurf/rules/general.md was not created on disk")
 	}
 
-	// GitHub fresh init with DescriptiveNames=false: ALL templates seeded as <name>.md into instructions/.
+	// GitHub fresh init with DescriptiveNames=false: ALL templates seeded as <name>.md into rules/.
 	allTemplates := []string{
 		"general.md",
 		"codereview.md",
@@ -333,15 +334,15 @@ func TestInitLayoutWithConfig_Descriptive_False(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	instrDir2 := filepath.Join(root2, ".github", "instructions")
+	rulesDir2 := filepath.Join(root2, ".github", "rules")
 	for _, name := range allTemplates {
-		if _, err := os.Stat(filepath.Join(instrDir2, name)); os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(rulesDir2, name)); os.IsNotExist(err) {
 			t.Errorf("DescriptiveNames=false: %s was not created on disk", name)
 		}
 	}
 	for _, p := range created2 {
-		if strings.HasPrefix(p, ".github/instructions/") && strings.HasSuffix(p, ".instructions.md") {
-			t.Errorf("DescriptiveNames=false must not create *.instructions.md in instructions/, got: %s", p)
+		if strings.HasPrefix(p, ".github/rules/") && strings.HasSuffix(p, ".instructions.md") {
+			t.Errorf("DescriptiveNames=false must not create *.instructions.md in rules/, got: %s", p)
 		}
 	}
 }
@@ -372,7 +373,7 @@ func TestInitLayoutWithConfig_Descriptive_True(t *testing.T) {
 		t.Error(".windsurf/rules/general.instructions.md was not created on disk")
 	}
 
-	// GitHub fresh init with Descriptive=true: instructions/ should contain *.instructions.md files.
+	// GitHub fresh init with Descriptive=true: rules/ should contain *.instructions.md files.
 	root2 := t.TempDir()
 	schema2 := repogov.DefaultCopilotLayout()
 	cfg2 := repogov.Config{DescriptiveNames: true}
@@ -382,21 +383,21 @@ func TestInitLayoutWithConfig_Descriptive_True(t *testing.T) {
 	}
 	foundInstructions := false
 	for _, p := range created2 {
-		if strings.HasPrefix(p, ".github/instructions/") && strings.HasSuffix(p, ".instructions.md") {
+		if strings.HasPrefix(p, ".github/rules/") && strings.HasSuffix(p, ".instructions.md") {
 			foundInstructions = true
 			break
 		}
 	}
 	if !foundInstructions {
-		t.Errorf("Descriptive=true should create .github/instructions/*.instructions.md files; created: %v", created2)
+		t.Errorf("Descriptive=true should create .github/rules/*.instructions.md files; created: %v", created2)
 	}
-	// Ensure no plain .md files were created in .github/instructions/ (only *.instructions.md).
-	instrDir2 := filepath.Join(root2, ".github", "instructions")
-	if entries, err := os.ReadDir(instrDir2); err == nil {
+	// Ensure no plain .md files were created in .github/rules/ (only *.instructions.md).
+	rulesDir2 := filepath.Join(root2, ".github", "rules")
+	if entries, err := os.ReadDir(rulesDir2); err == nil {
 		for _, e := range entries {
 			name := e.Name()
 			if strings.HasSuffix(name, ".md") && !strings.HasSuffix(name, ".instructions.md") {
-				t.Errorf("Descriptive=true must not create plain .md files in instructions/, got: %s", name)
+				t.Errorf("Descriptive=true must not create plain .md files in rules/, got: %s", name)
 			}
 		}
 	}
@@ -458,7 +459,7 @@ func TestInitLayoutWithConfig_ExcludeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	instrDir := filepath.Join(root, ".github", "instructions")
+	instrDir := filepath.Join(root, ".github", "rules")
 
 	// Excluded stems must NOT be created.
 	for _, name := range []string{"backend.md", "frontend.md", "emoji-prevention.md"} {
@@ -493,7 +494,7 @@ func TestInitLayoutWithConfig_IncludeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	instrDir := filepath.Join(root, ".github", "instructions")
+	instrDir := filepath.Join(root, ".github", "rules")
 
 	// Included stems MUST be created.
 	for _, name := range []string{"general.md", "governance.md"} {
@@ -515,7 +516,7 @@ func TestInitLayoutWithConfig_IncludeFiles(t *testing.T) {
 	// IncludeFiles takes precedence: only 2 templates seeded.
 	instrCount := 0
 	for _, p := range created {
-		if strings.HasPrefix(p, ".github/instructions/") && strings.HasSuffix(p, ".md") {
+		if strings.HasPrefix(p, ".github/rules/") && strings.HasSuffix(p, ".md") {
 			instrCount++
 		}
 	}
@@ -619,7 +620,7 @@ func TestCheckLayout_GuidanceMessages(t *testing.T) {
 func TestCheckLayout_MissingFileGuidance(t *testing.T) {
 	root := t.TempDir()
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -648,10 +649,10 @@ func TestCheckLayout_MissingFileGuidance(t *testing.T) {
 func TestCheckLayout_NamingGuidance(t *testing.T) {
 	root := t.TempDir()
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(ghDir, "MyConfig.yml"), []byte("test\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(ghDir, "MyConfig.yml"), []byte("test\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -694,7 +695,7 @@ func TestInitLayout_CreatesCopilotInstructions(t *testing.T) {
 	}
 	content := string(data)
 
-	// On a fresh init, should reference rules/ (no pre-existing instructions/).
+	// On a fresh init (no pre-existing instructions/), should reference rules/ by default.
 	if !strings.Contains(content, ".github/rules/") {
 		t.Error("copilot-instructions.md should link to .github/rules/ on fresh init")
 	}
@@ -735,12 +736,12 @@ func TestInitLayout_CreatesCopilotInstructions(t *testing.T) {
 func TestInitLayout_CopilotInstructionsNotOverwritten(t *testing.T) {
 	root := t.TempDir()
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	customContent := "# My Custom Instructions\n"
 	ciPath := filepath.Join(ghDir, "copilot-instructions.md")
-	if err := os.WriteFile(ciPath, []byte(customContent), 0644); err != nil {
+	if err := os.WriteFile(ciPath, []byte(customContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -753,6 +754,51 @@ func TestInitLayout_CopilotInstructionsNotOverwritten(t *testing.T) {
 	data, _ := os.ReadFile(ciPath)
 	if string(data) != customContent {
 		t.Error("InitLayout overwrote existing copilot-instructions.md")
+	}
+}
+
+// TestInitLayout_CopilotUsesInstructionsWhenPreExisting verifies that when
+// .github/instructions/ already has content, init seeds templates into
+// instructions/ and copilot-instructions.md references instructions/ instead
+// of the default rules/.
+func TestInitLayout_CopilotUsesInstructionsWhenPreExisting(t *testing.T) {
+	root := t.TempDir()
+	ghDir := filepath.Join(root, ".github")
+	instrDir := filepath.Join(ghDir, "instructions")
+	if err := os.MkdirAll(instrDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Seed a file into instructions/ so it is non-empty.
+	if err := os.WriteFile(filepath.Join(instrDir, "existing.md"), []byte("# existing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	schema := repogov.DefaultCopilotLayout()
+	_, err := repogov.InitLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// rules/ should NOT be created when instructions/ already has content.
+	if _, err := os.Stat(filepath.Join(ghDir, "rules")); !os.IsNotExist(err) {
+		t.Error(".github/rules should NOT be created when instructions/ is pre-existing")
+	}
+	// instructions/ must still exist.
+	if _, err := os.Stat(instrDir); os.IsNotExist(err) {
+		t.Error(".github/instructions should still exist")
+	}
+	// copilot-instructions.md must reference instructions/, not rules/.
+	ciPath := filepath.Join(ghDir, "copilot-instructions.md")
+	data, err := os.ReadFile(ciPath)
+	if err != nil {
+		t.Fatal("copilot-instructions.md was not created:", err)
+	}
+	ciContent := string(data)
+	if !strings.Contains(ciContent, ".github/instructions/") {
+		t.Error("copilot-instructions.md should reference .github/instructions/ when instructions/ is pre-existing")
+	}
+	if strings.Contains(ciContent, ".github/rules/") {
+		t.Error("copilot-instructions.md should NOT reference .github/rules/ when instructions/ is pre-existing")
 	}
 }
 
@@ -794,15 +840,15 @@ func TestInitLayout_SeededConfigOnlyContainsPlatformRules(t *testing.T) {
 			t.Errorf("seeded config should not contain %s rules when initializing github platform", foreign)
 		}
 	}
-	// The .github/instructions rule should be present.
-	if !strings.Contains(content, ".github/instructions/") {
-		t.Error("seeded config should contain .github/instructions/ rule")
+	// The .github/rules rule should be present.
+	if !strings.Contains(content, ".github/rules/") {
+		t.Error("seeded config should contain .github/rules/ rule")
 	}
 }
 
 // TestInitLayout_CreatesDefaultRuleFiles verifies that a fresh .github init with
 // the default config (DescriptiveNames=false) seeds ALL template files into
-// instructions/ using plain <name>.md naming.
+// rules/ using plain <name>.md naming.
 func TestInitLayout_CreatesDefaultRuleFiles(t *testing.T) {
 	root := t.TempDir()
 	schema := repogov.DefaultCopilotLayout()
@@ -812,7 +858,7 @@ func TestInitLayout_CreatesDefaultRuleFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Default (DescriptiveNames=false): ALL templates seeded as <name>.md in instructions/.
+	// Default (DescriptiveNames=false): ALL templates seeded as <name>.md in rules/.
 	expectedFiles := []string{
 		"general.md",
 		"codereview.md",
@@ -824,17 +870,17 @@ func TestInitLayout_CreatesDefaultRuleFiles(t *testing.T) {
 		"frontend.md",
 		"repo.md",
 	}
-	instrDir := filepath.Join(root, ".github", "instructions")
+	rulesDir := filepath.Join(root, ".github", "rules")
 	for _, name := range expectedFiles {
-		path := filepath.Join(instrDir, name)
+		path := filepath.Join(rulesDir, name)
 		data, err := os.ReadFile(path)
 		if err != nil {
-			t.Errorf("expected %s to be created in instructions/, got error: %v", name, err)
+			t.Errorf("expected %s to be created in rules/, got error: %v", name, err)
 			continue
 		} else if len(data) == 0 {
 			t.Errorf("%s is empty", name)
 		}
-		rel := ".github/instructions/" + name
+		rel := ".github/rules/" + name
 		found := false
 		for _, p := range created {
 			if p == rel {
@@ -849,7 +895,7 @@ func TestInitLayout_CreatesDefaultRuleFiles(t *testing.T) {
 }
 
 // TestInitLayout_CreatesDefaultInstructions verifies that a fresh .github init
-// with Descriptive=true seeds all *.instructions.md files into instructions/.
+// with Descriptive=true seeds all *.instructions.md files into rules/.
 func TestInitLayout_CreatesDefaultInstructions(t *testing.T) {
 	root := t.TempDir()
 	schema := repogov.DefaultCopilotLayout()
@@ -871,13 +917,13 @@ func TestInitLayout_CreatesDefaultInstructions(t *testing.T) {
 		"frontend.instructions.md",
 	}
 
-	// With Descriptive=true, files land in instructions/ as *.instructions.md.
-	instrDir := filepath.Join(root, ".github", "instructions")
+	// With Descriptive=true, files land in rules/ as *.instructions.md.
+	rulesDir := filepath.Join(root, ".github", "rules")
 	for _, name := range expectedFiles {
-		path := filepath.Join(instrDir, name)
+		path := filepath.Join(rulesDir, name)
 		data, err := os.ReadFile(path)
 		if err != nil {
-			t.Errorf("expected %s to be created in instructions/, got error: %v", name, err)
+			t.Errorf("expected %s to be created in rules/, got error: %v", name, err)
 			continue
 		}
 		content := string(data)
@@ -889,7 +935,7 @@ func TestInitLayout_CreatesDefaultInstructions(t *testing.T) {
 			t.Errorf("%s should start with YAML front matter", name)
 		}
 		// Should appear in created list.
-		rel := ".github/instructions/" + name
+		rel := ".github/rules/" + name
 		found := false
 		for _, p := range created {
 			if p == rel {
@@ -913,12 +959,12 @@ func TestInitLayout_DefaultInstructionsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Modify one file in instructions/ to verify it's not overwritten.
+	// Modify one file in rules/ to verify it's not overwritten.
 	// Default is DescriptiveNames=false, so files use plain .md names.
-	instrDir := filepath.Join(root, ".github", "instructions")
-	customPath := filepath.Join(instrDir, "general.md")
+	rulesDir := filepath.Join(root, ".github", "rules")
+	customPath := filepath.Join(rulesDir, "general.md")
 	custom := "# My Custom General Rules\n"
-	if err := os.WriteFile(customPath, []byte(custom), 0644); err != nil {
+	if err := os.WriteFile(customPath, []byte(custom), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -928,8 +974,8 @@ func TestInitLayout_DefaultInstructionsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range created2 {
-		if strings.Contains(p, "instructions/") {
-			t.Errorf("second call created %s, expected no instruction files to be re-seeded", p)
+		if strings.Contains(p, "rules/") {
+			t.Errorf("second call created %s, expected no rule files to be re-seeded", p)
 		}
 	}
 
@@ -945,12 +991,12 @@ func TestInitLayout_DefaultInstructionsSkippedWhenDirNonEmpty(t *testing.T) {
 
 	// Pre-create instructions directory with a custom file.
 	instrDir := filepath.Join(root, ".github", "instructions")
-	if err := os.MkdirAll(instrDir, 0755); err != nil {
+	if err := os.MkdirAll(instrDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
 		filepath.Join(instrDir, "custom.instructions.md"),
-		[]byte("# Custom\n"), 0644,
+		[]byte("# Custom\n"), 0o644,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -979,9 +1025,9 @@ func TestInitLayout_DefaultInstructionsLineLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// On a fresh init, Copilot files land in instructions/.
-	instrDir := filepath.Join(root, ".github", "instructions")
-	entries, err := os.ReadDir(instrDir)
+	// On a fresh init, Copilot files land in rules/.
+	rulesDir := filepath.Join(root, ".github", "rules")
+	entries, err := os.ReadDir(rulesDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -989,7 +1035,7 @@ func TestInitLayout_DefaultInstructionsLineLimit(t *testing.T) {
 		if e.Name() == ".gitkeep" {
 			continue
 		}
-		path := filepath.Join(instrDir, e.Name())
+		path := filepath.Join(rulesDir, e.Name())
 		lines, err := repogov.CountLines(path)
 		if err != nil {
 			t.Fatalf("counting lines in %s: %v", e.Name(), err)
@@ -1014,8 +1060,8 @@ func TestInitLayout_GovernanceLink_DefaultJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// With Descriptive=true, governance file lands in instructions/ as *.instructions.md.
-	data, err := os.ReadFile(filepath.Join(root, ".github", "instructions", "governance.instructions.md"))
+	// With Descriptive=true, governance file lands in rules/ as *.instructions.md.
+	data, err := os.ReadFile(filepath.Join(root, ".github", "rules", "governance.instructions.md"))
 	if err != nil {
 		t.Fatal("governance.instructions.md not created:", err)
 	}
@@ -1033,11 +1079,11 @@ func TestInitLayout_GovernanceLink_YAMLConfig(t *testing.T) {
 
 	// Pre-create a YAML config in .github/ to simulate a user who prefers YAML.
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	yamlCfg := filepath.Join(ghDir, "repogov-config.yaml")
-	if err := os.WriteFile(yamlCfg, []byte("default: 300\n"), 0644); err != nil {
+	if err := os.WriteFile(yamlCfg, []byte("default: 300\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1048,8 +1094,8 @@ func TestInitLayout_GovernanceLink_YAMLConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// With Descriptive=true, governance file lands in instructions/ as *.instructions.md.
-	data, err := os.ReadFile(filepath.Join(root, ".github", "instructions", "governance.instructions.md"))
+	// With Descriptive=true, governance file lands in rules/ as *.instructions.md.
+	data, err := os.ReadFile(filepath.Join(root, ".github", "rules", "governance.instructions.md"))
 	if err != nil {
 		t.Fatal("governance.instructions.md not created:", err)
 	}
@@ -1086,9 +1132,9 @@ func TestInitLayout_CreatesAgentsMd(t *testing.T) {
 	if !strings.Contains(content, "README.md") {
 		t.Error("AGENTS.md should link to README.md")
 	}
-	// Should link to .github/instructions/ for GitHub schema.
-	if !strings.Contains(content, ".github/instructions/") {
-		t.Error("AGENTS.md should link to .github/instructions/ for GitHub schema")
+	// Should link to .github/rules/ for GitHub schema.
+	if !strings.Contains(content, ".github/rules/") {
+		t.Error("AGENTS.md should link to .github/rules/ for GitHub schema")
 	}
 	// Should document nested AGENTS.md scoping.
 	if !strings.Contains(content, "AGENTS.md") {
@@ -1110,7 +1156,7 @@ func TestInitLayout_CreatesAgentsMd(t *testing.T) {
 func TestInitLayout_AgentsMdNotOverwritten(t *testing.T) {
 	root := t.TempDir()
 	custom := "# My Custom AGENTS.md\n"
-	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(custom), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(custom), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1139,8 +1185,8 @@ func TestInitLayout_AgentsMdContextUpdated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(dataAfterGitHub), ".github/instructions/") {
-		t.Fatal("expected .github/instructions/ after GitHub init")
+	if !strings.Contains(string(dataAfterGitHub), ".github/rules/") {
+		t.Fatal("expected .github/rules/ after GitHub init")
 	}
 	if !strings.Contains(string(dataAfterGitHub), ".github/copilot-instructions.md") {
 		t.Fatal("expected copilot-instructions.md link after GitHub init")
@@ -1175,8 +1221,8 @@ func TestInitLayout_AgentsMdContextUpdated(t *testing.T) {
 	}
 
 	// GitHub-specific context links must be gone from the Context section.
-	if strings.Contains(contextSection, ".github/instructions/") {
-		t.Error("stale .github/instructions/ link should be removed from Context after Cursor init")
+	if strings.Contains(contextSection, ".github/rules/") {
+		t.Error("stale .github/rules/ link should be removed from Context after Cursor init")
 	}
 	if strings.Contains(contextSection, "copilot-instructions.md") {
 		t.Error("stale copilot-instructions.md link should be removed from Context after Cursor init")
@@ -1323,8 +1369,8 @@ func TestAgentsMdContent_GitHubLayoutSection(t *testing.T) {
 		t.Error("AGENTS.md should not inline '## .github Layout'; it belongs in repo.instructions.md")
 	}
 
-	// repo.instructions.md must be seeded into instructions/ and contain the layout section.
-	repoInstr := filepath.Join(root, ".github", "instructions", "repo.instructions.md")
+	// repo.instructions.md must be seeded into rules/ and contain the layout section.
+	repoInstr := filepath.Join(root, ".github", "rules", "repo.instructions.md")
 	data, err := os.ReadFile(repoInstr)
 	if err != nil {
 		t.Fatal("repo.instructions.md was not seeded:", err)
@@ -1403,7 +1449,7 @@ func TestAgentsMdContent_PerPlatformContextLinks(t *testing.T) {
 			wantLinks: []string{
 				"README.md",
 				"docs/",
-				".github/instructions/",
+				".github/rules/",
 				".github/copilot-instructions.md",
 			},
 			noLinks: []string{
@@ -1584,7 +1630,7 @@ func TestUpdateAgentsMdContextAll_MergedLinksForAllPlatforms(t *testing.T) {
 	wantLinks := []string{
 		"README.md",
 		"docs/",
-		".github/instructions/",
+		".github/rules/",
 		".github/copilot-instructions.md",
 		".cursor/rules/",
 		".windsurf/rules/",
@@ -1609,7 +1655,7 @@ func TestUpdateAgentsMdContextAll_NoContextSection(t *testing.T) {
 	root := t.TempDir()
 	original := "# AGENTS.md\n\nNo context section here.\n"
 	agentsPath := filepath.Join(root, "AGENTS.md")
-	if err := os.WriteFile(agentsPath, []byte(original), 0644); err != nil {
+	if err := os.WriteFile(agentsPath, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1654,11 +1700,11 @@ func TestUpdateAgentsMdContextAll_DeduplicatesLinks(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(root, "AGENTS.md"))
 	content := string(data)
 
-	// Count occurrences of the full instructions entry line -- must be exactly 1.
-	instrLine := "- Scoped instruction files: [.github/instructions/](.github/instructions/)"
+	// Count occurrences of the full rules entry line -- must be exactly 1.
+	instrLine := "- Copilot rule files: [.github/rules/](.github/rules/)"
 	count := strings.Count(content, instrLine)
 	if count != 1 {
-		t.Errorf("expected exactly 1 instructions entry, got %d", count)
+		t.Errorf("expected exactly 1 Copilot rules entry, got %d", count)
 	}
 }
 
@@ -1689,9 +1735,9 @@ func TestInitAllPlatforms_AllToTemp_MergedContext(t *testing.T) {
 	}
 	content := string(data)
 
-	// Every platform with a rules/ or instructions/ dir must appear in Context.
+	// Every platform with a rules/ dir must appear in Context.
 	wantLinks := []string{
-		".github/instructions/",
+		".github/rules/",
 		".github/copilot-instructions.md",
 		".cursor/rules/",
 		".windsurf/rules/",
@@ -1708,7 +1754,7 @@ func TestInitAllPlatforms_AllToTemp_MergedContext(t *testing.T) {
 	// entry lines rather than the raw path strings (which appear twice per
 	// markdown link: once in text, once in URL).
 	wantEntries := []string{
-		"- Scoped instruction files: [.github/instructions/](.github/instructions/)",
+		"- Copilot rule files: [.github/rules/](.github/rules/)",
 		"- Copilot repo-wide context: [.github/copilot-instructions.md](.github/copilot-instructions.md)",
 		"- Cursor rule files: [.cursor/rules/](.cursor/rules/)",
 		"- Windsurf rule files: [.windsurf/rules/](.windsurf/rules/)",

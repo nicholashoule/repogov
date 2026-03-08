@@ -106,9 +106,10 @@ func ExampleSummary() {
 	}
 	fmt.Print(repogov.Summary(results))
 	// Output:
-	// [PASS] README.md (42 / 300, 14%)
+	//   [PASS] README.md (42 / 300, 14%)
 	//
-	// Total: 1 files | 1 pass | 0 warn | 0 fail | 0 skip
+	// Limits: 1 files | 1 pass | 0 warn | 0 fail | 0 skip
+	//
 }
 
 func ExampleCheckLayout() {
@@ -147,9 +148,10 @@ func ExampleLayoutSummary() {
 	}
 	fmt.Print(repogov.LayoutSummary(results))
 	// Output:
-	// [PASS] .github/copilot-instructions.md -- required file present
+	//   [PASS] .github/copilot-instructions.md -- required file present
 	//
 	// Layout: 1 checks | 1 pass | 0 warn | 0 fail | 0 info
+	//
 }
 
 func ExampleDefaultCopilotLayout() {

@@ -4,9 +4,8 @@ This file provides repository-level context to GitHub Copilot and compatible AI 
 
 ## Scoped Instructions
 
-See modular instruction files in `.github/instructions/` for scoped rules.
-Use the `*.instructions.md` naming convention and set `applyTo` in the YAML header (e.g. `applyTo: "**/*.go"`) to scope each file.
-See plain rule files in `.github/rules/` for additional cross-cutting rules.
+See modular instruction files in `.github/rules/` for scoped rules.
+Use the `*.md` naming convention and set `applyTo` in the YAML frontmatter (e.g. `applyTo: "**/*.go"`) to scope each file.
 
 Long-form project context lives in [README.md](../README.md) and [docs/](../docs/).
 
@@ -20,6 +19,9 @@ Long-form project context lives in [README.md](../README.md) and [docs/](../docs
 2. **Move to `docs/`** - Relocate detailed content to `docs/` directory
 3. **Link, Don't Repeat** - Reference external docs instead of duplicating
 4. **Split Only When Necessary** - Only when content is a distinct concern; use cohesive files, descriptive names, and cross-references
+
+Run checks: `go run ./cmd/repogov -agent copilot`
+Re-scaffold missing files: `go run ./cmd/repogov -agent copilot init`
 
 ## File Naming Conventions
 

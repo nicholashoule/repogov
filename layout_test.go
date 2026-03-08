@@ -282,3 +282,66 @@ func TestCheckLayout_GitkeepSkipped(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckLayout_NamingUppercase(t *testing.T) {
+	// A file whose name is NOT all-uppercase should fail when Case="uppercase".
+	root := writeTempDir(t, map[string]string{
+		".github/lowercase.md": "test\n",
+	})
+
+	schema := repogov.LayoutSchema{
+		Root: ".github",
+		Naming: repogov.NamingRule{
+			Case: "uppercase",
+		},
+	}
+
+	results, err := repogov.CheckLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hasFail := false
+	for _, r := range results {
+		if r.Status == repogov.Fail {
+			hasFail = true
+			break
+		}
+	}
+	if !hasFail {
+		t.Error("expected FAIL for naming violation (uppercase rule with lowercase filename)")
+	}
+}
+
+func TestCheckLayout_DirMinimum_EmptyDescription(t *testing.T) {
+	// DirRule with empty Description should use the dir name in the message.
+	root := writeTempDir(t, map[string]string{
+		".github/scripts/.gitkeep": "",
+	})
+
+	schema := repogov.LayoutSchema{
+		Root: ".github",
+		Dirs: map[string]repogov.DirRule{
+			"scripts": {Glob: "*.sh", Min: 1, Description: ""},
+		},
+	}
+
+	results, err := repogov.CheckLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hasFail := false
+	for _, r := range results {
+		if r.Path == ".github/scripts" && r.Status == repogov.Fail {
+			hasFail = true
+			// Message should fall back to dir name when Description is empty.
+			if !strings.Contains(r.Message, "scripts") {
+				t.Errorf("message %q should contain the dir name 'scripts'", r.Message)
+			}
+		}
+	}
+	if !hasFail {
+		t.Error("expected FAIL for dir below minimum")
+	}
+}

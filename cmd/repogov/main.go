@@ -20,6 +20,7 @@
 //	-root <dir>           Repository root directory (default: .)
 //	-exts .md,.mdc        Extension filter override; default from config include_exts; use "all" to scan every type
 //	-agent <name[,name…]>  Agent/layout preset(s): copilot, cursor, windsurf, claude, or all (required for init)
+//	-descriptive          Use *.instructions.md naming convention for seeded files (overrides config descriptive_names)
 //	-quiet                Suppress output; exit code only
 //	-json                 Output results as JSON
 package main
@@ -50,12 +51,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 
 	var (
-		configPath string
-		root       string
-		exts       string
-		agent      string
-		quiet      bool
-		jsonOut    bool
+		configPath  string
+		root        string
+		exts        string
+		agent       string
+		quiet       bool
+		jsonOut     bool
+		descriptive bool
 	)
 
 	fs.Usage = func() {
@@ -106,6 +108,7 @@ Examples:
 	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, all, or comma-separated list (required for init)")
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
+	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -138,11 +141,11 @@ Examples:
 		fmt.Fprintln(stdout, "repogov", version)
 		return 0
 	case "init":
-		return runInit(root, configPath, agent, quiet, jsonOut, stdout, stderr)
+		return runInit(root, configPath, agent, quiet, jsonOut, descriptive, stdout, stderr)
 	case "validate":
 		return runValidate(root, configPath, quiet, jsonOut, stdout, stderr)
 	case "limits":
-		return runLimits(root, configPath, exts, quiet, jsonOut, stdout, stderr)
+		return runLimits(root, configPath, exts, false, quiet, jsonOut, stdout, stderr)
 	case "layout":
 		// Default to checking all agents when none is specified.
 		if agent == "" {
@@ -155,11 +158,18 @@ Examples:
 		if effective == "" {
 			effective = "all"
 		}
+		// Print config preamble once before any checks.
+		if !quiet && !jsonOut {
+			cfgPath := resolveConfigPath(root, configPath)
+			printConfigSource(root, cfgPath, configPath, stdout)
+		}
+		// Logical order: layout first (validates required files exist),
+		// then limits (checks content of those files).
 		code := 0
-		if c := runLimits(root, configPath, exts, quiet, jsonOut, stdout, stderr); c != 0 {
+		if c := runLayout(root, effective, quiet, jsonOut, stdout, stderr); c != 0 {
 			code = c
 		}
-		if c := runLayout(root, effective, quiet, jsonOut, stdout, stderr); c != 0 {
+		if c := runLimits(root, configPath, exts, true, quiet, jsonOut, stdout, stderr); c != 0 {
 			code = c
 		}
 		return code
@@ -170,21 +180,24 @@ Examples:
 	}
 }
 
-func runLimits(root, configPath, exts string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
-	// Resolve config path: if the user specified a custom path use it;
-	// otherwise search standard locations (repo root, then .github/).
-	cfgPath := configPath
-	if cfgPath == "" {
-		// Auto-discover: search repo root then .github/ for any
-		// supported config filename (JSON or YAML).
-		if found := repogov.FindConfig(root); found != "" {
-			cfgPath = found
-		} else {
-			cfgPath = filepath.Join(root, ".github", "repogov-config.json")
+// resolveConfigPath returns the absolute config file path to use.
+// If configPath is explicit and relative, it is joined to root.
+// If empty, standard locations are searched and a default is returned.
+func resolveConfigPath(root, configPath string) string {
+	if configPath != "" {
+		if !isAbsolute(configPath) {
+			return filepath.Join(root, configPath)
 		}
-	} else if !isAbsolute(cfgPath) {
-		cfgPath = filepath.Join(root, cfgPath)
+		return configPath
 	}
+	if found := repogov.FindConfig(root); found != "" {
+		return found
+	}
+	return filepath.Join(root, ".github", "repogov-config.json")
+}
+
+func runLimits(root, configPath, exts string, suppressConfig, quiet, jsonOut bool, stdout, stderr io.Writer) int {
+	cfgPath := resolveConfigPath(root, configPath)
 
 	cfg, err := repogov.LoadConfig(cfgPath)
 	if err != nil {
@@ -239,8 +252,12 @@ func runLimits(root, configPath, exts string, quiet, jsonOut bool, stdout, stder
 	}
 
 	if !quiet {
+		if !suppressConfig {
+			printConfigSource(root, cfgPath, configPath, stdout)
+		}
+		fmt.Fprintln(stdout, "Checking limits...")
+		fmt.Fprintln(stdout)
 		fmt.Fprint(stdout, repogov.Summary(results))
-		printConfigSource(root, cfgPath, configPath, stdout)
 	}
 
 	if !repogov.Passed(results) {
@@ -249,8 +266,8 @@ func runLimits(root, configPath, exts string, quiet, jsonOut bool, stdout, stder
 	return 0
 }
 
-// printConfigSource prints which config file is active and notes any others
-// that are present but overridden (higher-precedence path wins).
+// printConfigSource prints the config check section in the same
+// [STATUS] results + labeled footer format used by Layout and Limits.
 func printConfigSource(root, activePath, explicit string, stdout io.Writer) {
 	rel := func(p string) string {
 		if r, err := filepath.Rel(root, p); err == nil {
@@ -259,25 +276,59 @@ func printConfigSource(root, activePath, explicit string, stdout io.Writer) {
 		return filepath.ToSlash(p)
 	}
 
+	fmt.Fprintln(stdout, "Checking config...")
+	fmt.Fprintln(stdout)
+
 	// If the user supplied an explicit path, just report it as active.
 	if explicit != "" {
-		fmt.Fprintf(stdout, "  [CONFIG] %s -- active (explicit)\n", rel(activePath))
+		fmt.Fprintf(stdout, "  [PASS] %s (active, explicit)\n", rel(activePath))
+		fmt.Fprintf(stdout, "\nConfig: 1 checks | 1 pass | 0 warn | 0 fail | 0 info\n\n")
 		return
 	}
 
 	all := repogov.FindAllConfigs(root)
 	if len(all) == 0 {
-		fmt.Fprintf(stdout, "  [CONFIG] no config file found -- using defaults\n")
+		fmt.Fprintf(stdout, "  [WARN] no config file found -- using defaults\n")
+		fmt.Fprintf(stdout, "\nConfig: 1 checks | 0 pass | 1 warn | 0 fail | 0 info\n\n")
 		return
 	}
 
+	pass, info := 0, 0
 	for i, p := range all {
 		if i == 0 {
-			fmt.Fprintf(stdout, "  [CONFIG] %s -- active\n", rel(p))
+			fmt.Fprintf(stdout, "  [PASS] %s (active)\n", rel(p))
+			pass++
 		} else {
-			fmt.Fprintf(stdout, "  [CONFIG] %s -- present (overridden by %s)\n", rel(p), rel(all[0]))
+			fmt.Fprintf(stdout, "  [INFO] %s (overridden by %s)\n", rel(p), rel(all[0]))
+			info++
 		}
 	}
+	fmt.Fprintf(stdout, "\nConfig: %d checks | %d pass | 0 warn | 0 fail | %d info\n\n",
+		len(all), pass, info)
+}
+
+// filterConfigInfos removes [Info] layout results for config files.
+// Config files are separately reported by printConfigSource, so
+// listing them again as "optional file present" is redundant.
+func filterConfigInfos(root string, results []repogov.LayoutResult) []repogov.LayoutResult {
+	allConfigs := repogov.FindAllConfigs(root)
+	if len(allConfigs) == 0 {
+		return results
+	}
+	configPaths := make(map[string]bool, len(allConfigs))
+	for _, cp := range allConfigs {
+		if rel, err := filepath.Rel(root, cp); err == nil {
+			configPaths[filepath.ToSlash(rel)] = true
+		}
+	}
+	filtered := make([]repogov.LayoutResult, 0, len(results))
+	for _, r := range results {
+		if r.Status == repogov.Info && configPaths[r.Path] {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	return filtered
 }
 
 // platformEntry pairs a platform name with its layout schema.
@@ -357,7 +408,8 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 				return 2
 			}
 			if !quiet {
-				fmt.Fprint(stdout, repogov.LayoutSummary(results))
+				fmt.Fprintf(stdout, "Checking layout (%s)...\n\n", p.name)
+				fmt.Fprint(stdout, repogov.LayoutSummary(filterConfigInfos(root, results)))
 			}
 			if !repogov.LayoutPassed(results) {
 				code = 1
@@ -389,7 +441,8 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 	}
 
 	if !quiet {
-		fmt.Fprint(stdout, repogov.LayoutSummary(results))
+		fmt.Fprintf(stdout, "Checking layout (%s)...\n\n", platform)
+		fmt.Fprint(stdout, repogov.LayoutSummary(filterConfigInfos(root, results)))
 	}
 
 	if !repogov.LayoutPassed(results) {
@@ -398,7 +451,7 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 	return 0
 }
 
-func runInit(root, configPath, platform string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
+func runInit(root, configPath, platform string, quiet, jsonOut, descriptive bool, stdout, stderr io.Writer) int {
 	if platform == "" {
 		fmt.Fprintln(stderr, "error: -agent is required for init")
 		fmt.Fprintln(stderr, "usage: repogov -agent <copilot|cursor|windsurf|claude|all[,...]> init")
@@ -419,6 +472,9 @@ func runInit(root, configPath, platform string, quiet, jsonOut bool, stdout, std
 	if err != nil {
 		fmt.Fprintf(stderr, "error loading config: %v\n", err)
 		return 2
+	}
+	if descriptive {
+		cfg.DescriptiveNames = true
 	}
 
 	// Normalize: split comma-separated list and trim spaces.
