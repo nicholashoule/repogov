@@ -96,6 +96,6 @@ Flags:
 ## Constraints
 
 - Zero external dependencies (stdlib only)
-- Go 1.21+
+- Go 1.22+
 - Cross-platform (Windows, Linux, macOS)
 - Auditing is read-only; `init` scaffolds new files but never overwrites existing ones

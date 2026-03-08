@@ -212,11 +212,11 @@ func TestLoadConfig_DownstreamFormat(t *testing.T) {
 func TestFindConfig_InGitHub(t *testing.T) {
 	root := t.TempDir()
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(ghDir, "repogov.json")
-	if err := os.WriteFile(cfgPath, []byte(`{"default":300}`), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(`{"default":300}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -229,7 +229,7 @@ func TestFindConfig_InGitHub(t *testing.T) {
 func TestFindConfig_InRoot(t *testing.T) {
 	root := t.TempDir()
 	cfgPath := filepath.Join(root, "repogov.json")
-	if err := os.WriteFile(cfgPath, []byte(`{"default":250}`), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(`{"default":250}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -243,15 +243,15 @@ func TestFindConfig_PrefersRoot(t *testing.T) {
 	root := t.TempDir()
 	// Create both locations; root should win.
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	ghCfg := filepath.Join(ghDir, "repogov.json")
-	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0644); err != nil {
+	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	rootCfg := filepath.Join(root, "repogov.json")
-	if err := os.WriteFile(rootCfg, []byte(`{"default":250}`), 0644); err != nil {
+	if err := os.WriteFile(rootCfg, []byte(`{"default":250}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -272,7 +272,7 @@ func TestFindConfig_NoneExist(t *testing.T) {
 func TestFindConfig_DotRepogov(t *testing.T) {
 	root := t.TempDir()
 	cfgPath := filepath.Join(root, ".repogov.json")
-	if err := os.WriteFile(cfgPath, []byte(`{"default":350}`), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(`{"default":350}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -285,7 +285,7 @@ func TestFindConfig_DotRepogov(t *testing.T) {
 func TestFindConfig_RepogovConfigJson(t *testing.T) {
 	root := t.TempDir()
 	cfgPath := filepath.Join(root, "repogov-config.json")
-	if err := os.WriteFile(cfgPath, []byte(`{"default":400}`), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(`{"default":400}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -298,7 +298,7 @@ func TestFindConfig_RepogovConfigJson(t *testing.T) {
 func TestFindConfig_YAMLFile(t *testing.T) {
 	root := t.TempDir()
 	cfgPath := filepath.Join(root, "repogov.yaml")
-	if err := os.WriteFile(cfgPath, []byte("default: 400\n"), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("default: 400\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -312,7 +312,7 @@ func TestFindConfig_YMLFile(t *testing.T) {
 	root := t.TempDir()
 	// Only .yml present; should still be found.
 	cfgPath := filepath.Join(root, "repogov.yml")
-	if err := os.WriteFile(cfgPath, []byte("default: 400\n"), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("default: 400\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -326,10 +326,10 @@ func TestFindConfig_JSONOverYAML(t *testing.T) {
 	root := t.TempDir()
 	jsonPath := filepath.Join(root, "repogov-config.json")
 	yamlPath := filepath.Join(root, "repogov-config.yaml")
-	if err := os.WriteFile(jsonPath, []byte(`{"default":300}`), 0644); err != nil {
+	if err := os.WriteFile(jsonPath, []byte(`{"default":300}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(yamlPath, []byte("default: 400\n"), 0644); err != nil {
+	if err := os.WriteFile(yamlPath, []byte("default: 400\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -343,10 +343,10 @@ func TestFindConfig_PrefersRepogovConfig(t *testing.T) {
 	root := t.TempDir()
 	repogovCfg := filepath.Join(root, "repogov-config.json")
 	repogovPlain := filepath.Join(root, "repogov.json")
-	if err := os.WriteFile(repogovCfg, []byte(`{"default":300}`), 0644); err != nil {
+	if err := os.WriteFile(repogovCfg, []byte(`{"default":300}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repogovPlain, []byte(`{"default":250}`), 0644); err != nil {
+	if err := os.WriteFile(repogovPlain, []byte(`{"default":250}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -746,10 +746,10 @@ func TestFindAllConfigs_None(t *testing.T) {
 func TestFindAllConfigs_OnlyGitHub(t *testing.T) {
 	root := t.TempDir()
 	ghCfg := filepath.Join(root, ".github", "repogov-config.json")
-	if err := os.MkdirAll(filepath.Dir(ghCfg), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(ghCfg), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0644); err != nil {
+	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	all := repogov.FindAllConfigs(root)
@@ -816,13 +816,13 @@ func TestFindAllConfigs_BothPresent(t *testing.T) {
 	root := t.TempDir()
 	rootCfg := filepath.Join(root, "repogov-config.json")
 	ghCfg := filepath.Join(root, ".github", "repogov-config.json")
-	if err := os.MkdirAll(filepath.Dir(ghCfg), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(ghCfg), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(rootCfg, []byte(`{"default":400}`), 0644); err != nil {
+	if err := os.WriteFile(rootCfg, []byte(`{"default":400}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0644); err != nil {
+	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	all := repogov.FindAllConfigs(root)

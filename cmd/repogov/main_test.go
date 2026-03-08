@@ -17,10 +17,10 @@ func writeTempDir(t *testing.T, files map[string]string) string {
 	root := t.TempDir()
 	for rel, content := range files {
 		abs := filepath.Join(root, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -416,7 +416,7 @@ func TestRunInit_EachPlatformToTemp(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.platform, func(t *testing.T) {
 			temp := filepath.Join(t.TempDir(), "temp")
-			if err := os.MkdirAll(temp, 0755); err != nil {
+			if err := os.MkdirAll(temp, 0o755); err != nil {
 				t.Fatal(err)
 			}
 			stdout, stderr := bufs()
@@ -443,7 +443,7 @@ func TestRunInit_EachPlatformToTemp(t *testing.T) {
 // validates all layouts, and confirms idempotency.
 func TestRunInit_AllToTemp(t *testing.T) {
 	temp := filepath.Join(t.TempDir(), "temp")
-	if err := os.MkdirAll(temp, 0755); err != nil {
+	if err := os.MkdirAll(temp, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	stdout, stderr := bufs()

@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 	if err := os.RemoveAll(tmpRoot); err != nil {
 		panic("scaffold_test: cannot remove " + tmpRoot + ": " + err.Error())
 	}
-	if err := os.MkdirAll(tmpRoot, 0755); err != nil {
+	if err := os.MkdirAll(tmpRoot, 0o755); err != nil {
 		panic("scaffold_test: cannot create " + tmpRoot + ": " + err.Error())
 	}
 	os.Exit(m.Run())
@@ -46,7 +46,7 @@ func scaffoldDir(t *testing.T, agent string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -220,7 +220,7 @@ func TestScaffold_Copilot_Init_Descriptive(t *testing.T) {
 
 	// Pre-create .github/ with a full working config that enables descriptive naming.
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfgData := "{\n" +
@@ -238,7 +238,7 @@ func TestScaffold_Copilot_Init_Descriptive(t *testing.T) {
 		"  }\n" +
 		"}\n"
 	cfgPath := filepath.Join(ghDir, "repogov-config.json")
-	if err := os.WriteFile(cfgPath, []byte(cfgData), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(cfgData), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -568,7 +568,7 @@ func TestScaffold_DoesNotOverwrite(t *testing.T) {
 
 			// Overwrite the file with a custom marker.
 			abs := filepath.Join(root, filepath.FromSlash(tc.relPath))
-			if err := os.WriteFile(abs, []byte("# Custom\n\n"+tc.marker+"\n"), 0644); err != nil {
+			if err := os.WriteFile(abs, []byte("# Custom\n\n"+tc.marker+"\n"), 0o644); err != nil {
 				t.Fatalf("cannot write marker file: %v", err)
 			}
 

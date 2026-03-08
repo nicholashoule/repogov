@@ -74,12 +74,12 @@ func TestInitLayout_DoesNotOverwrite(t *testing.T) {
 
 	// Pre-create repogov-config.json with custom content before init.
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	customContent := `{"default":100}`
 	cfgPath := filepath.Join(ghDir, "repogov-config.json")
-	if err := os.WriteFile(cfgPath, []byte(customContent), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(customContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,10 +186,10 @@ func TestInitLayoutWithConfig_AlwaysCreate(t *testing.T) {
 	// Pre-create the .cursor/rules directory with an existing file so that
 	// isDirEmpty returns false.
 	rulesDir := filepath.Join(root, ".cursor", "rules")
-	if err := os.MkdirAll(rulesDir, 0755); err != nil {
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "existing.mdc"), []byte("# existing\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(rulesDir, "existing.mdc"), []byte("# existing\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -236,10 +236,10 @@ func TestInitLayoutWithConfig_AlwaysCreateFalse(t *testing.T) {
 
 	// Pre-create the rules directory with an existing file.
 	rulesDir := filepath.Join(root, ".cursor", "rules")
-	if err := os.MkdirAll(rulesDir, 0755); err != nil {
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "custom.mdc"), []byte("# custom\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(rulesDir, "custom.mdc"), []byte("# custom\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -263,10 +263,10 @@ func TestInitLayoutAllWithConfig_AlwaysCreate(t *testing.T) {
 
 	// Pre-create the rules directory with a file so it is not empty.
 	rulesDir := filepath.Join(root, ".cursor", "rules")
-	if err := os.MkdirAll(rulesDir, 0755); err != nil {
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "existing.mdc"), []byte("# x\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(rulesDir, "existing.mdc"), []byte("# x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -619,7 +619,7 @@ func TestCheckLayout_GuidanceMessages(t *testing.T) {
 func TestCheckLayout_MissingFileGuidance(t *testing.T) {
 	root := t.TempDir()
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -648,10 +648,10 @@ func TestCheckLayout_MissingFileGuidance(t *testing.T) {
 func TestCheckLayout_NamingGuidance(t *testing.T) {
 	root := t.TempDir()
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(ghDir, "MyConfig.yml"), []byte("test\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(ghDir, "MyConfig.yml"), []byte("test\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -735,12 +735,12 @@ func TestInitLayout_CreatesCopilotInstructions(t *testing.T) {
 func TestInitLayout_CopilotInstructionsNotOverwritten(t *testing.T) {
 	root := t.TempDir()
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	customContent := "# My Custom Instructions\n"
 	ciPath := filepath.Join(ghDir, "copilot-instructions.md")
-	if err := os.WriteFile(ciPath, []byte(customContent), 0644); err != nil {
+	if err := os.WriteFile(ciPath, []byte(customContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -918,7 +918,7 @@ func TestInitLayout_DefaultInstructionsIdempotent(t *testing.T) {
 	instrDir := filepath.Join(root, ".github", "instructions")
 	customPath := filepath.Join(instrDir, "general.md")
 	custom := "# My Custom General Rules\n"
-	if err := os.WriteFile(customPath, []byte(custom), 0644); err != nil {
+	if err := os.WriteFile(customPath, []byte(custom), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -945,12 +945,12 @@ func TestInitLayout_DefaultInstructionsSkippedWhenDirNonEmpty(t *testing.T) {
 
 	// Pre-create instructions directory with a custom file.
 	instrDir := filepath.Join(root, ".github", "instructions")
-	if err := os.MkdirAll(instrDir, 0755); err != nil {
+	if err := os.MkdirAll(instrDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
 		filepath.Join(instrDir, "custom.instructions.md"),
-		[]byte("# Custom\n"), 0644,
+		[]byte("# Custom\n"), 0o644,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1033,11 +1033,11 @@ func TestInitLayout_GovernanceLink_YAMLConfig(t *testing.T) {
 
 	// Pre-create a YAML config in .github/ to simulate a user who prefers YAML.
 	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
+	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	yamlCfg := filepath.Join(ghDir, "repogov-config.yaml")
-	if err := os.WriteFile(yamlCfg, []byte("default: 300\n"), 0644); err != nil {
+	if err := os.WriteFile(yamlCfg, []byte("default: 300\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1110,7 +1110,7 @@ func TestInitLayout_CreatesAgentsMd(t *testing.T) {
 func TestInitLayout_AgentsMdNotOverwritten(t *testing.T) {
 	root := t.TempDir()
 	custom := "# My Custom AGENTS.md\n"
-	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(custom), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(custom), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1609,7 +1609,7 @@ func TestUpdateAgentsMdContextAll_NoContextSection(t *testing.T) {
 	root := t.TempDir()
 	original := "# AGENTS.md\n\nNo context section here.\n"
 	agentsPath := filepath.Join(root, "AGENTS.md")
-	if err := os.WriteFile(agentsPath, []byte(original), 0644); err != nil {
+	if err := os.WriteFile(agentsPath, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
