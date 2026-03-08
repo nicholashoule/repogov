@@ -1,12 +1,9 @@
-# EditorConfig is awesome: http://EditorConfig.org
-# Uses editorconfig to maintain consistent coding styles
-# https://editorconfig.org/#example-file
-# https://spec.editorconfig.org/#editorconfig-specification
+# EditorConfig: https://editorconfig.org
+# Spec: https://spec.editorconfig.org
 
-# top-most EditorConfig file
 root = true
 
-# Unix-style newlines with a newline ending every file
+# Defaults: UTF-8, LF line endings, 2-space indent, final newline, no trailing whitespace
 [*]
 charset = utf-8
 end_of_line = lf
@@ -16,13 +13,41 @@ insert_final_newline = true
 max_line_length = 120
 trim_trailing_whitespace = true
 
+# Go source: tabs required and enforced by gofmt
+[*.go]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+
+# Go module files: tabs
+[{go.mod,go.sum}]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+
+# YAML: 2-space indent
+[*.{yml,yaml}]
+indent_size = 2
+
+# JSON: 2-space indent
+[*.json]
+indent_size = 2
+
+# Shell scripts (including extension-less hook scripts)
+[{*.sh,scripts/hooks/pre-commit}]
+indent_size = 2
+indent_style = space
+
+# Markdown: no line length limit; preserve trailing whitespace (two spaces = hard line break)
 [*.md]
 max_line_length = 0
 trim_trailing_whitespace = false
 
+# Makefiles: tabs required
 [Makefile]
-tab_width = 2
 indent_style = tab
+tab_width = 4
 
+# Git commit messages: no line length enforcement
 [COMMIT_EDITMSG]
 max_line_length = 0
