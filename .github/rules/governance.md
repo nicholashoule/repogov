@@ -18,8 +18,8 @@ See [repogov-config.json](../repogov-config.json) for limits and rules.
 ### Minimal CLI Example
 
 ```sh
-go install github.com/nicholashoule/repogov/cmd/repogov@latest
-repogov -root . -agent copilot init
+go run ./cmd/repogov -agent copilot
+go run ./cmd/repogov -agent copilot init
 ```
 
 Pre-commit hook (`.git/hooks/pre-commit`):
