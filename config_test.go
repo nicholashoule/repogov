@@ -215,7 +215,7 @@ func TestFindConfig_InGitHub(t *testing.T) {
 	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfgPath := filepath.Join(ghDir, "repogov.json")
+	cfgPath := filepath.Join(ghDir, "repogov-config.json")
 	if err := os.WriteFile(cfgPath, []byte(`{"default":300}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestFindConfig_InGitHub(t *testing.T) {
 
 func TestFindConfig_InRoot(t *testing.T) {
 	root := t.TempDir()
-	cfgPath := filepath.Join(root, "repogov.json")
+	cfgPath := filepath.Join(root, "repogov-config.json")
 	if err := os.WriteFile(cfgPath, []byte(`{"default":250}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -246,11 +246,11 @@ func TestFindConfig_PrefersRoot(t *testing.T) {
 	if err := os.MkdirAll(ghDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ghCfg := filepath.Join(ghDir, "repogov.json")
+	ghCfg := filepath.Join(ghDir, "repogov-config.json")
 	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	rootCfg := filepath.Join(root, "repogov.json")
+	rootCfg := filepath.Join(root, "repogov-config.json")
 	if err := os.WriteFile(rootCfg, []byte(`{"default":250}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -269,19 +269,6 @@ func TestFindConfig_NoneExist(t *testing.T) {
 	}
 }
 
-func TestFindConfig_DotRepogov(t *testing.T) {
-	root := t.TempDir()
-	cfgPath := filepath.Join(root, ".repogov.json")
-	if err := os.WriteFile(cfgPath, []byte(`{"default":350}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	found := repogov.FindConfig(root)
-	if found != cfgPath {
-		t.Errorf("FindConfig = %q, want %q", found, cfgPath)
-	}
-}
-
 func TestFindConfig_RepogovConfigJson(t *testing.T) {
 	root := t.TempDir()
 	cfgPath := filepath.Join(root, "repogov-config.json")
@@ -297,7 +284,7 @@ func TestFindConfig_RepogovConfigJson(t *testing.T) {
 
 func TestFindConfig_YAMLFile(t *testing.T) {
 	root := t.TempDir()
-	cfgPath := filepath.Join(root, "repogov.yaml")
+	cfgPath := filepath.Join(root, "repogov-config.yaml")
 	if err := os.WriteFile(cfgPath, []byte("default: 400\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +298,7 @@ func TestFindConfig_YAMLFile(t *testing.T) {
 func TestFindConfig_YMLFile(t *testing.T) {
 	root := t.TempDir()
 	// Only .yml present; should still be found.
-	cfgPath := filepath.Join(root, "repogov.yml")
+	cfgPath := filepath.Join(root, "repogov-config.yml")
 	if err := os.WriteFile(cfgPath, []byte("default: 400\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -336,23 +323,6 @@ func TestFindConfig_JSONOverYAML(t *testing.T) {
 	found := repogov.FindConfig(root)
 	if found != jsonPath {
 		t.Errorf("FindConfig should prefer JSON over YAML, got %q", found)
-	}
-}
-
-func TestFindConfig_PrefersRepogovConfig(t *testing.T) {
-	root := t.TempDir()
-	repogovCfg := filepath.Join(root, "repogov-config.json")
-	repogovPlain := filepath.Join(root, "repogov.json")
-	if err := os.WriteFile(repogovCfg, []byte(`{"default":300}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(repogovPlain, []byte(`{"default":250}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	found := repogov.FindConfig(root)
-	if found != repogovCfg {
-		t.Errorf("FindConfig should prefer repogov-config.json, got %q", found)
 	}
 }
 

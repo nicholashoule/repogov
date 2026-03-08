@@ -9,16 +9,11 @@ import (
 )
 
 // configNames lists supported config filenames in search order.
-// JSON is preferred over YAML. repogov-config is preferred over repogov.
-// The dot-file form (.repogov.json) is supported for users who prefer hidden config files.
+// JSON is preferred over YAML.
 var configNames = []string{
 	"repogov-config.json",
-	"repogov.json",
-	".repogov.json",
 	"repogov-config.yaml",
 	"repogov-config.yml",
-	"repogov.yaml",
-	"repogov.yml",
 }
 
 // LoadConfig reads a configuration file from path and returns a [Config].

@@ -33,7 +33,7 @@ cmd/repogov/     -- CLI with limits/layout/all/version subcommands
 
 ## Configuration
 
-Configuration uses a JSON file (default: `.github/repogov.json`):
+Configuration uses a JSON file (default: `.github/repogov-config.json`):
 
 ```json
 {

@@ -20,12 +20,8 @@ func DefaultCopilotLayout() LayoutSchema {
 			"SECURITY.md",
 			"dependabot.yml",
 			"repogov-config.json",
-			"repogov.json",
 			"repogov-config.yaml",
 			"repogov-config.yml",
-			"repogov.yaml",
-			"repogov.yml",
-			"line-limits.json",
 		},
 		Dirs: map[string]DirRule{
 			"instructions": {
@@ -41,7 +37,7 @@ func DefaultCopilotLayout() LayoutSchema {
 			"workflows": {
 				Glob:        "",
 				Min:         0,
-				Description: "GitHub Actions workflow files",
+				Description: "GitHub Actions workflows (recognized; contents not enforced)",
 			},
 		},
 		Naming: NamingRule{

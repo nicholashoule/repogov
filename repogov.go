@@ -212,7 +212,7 @@ func DefaultConfig() Config {
 		Default:          defaultLimit,
 		WarningThreshold: defaultWarningThreshold,
 		IncludeExts:      []string{".md", ".mdc"},
-		SkipDirs:         []string{".git", "vendor"},
+		SkipDirs:         []string{".git", "vendor", "workflows"},
 		Rules: []Rule{
 			{Glob: ".github/instructions/*.md", Limit: RuleLimit(300)},
 			{Glob: ".cursor/rules/*.md", Limit: RuleLimit(300)},

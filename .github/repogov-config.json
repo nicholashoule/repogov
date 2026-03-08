@@ -2,7 +2,7 @@
   "default": 300,
   "descriptive_names": false,
   "warning_threshold": "85%",
-  "skip_dirs": [".git", "vendor"],
+  "skip_dirs": [".git", "vendor", "workflows"],
   "include_exts": [".md", ".mdc"],
   "rules": [
     {"glob": ".github/instructions/*.md", "limit": 300}

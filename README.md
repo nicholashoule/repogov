@@ -79,7 +79,7 @@ repogov -root . -quiet all
 
 ## Configuration
 
-Create `.github/repogov.json`:
+Create `.github/repogov-config.json`:
 
 ```json
 {
@@ -208,7 +208,7 @@ func main() {
     exts := flag.String("exts", ".md", "comma-separated extensions")
     flag.Parse()
 
-    cfg, _ := repogov.LoadConfig(*root + "/.github/repogov.json")
+    cfg, _ := repogov.LoadConfig(*root + "/.github/repogov-config.json")
     results, err := repogov.CheckDir(*root, strings.Split(*exts, ","), cfg)
     if err != nil {
         fmt.Fprintf(os.Stderr, "error: %v\n", err)

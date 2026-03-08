@@ -275,9 +275,33 @@ func printConfigSource(root, activePath, explicit string, stdout io.Writer) {
 		if i == 0 {
 			fmt.Fprintf(stdout, "  [CONFIG] %s -- active\n", rel(p))
 		} else {
-			fmt.Fprintf(stdout, "  [CONFIG] %s -- present (overridden by %s)\n", rel(p), rel(all[0]))
+			fmt.Fprintf(stdout, "  [INFO] %s -- overridden by %s\n", rel(p), rel(all[0]))
 		}
 	}
+}
+
+// filterConfigInfos removes [Info] layout results for config files.
+// Config files are separately reported by printConfigSource, so
+// listing them again as "optional file present" is redundant.
+func filterConfigInfos(root string, results []repogov.LayoutResult) []repogov.LayoutResult {
+	allConfigs := repogov.FindAllConfigs(root)
+	if len(allConfigs) == 0 {
+		return results
+	}
+	configPaths := make(map[string]bool, len(allConfigs))
+	for _, cp := range allConfigs {
+		if rel, err := filepath.Rel(root, cp); err == nil {
+			configPaths[filepath.ToSlash(rel)] = true
+		}
+	}
+	filtered := make([]repogov.LayoutResult, 0, len(results))
+	for _, r := range results {
+		if r.Status == repogov.Info && configPaths[r.Path] {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	return filtered
 }
 
 // platformEntry pairs a platform name with its layout schema.
@@ -357,7 +381,7 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 				return 2
 			}
 			if !quiet {
-				fmt.Fprint(stdout, repogov.LayoutSummary(results))
+				fmt.Fprint(stdout, repogov.LayoutSummary(filterConfigInfos(root, results)))
 			}
 			if !repogov.LayoutPassed(results) {
 				code = 1
@@ -389,7 +413,7 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 	}
 
 	if !quiet {
-		fmt.Fprint(stdout, repogov.LayoutSummary(results))
+		fmt.Fprint(stdout, repogov.LayoutSummary(filterConfigInfos(root, results)))
 	}
 
 	if !repogov.LayoutPassed(results) {
