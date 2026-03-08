@@ -836,3 +836,108 @@ func TestFindAllConfigs_BothPresent(t *testing.T) {
 		t.Errorf("second (overridden) config should be .github: got %s", all[1])
 	}
 }
+
+// TestLoadConfig_YAML_NewFields verifies that the YAML parser correctly handles
+// init_always_create, descriptive_names, init_include_files, and init_exclude_files.
+func TestLoadConfig_YAML_NewFields(t *testing.T) {
+	data := `default: 300
+init_always_create: true
+descriptive_names: true
+init_include_files:
+  - general
+  - testing
+init_exclude_files:
+  - backend
+  - frontend
+`
+	path := writeTempFile(t, "newfields.yaml", data)
+
+	cfg, err := repogov.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.InitAlwaysCreate {
+		t.Error("expected InitAlwaysCreate=true from YAML")
+	}
+	if !cfg.DescriptiveNames {
+		t.Error("expected DescriptiveNames=true from YAML")
+	}
+	if len(cfg.InitIncludeFiles) != 2 || cfg.InitIncludeFiles[0] != "general" || cfg.InitIncludeFiles[1] != "testing" {
+		t.Errorf("InitIncludeFiles = %v, want [general testing]", cfg.InitIncludeFiles)
+	}
+	if len(cfg.InitExcludeFiles) != 2 || cfg.InitExcludeFiles[0] != "backend" || cfg.InitExcludeFiles[1] != "frontend" {
+		t.Errorf("InitExcludeFiles = %v, want [backend frontend]", cfg.InitExcludeFiles)
+	}
+}
+
+// TestLoadConfig_YAML_NewFields_Defaults verifies that the YAML parser leaves
+// new fields at their zero values when absent.
+func TestLoadConfig_YAML_NewFields_Defaults(t *testing.T) {
+	data := "default: 300\n"
+	path := writeTempFile(t, "nofields.yaml", data)
+
+	cfg, err := repogov.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.InitAlwaysCreate {
+		t.Error("expected InitAlwaysCreate=false when absent")
+	}
+	if cfg.DescriptiveNames {
+		t.Error("expected DescriptiveNames=false when absent")
+	}
+	if len(cfg.InitIncludeFiles) != 0 {
+		t.Errorf("expected empty InitIncludeFiles, got %v", cfg.InitIncludeFiles)
+	}
+	if len(cfg.InitExcludeFiles) != 0 {
+		t.Errorf("expected empty InitExcludeFiles, got %v", cfg.InitExcludeFiles)
+	}
+}
+
+// TestSaveAndLoadConfig_YAML_NewFields verifies that new fields round-trip
+// correctly through YAML marshaling and unmarshaling.
+func TestSaveAndLoadConfig_YAML_NewFields(t *testing.T) {
+	cfg := repogov.DefaultConfig()
+	cfg.InitAlwaysCreate = true
+	cfg.DescriptiveNames = true
+	cfg.InitIncludeFiles = []string{"general", "security"}
+	cfg.InitExcludeFiles = []string{"emoji-prevention"}
+
+	path := filepath.Join(t.TempDir(), "out.yaml")
+	if err := repogov.SaveConfig(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := repogov.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.InitAlwaysCreate {
+		t.Error("round-trip: expected InitAlwaysCreate=true")
+	}
+	if !loaded.DescriptiveNames {
+		t.Error("round-trip: expected DescriptiveNames=true")
+	}
+	if len(loaded.InitIncludeFiles) != 2 || loaded.InitIncludeFiles[0] != "general" {
+		t.Errorf("round-trip InitIncludeFiles = %v, want [general security]", loaded.InitIncludeFiles)
+	}
+	if len(loaded.InitExcludeFiles) != 1 || loaded.InitExcludeFiles[0] != "emoji-prevention" {
+		t.Errorf("round-trip InitExcludeFiles = %v, want [emoji-prevention]", loaded.InitExcludeFiles)
+	}
+}
+
+// TestLoadConfig_YAML_InvalidBool verifies that invalid boolean values in YAML
+// produce a meaningful error.
+func TestLoadConfig_YAML_InvalidBool(t *testing.T) {
+	for _, field := range []string{"init_always_create", "descriptive_names"} {
+		field := field
+		t.Run(field, func(t *testing.T) {
+			data := field + ": notabool\n"
+			path := writeTempFile(t, field+".yaml", data)
+			_, err := repogov.LoadConfig(path)
+			if err == nil {
+				t.Errorf("expected error for invalid bool in field %s", field)
+			}
+		})
+	}
+}

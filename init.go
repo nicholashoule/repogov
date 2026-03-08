@@ -161,7 +161,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 
 	// Create the root layout directory.
 	if dirIsNew(layoutDir) {
-		if err := os.MkdirAll(layoutDir, 0755); err != nil {
+		if err := os.MkdirAll(layoutDir, 0o755); err != nil {
 			return nil, err
 		}
 		created = append(created, schema.Root)
@@ -171,7 +171,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	for dirName, rule := range schema.Dirs {
 		dirPath := filepath.Join(layoutDir, filepath.FromSlash(dirName))
 		isNew := dirIsNew(dirPath)
-		if err := os.MkdirAll(dirPath, 0755); err != nil {
+		if err := os.MkdirAll(dirPath, 0o755); err != nil {
 			return created, err
 		}
 		if isNew {
@@ -184,7 +184,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		if rule.Min > 0 {
 			gitkeep := filepath.Join(dirPath, ".gitkeep")
 			if _, err := os.Stat(gitkeep); os.IsNotExist(err) {
-				if err := os.WriteFile(gitkeep, []byte(""), 0644); err != nil {
+				if err := os.WriteFile(gitkeep, []byte(""), 0o644); err != nil {
 					return created, err
 				}
 				rel := filepath.ToSlash(filepath.Join(schema.Root, dirName, ".gitkeep"))
@@ -208,13 +208,13 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		filePath := filepath.Join(layoutDir, filepath.FromSlash(req))
 
 		// Ensure parent directory exists.
-		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 			return created, err
 		}
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			content := placeholderContent(req)
-			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 				return created, err
 			}
 			rel := filepath.ToSlash(filepath.Join(schema.Root, req))
@@ -310,7 +310,7 @@ func createCopilotInstructions(root, layoutDir string, schema LayoutSchema) ([]s
 	}
 
 	content := copilotInstructionsContent(schema)
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{filepath.ToSlash(filepath.Join(schema.Root, "copilot-instructions.md"))}, nil
@@ -371,7 +371,7 @@ func createClaudeMd(layoutDir string, _ LayoutSchema) ([]string, error) { //noli
 		return nil, nil
 	}
 	content := claudeMdContent()
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{".claude/CLAUDE.md"}, nil
@@ -505,10 +505,10 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 			// File already exists; never overwrite.
 			continue
 		}
-		if err := os.MkdirAll(targetDir, 0755); err != nil {
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			return created, err
 		}
-		if err := os.WriteFile(filePath, []byte(contentFn()), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(contentFn()), 0o644); err != nil {
 			return created, err
 		}
 		rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, actualName))
@@ -522,10 +522,10 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 		govFile := filepath.Join(targetDir, govName)
 		if _, err := os.Stat(govFile); os.IsNotExist(err) {
 			cfgName, cfgRel := detectConfigRelFrom(root, targetDir)
-			if err := os.MkdirAll(targetDir, 0755); err != nil {
+			if err := os.MkdirAll(targetDir, 0o755); err != nil {
 				return created, err
 			}
-			if err := os.WriteFile(govFile, []byte(governanceInstructionsContent(cfgName, cfgRel)), 0644); err != nil {
+			if err := os.WriteFile(govFile, []byte(governanceInstructionsContent(cfgName, cfgRel)), 0o644); err != nil {
 				return created, err
 			}
 			rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, govName))
@@ -949,7 +949,7 @@ func createAgentsMd(root string, schema LayoutSchema) ([]string, error) { //noli
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		// File does not exist: create it with full generated content.
 		content := agentsMdContent(schema)
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 			return nil, err
 		}
 		return []string{"AGENTS.md"}, nil
@@ -998,7 +998,7 @@ func updateAgentsMdContext(filePath string, schema LayoutSchema) error { //nolin
 		updated = content[:startIdx] + newSection + content[splitIdx:]
 	}
 
-	return os.WriteFile(filePath, []byte(updated), 0644)
+	return os.WriteFile(filePath, []byte(updated), 0o644)
 }
 
 // agentsMdContextSection generates the "## Context" section for AGENTS.md
@@ -1044,7 +1044,7 @@ func UpdateAgentsMdContextAll(root string, schemas []LayoutSchema) error { //nol
 		updated = content[:startIdx] + newSection + content[splitIdx:]
 	}
 
-	return os.WriteFile(filePath, []byte(updated), 0644)
+	return os.WriteFile(filePath, []byte(updated), 0o644)
 }
 
 // rulesLabel returns a human-readable label for the rules directory link based
@@ -1172,7 +1172,7 @@ func createDefaultConfigAll(root string) ([]string, error) {
 	filePath := filepath.Join(root, "repogov-config.json")
 	cfg := DefaultConfig()
 	data := defaultConfigJSON(cfg)
-	if err := os.WriteFile(filePath, []byte(data), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{"repogov-config.json"}, nil
@@ -1193,7 +1193,7 @@ func createDefaultConfig(root, configDir string, schema LayoutSchema) ([]string,
 	filePath := filepath.Join(configDir, "repogov-config.json")
 	cfg := schemaConfig(DefaultConfig(), schema.Root)
 	data := defaultConfigJSON(cfg)
-	if err := os.WriteFile(filePath, []byte(data), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
 	}
 	rel, _ := filepath.Rel(root, filepath.Join(configDir, "repogov-config.json"))

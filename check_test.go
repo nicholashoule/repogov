@@ -220,3 +220,24 @@ func TestCheckFile_PctAndAction(t *testing.T) {
 		}
 	})
 }
+
+func TestCheckFile_ZeroWarningThreshold_UsesDefault(t *testing.T) {
+	// When WarningThreshold is zero, the built-in default (85%) applies.
+	// 10 lines at a limit of 12 = 83%, below the 85% default -> PASS.
+	content := strings.Repeat("line\n", 10)
+	path := writeTempFile(t, "test.txt", content)
+
+	cfg := repogov.Config{
+		Default:          12,
+		WarningThreshold: 0, // forces built-in default of 85
+		Files:            map[string]int{},
+	}
+	result, err := repogov.CheckFile(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 10/12 = 83%, which is below 85% → should PASS (not WARN).
+	if result.Status != repogov.Pass {
+		t.Errorf("with zero WarningThreshold status = %v, want PASS (83%% < default 85%%)", result.Status)
+	}
+}

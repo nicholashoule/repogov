@@ -5,8 +5,10 @@
 // # Line-Count Limits
 //
 // [Config] defines per-file, glob-based, and default line-count limits.
-// [LoadConfig] reads a JSON configuration file; [DefaultConfig] provides
-// sensible defaults when no file is present.
+// [LoadConfig] reads a JSON or YAML configuration file; [DefaultConfig]
+// provides sensible defaults when no file is present. [FindConfig] searches
+// standard locations for a config file; [SaveConfig] writes a config to disk.
+// [ValidateConfig] checks a loaded config for structural and semantic issues.
 //
 //   - [CheckFile] checks a single file against its resolved limit.
 //   - [CheckDir] walks a directory tree and checks every file matching
@@ -22,11 +24,20 @@
 // [LayoutSchema] declares the expected directory structure for a repository's
 // platform directory (e.g., .github/ or .cursor/).
 //
-//   - [DefaultCopilotLayout] returns the built-in schema matching
-//     each platform's conventions.
+//   - [DefaultCopilotLayout], [DefaultCursorLayout], [DefaultWindsurfLayout],
+//     and [DefaultClaudeLayout] return the built-in schemas matching each
+//     platform's conventions.
 //   - [CheckLayout] validates a directory against a schema and returns
 //     [LayoutResult] entries for required, optional, and unexpected files.
 //   - [CheckLayoutContext] is like [CheckLayout] with cancellation support.
+//
+// # Scaffolding
+//
+//   - [InitLayout] creates the directory structure defined by a [LayoutSchema].
+//   - [InitLayoutWithConfig] is like [InitLayout] but honors [Config] options
+//     such as [Config.InitAlwaysCreate] and [Config.DescriptiveNames].
+//   - [InitLayoutAll] initializes multiple schemas in a single pass.
+//   - [InitLayoutAllWithConfig] is like [InitLayoutAll] with config support.
 //
 // # Output Helpers
 //
