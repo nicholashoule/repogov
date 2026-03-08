@@ -442,7 +442,7 @@ func isDirEmpty(path string) bool {
 // detectCopilotTargetDir returns the subdirectory name that should be used for
 // Copilot scoped rule files during init: "instructions" when .github/instructions/
 // already has content; otherwise "rules" (the default, consistent with all other
-// agents). This lets init honour an existing instructions/ layout without
+// agents). This lets init honor an existing instructions/ layout without
 // forcing it on repos that have not opted in.
 func detectCopilotTargetDir(ghDir string) string {
 	if !isDirEmpty(filepath.Join(ghDir, "instructions")) {
