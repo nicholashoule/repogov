@@ -21,18 +21,29 @@ func DefaultCopilotLayout() LayoutSchema {
 			"dependabot.yml",
 			"repogov-config.json",
 			"repogov.json",
+			"repogov-config.yaml",
+			"repogov-config.yml",
+			"repogov.yaml",
+			"repogov.yml",
 			"line-limits.json",
 		},
 		Dirs: map[string]DirRule{
 			"instructions": {
-				Glob:        "*.instructions.md",
+				Glob:        "*.md",
 				Min:         0,
 				Description: "Scoped instruction files",
-			}, "rules": {
+			},
+			"rules": {
 				Glob:        "*.md",
 				Min:         0,
 				Description: "Copilot scoped rule files",
-			}},
+			},
+			"workflows": {
+				Glob:        "",
+				Min:         0,
+				Description: "GitHub Actions workflow files",
+			},
+		},
 		Naming: NamingRule{
 			Case: "lowercase",
 			Exceptions: []string{
