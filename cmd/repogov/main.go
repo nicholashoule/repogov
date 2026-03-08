@@ -18,8 +18,8 @@
 //
 //	-config <path>        Path to config file (default: auto-discovered)
 //	-root <dir>           Repository root directory (default: .)
-//	-exts .go,.md         Comma-separated extension filter for limits check
-//	-platform <name>      Layout preset: github, gitlab, cursor, windsurf, claude, or all (required for init)
+//	-exts .md,.mdc        Extension filter override; default from config include_exts; use "all" to scan every type
+//	-agent <name[,name…]>  Agent/layout preset(s): copilot, cursor, windsurf, claude, or all (required for init)
 //	-quiet                Suppress output; exit code only
 //	-json                 Output results as JSON
 package main
@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/nicholashoule/repogov"
@@ -52,15 +53,57 @@ func run(args []string, stdout, stderr io.Writer) int {
 		configPath string
 		root       string
 		exts       string
-		platform   string
+		agent      string
 		quiet      bool
 		jsonOut    bool
 	)
 
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), `Usage: repogov [flags] <subcommand>
+
+Subcommands:
+  limits    Check file line counts against configured limits (default)
+  layout    Validate directory structure against a platform preset
+  init      Scaffold the platform directory structure
+  validate  Validate the configuration file and report issues
+  all       Run both limits and layout checks
+  version   Print version and exit
+
+Flags:
+`)
+		fs.PrintDefaults()
+		fmt.Fprintf(fs.Output(), `
+Examples:
+  # Run all checks (limits + layout) for Copilot
+  repogov -root . -agent copilot
+
+  # Check line limits only
+  repogov -root . limits
+
+  # Check layout only for a specific agent
+  repogov -root . -agent cursor layout
+
+  # Scaffold Copilot + Windsurf support
+  repogov -root . -agent copilot,windsurf init
+
+  # Use a custom config file
+  repogov -root . -config path/to/config.json limits
+
+  # Scan all file types (not just .md/.mdc)
+  repogov -root . -exts all limits
+
+  # Validate the config file
+  repogov -root . validate
+
+  # Output results as JSON
+  repogov -root . -json limits
+`)
+	}
+
 	fs.StringVar(&configPath, "config", "", "path to config file (JSON or YAML; auto-discovered if omitted)")
 	fs.StringVar(&root, "root", ".", "repository root directory")
-	fs.StringVar(&exts, "exts", "", "comma-separated extension filter (e.g., .go,.md)")
-	fs.StringVar(&platform, "platform", "", "layout preset: github, gitlab, cursor, windsurf, claude, or all (required for init)")
+	fs.StringVar(&exts, "exts", "", "comma-separated extension filter override (default: from config include_exts; use \"all\" to scan every file type)")
+	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, all, or comma-separated list (required for init)")
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 
@@ -68,7 +111,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	sub := fs.Arg(0)
+	// Allow extra agent names as positional args before the subcommand so that
+	//   repogov -agent windsurf copilot init
+	// is equivalent to
+	//   repogov -agent windsurf,copilot init
+	remaining := fs.Args()
+	for len(remaining) > 0 && isKnownAgentName(remaining[0]) {
+		if agent == "" {
+			agent = remaining[0]
+		} else {
+			agent += "," + remaining[0]
+		}
+		remaining = remaining[1:]
+	}
+
+	sub := ""
+	if len(remaining) > 0 {
+		sub = remaining[0]
+	}
 	if sub == "" {
 		sub = "all"
 	}
@@ -78,20 +138,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "repogov", version)
 		return 0
 	case "init":
-		return runInit(root, platform, quiet, jsonOut, stdout, stderr)
+		return runInit(root, configPath, agent, quiet, jsonOut, stdout, stderr)
 	case "validate":
 		return runValidate(root, configPath, quiet, jsonOut, stdout, stderr)
 	case "limits":
 		return runLimits(root, configPath, exts, quiet, jsonOut, stdout, stderr)
 	case "layout":
-		// Default to checking all platforms when none is specified.
-		if platform == "" {
-			platform = "all"
+		// Default to checking all agents when none is specified.
+		if agent == "" {
+			agent = "all"
 		}
-		return runLayout(root, platform, quiet, jsonOut, stdout, stderr)
+		return runLayout(root, agent, quiet, jsonOut, stdout, stderr)
 	case "all":
-		// Default to checking all platforms when none is specified.
-		effective := platform
+		// Default to checking all agents when none is specified.
+		effective := agent
 		if effective == "" {
 			effective = "all"
 		}
@@ -120,10 +180,10 @@ func runLimits(root, configPath, exts string, quiet, jsonOut bool, stdout, stder
 		if found := repogov.FindConfig(root); found != "" {
 			cfgPath = found
 		} else {
-			cfgPath = root + "/.github/repogov-config.json"
+			cfgPath = filepath.Join(root, ".github", "repogov-config.json")
 		}
 	} else if !isAbsolute(cfgPath) {
-		cfgPath = root + "/" + cfgPath
+		cfgPath = filepath.Join(root, cfgPath)
 	}
 
 	cfg, err := repogov.LoadConfig(cfgPath)
@@ -133,8 +193,25 @@ func runLimits(root, configPath, exts string, quiet, jsonOut bool, stdout, stder
 	}
 
 	var extList []string
+	// CLI -exts flag takes highest precedence.
 	if exts != "" {
-		for _, e := range strings.Split(exts, ",") {
+		// The sentinel value "all" skips extension filtering entirely.
+		if strings.ToLower(strings.TrimSpace(exts)) != "all" {
+			for _, e := range strings.Split(exts, ",") {
+				e = strings.TrimSpace(e)
+				if e != "" {
+					if !strings.HasPrefix(e, ".") {
+						e = "." + e
+					}
+					extList = append(extList, e)
+				}
+			}
+		}
+		// "all" -> extList remains nil (no filter)
+	} else {
+		// No CLI flag: use include_exts from config.
+		// An empty cfg.IncludeExts means scan all files.
+		for _, e := range cfg.IncludeExts {
 			e = strings.TrimSpace(e)
 			if e != "" {
 				if !strings.HasPrefix(e, ".") {
@@ -163,6 +240,7 @@ func runLimits(root, configPath, exts string, quiet, jsonOut bool, stdout, stder
 
 	if !quiet {
 		fmt.Fprint(stdout, repogov.Summary(results))
+		printConfigSource(root, cfgPath, configPath, stdout)
 	}
 
 	if !repogov.Passed(results) {
@@ -171,17 +249,58 @@ func runLimits(root, configPath, exts string, quiet, jsonOut bool, stdout, stder
 	return 0
 }
 
+// printConfigSource prints which config file is active and notes any others
+// that are present but overridden (higher-precedence path wins).
+func printConfigSource(root, activePath, explicit string, stdout io.Writer) {
+	rel := func(p string) string {
+		if r, err := filepath.Rel(root, p); err == nil {
+			return filepath.ToSlash(r)
+		}
+		return filepath.ToSlash(p)
+	}
+
+	// If the user supplied an explicit path, just report it as active.
+	if explicit != "" {
+		fmt.Fprintf(stdout, "  [CONFIG] %s -- active (explicit)\n", rel(activePath))
+		return
+	}
+
+	all := repogov.FindAllConfigs(root)
+	if len(all) == 0 {
+		fmt.Fprintf(stdout, "  [CONFIG] no config file found -- using defaults\n")
+		return
+	}
+
+	for i, p := range all {
+		if i == 0 {
+			fmt.Fprintf(stdout, "  [CONFIG] %s -- active\n", rel(p))
+		} else {
+			fmt.Fprintf(stdout, "  [CONFIG] %s -- present (overridden by %s)\n", rel(p), rel(all[0]))
+		}
+	}
+}
+
 // platformEntry pairs a platform name with its layout schema.
 type platformEntry struct {
 	name   string
 	schema repogov.LayoutSchema
 }
 
+// isKnownAgentName reports whether s is a recognized single-platform agent
+// name. "all" is intentionally excluded because it is also a subcommand
+// keyword; it is handled separately in run.
+func isKnownAgentName(s string) bool {
+	switch strings.ToLower(s) {
+	case "copilot", "cursor", "windsurf", "claude":
+		return true
+	}
+	return false
+}
+
 // allPlatformSchemas returns all supported platforms in a stable order.
 func allPlatformSchemas() []platformEntry {
 	return []platformEntry{
-		{"github", repogov.DefaultGitHubLayout()},
-		{"gitlab", repogov.DefaultGitLabLayout()},
+		{"copilot", repogov.DefaultCopilotLayout()},
 		{"cursor", repogov.DefaultCursorLayout()},
 		{"windsurf", repogov.DefaultWindsurfLayout()},
 		{"claude", repogov.DefaultClaudeLayout()},
@@ -192,10 +311,8 @@ func allPlatformSchemas() []platformEntry {
 // message for unknown names. Returns nil schema and "" message for "all".
 func resolvePlatform(platform string) (repogov.LayoutSchema, string) {
 	switch strings.ToLower(platform) {
-	case "github":
-		return repogov.DefaultGitHubLayout(), ""
-	case "gitlab":
-		return repogov.DefaultGitLabLayout(), ""
+	case "copilot":
+		return repogov.DefaultCopilotLayout(), ""
 	case "cursor":
 		return repogov.DefaultCursorLayout(), ""
 	case "windsurf":
@@ -205,15 +322,17 @@ func resolvePlatform(platform string) (repogov.LayoutSchema, string) {
 	case "all":
 		return repogov.LayoutSchema{}, ""
 	}
-	return repogov.LayoutSchema{}, "unknown platform: " + platform + " (use github, gitlab, cursor, windsurf, claude, or all)"
+	return repogov.LayoutSchema{}, "unknown agent: " + platform + " (use copilot, cursor, windsurf, claude, or all)"
 }
 
 func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
-	if strings.ToLower(platform) == "all" {
+	if strings.EqualFold(platform, "all") {
+		platforms := allPlatformSchemas()
 		if jsonOut {
 			out := make(map[string]interface{})
 			code := 0
-			for _, p := range allPlatformSchemas() {
+			for i := range platforms {
+				p := &platforms[i]
 				results, err := repogov.CheckLayout(root, p.schema)
 				if err != nil {
 					fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
@@ -230,7 +349,8 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 			return code
 		}
 		code := 0
-		for _, p := range allPlatformSchemas() {
+		for i := range platforms {
+			p := &platforms[i]
 			results, err := repogov.CheckLayout(root, p.schema)
 			if err != nil {
 				fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
@@ -278,50 +398,107 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 	return 0
 }
 
-func runInit(root, platform string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
+func runInit(root, configPath, platform string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
 	if platform == "" {
-		fmt.Fprintln(stderr, "error: -platform is required for init")
-		fmt.Fprintln(stderr, "usage: repogov -platform <github|gitlab|cursor|windsurf|claude|all> init")
+		fmt.Fprintln(stderr, "error: -agent is required for init")
+		fmt.Fprintln(stderr, "usage: repogov -agent <copilot|cursor|windsurf|claude|all[,...]> init")
 		return 2
 	}
-	if strings.ToLower(platform) == "all" {
-		type initResult struct {
-			Platform string   `json:"platform"`
-			Created  []string `json:"created"`
+
+	// Load config so that init_always_create (and any future init options) are
+	// honored. Config is optional; missing files silently use defaults.
+	cfgPath := configPath
+	if cfgPath == "" {
+		if found := repogov.FindConfig(root); found != "" {
+			cfgPath = found
 		}
-		var allResults []initResult
-		for _, p := range allPlatformSchemas() {
-			created, err := repogov.InitLayout(root, p.schema)
-			if err != nil {
-				fmt.Fprintf(stderr, "error initializing %s layout: %v\n", p.name, err)
-				return 2
+	} else if !isAbsolute(cfgPath) {
+		cfgPath = filepath.Join(root, cfgPath)
+	}
+	cfg, err := repogov.LoadConfig(cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "error loading config: %v\n", err)
+		return 2
+	}
+
+	// Normalize: split comma-separated list and trim spaces.
+	parts := strings.Split(platform, ",")
+	var agents []string
+	for _, p := range parts {
+		p = strings.TrimSpace(strings.ToLower(p))
+		if p != "" {
+			agents = append(agents, p)
+		}
+	}
+
+	// Expand "all" to every platform.
+	forAll := false
+	for _, a := range agents {
+		if a == "all" {
+			forAll = true
+			break
+		}
+	}
+
+	if forAll || len(agents) > 1 {
+		var schemas []repogov.LayoutSchema
+		var platformNames []string
+		if forAll {
+			allSchemas := allPlatformSchemas()
+			for i := range allSchemas {
+				p := &allSchemas[i]
+				schemas = append(schemas, p.schema)
+				platformNames = append(platformNames, p.name)
+			}
+		} else {
+			for _, a := range agents {
+				schema, errMsg := resolvePlatform(a)
+				if errMsg != "" {
+					fmt.Fprintln(stderr, errMsg)
+					return 2
+				}
+				schemas = append(schemas, schema)
+				platformNames = append(platformNames, a)
+			}
+		}
+		created, err := repogov.InitLayoutAllWithConfig(root, schemas, cfg)
+		if err != nil {
+			fmt.Fprintf(stderr, "error initializing layouts: %v\n", err)
+			return 2
+		}
+		displayName := strings.Join(platformNames, "+")
+		if forAll {
+			displayName = "all"
+		}
+		if !quiet && !jsonOut && len(created) > 0 {
+			fmt.Fprintf(stdout, "Scaffolded %s layouts (%d items created):\n", displayName, len(created))
+			for _, item := range created {
+				fmt.Fprintf(stdout, "  + %s\n", item)
+			}
+		}
+		if jsonOut {
+			type initResult struct {
+				Platform string   `json:"platform"`
+				Created  []string `json:"created"`
 			}
 			if created == nil {
 				created = []string{}
 			}
-			allResults = append(allResults, initResult{Platform: p.name, Created: created})
-			if !quiet && !jsonOut && len(created) > 0 {
-				fmt.Fprintf(stdout, "Scaffolded %s layout (%d items created):\n", p.name, len(created))
-				for _, item := range created {
-					fmt.Fprintf(stdout, "  + %s\n", item)
-				}
-			}
-		}
-		if jsonOut {
 			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(allResults) //nolint:errcheck
+			enc.Encode([]initResult{{Platform: displayName, Created: created}}) //nolint:errcheck
 		}
 		return 0
 	}
 
-	schema, errMsg := resolvePlatform(platform)
+	// Single-agent path.
+	schema, errMsg := resolvePlatform(agents[0])
 	if errMsg != "" {
 		fmt.Fprintln(stderr, errMsg)
 		return 2
 	}
 
-	created, err := repogov.InitLayout(root, schema)
+	created, err := repogov.InitLayoutWithConfig(root, schema, cfg)
 	if err != nil {
 		fmt.Fprintf(stderr, "error initializing layout: %v\n", err)
 		return 2
@@ -332,7 +509,7 @@ func runInit(root, platform string, quiet, jsonOut bool, stdout, stderr io.Write
 			Platform string   `json:"platform"`
 			Created  []string `json:"created"`
 		}{
-			Platform: platform,
+			Platform: agents[0],
 			Created:  created,
 		}
 		if out.Created == nil {
@@ -352,7 +529,7 @@ func runInit(root, platform string, quiet, jsonOut bool, stdout, stderr io.Write
 	}
 
 	if !quiet {
-		fmt.Fprintf(stdout, "Scaffolded %s layout (%d items created):\n", platform, len(created))
+		fmt.Fprintf(stdout, "Scaffolded %s layout (%d items created):\n", agents[0], len(created))
 		for _, p := range created {
 			fmt.Fprintf(stdout, "  + %s\n", p)
 		}
@@ -374,12 +551,18 @@ func runValidate(root, configPath string, quiet, jsonOut bool, stdout, stderr io
 			return 2
 		}
 	} else if !isAbsolute(cfgPath) {
-		cfgPath = root + "/" + cfgPath
+		cfgPath = filepath.Join(root, cfgPath)
+	}
+
+	// Display path: slash-separated, relative to root when possible.
+	displayPath := cfgPath
+	if rel, err := filepath.Rel(root, cfgPath); err == nil {
+		displayPath = filepath.ToSlash(rel)
 	}
 
 	cfg, err := repogov.LoadConfig(cfgPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "error loading config %s: %v\n", cfgPath, err)
+		fmt.Fprintf(stderr, "error loading config %s: %v\n", displayPath, err)
 		return 2
 	}
 
@@ -391,7 +574,7 @@ func runValidate(root, configPath string, quiet, jsonOut bool, stdout, stderr io
 			Valid      bool                `json:"valid"`
 			Violations []repogov.Violation `json:"violations"`
 		}{
-			Path:       cfgPath,
+			Path:       displayPath,
 			Valid:      len(violations) == 0,
 			Violations: violations,
 		}
@@ -412,12 +595,12 @@ func runValidate(root, configPath string, quiet, jsonOut bool, stdout, stderr io
 	}
 
 	if len(violations) == 0 {
-		fmt.Fprintf(stdout, "Config %s is valid.\n", cfgPath)
+		fmt.Fprintf(stdout, "Config %s is valid.\n", displayPath)
 		return 0
 	}
 
 	errors, warnings := 0, 0
-	fmt.Fprintf(stdout, "Config %s has issues:\n\n", cfgPath)
+	fmt.Fprintf(stdout, "Config %s has issues:\n\n", displayPath)
 	for _, v := range violations {
 		icon := "WARNING"
 		if v.Severity == "error" {

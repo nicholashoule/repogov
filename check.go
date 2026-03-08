@@ -27,8 +27,8 @@ func CountLines(path string) (int, error) {
 
 // CheckFile checks a single file against its resolved line limit.
 // It returns a Result with the line count and status.
-func CheckFile(path string, cfg Config) (Result, error) {
-	// Normalise to forward slashes for config lookup.
+func CheckFile(path string, cfg Config) (Result, error) { //nolint:gocritic // hugeParam: stable public API
+	// Normalize to forward slashes for config lookup.
 	relPath := filepath.ToSlash(path)
 
 	limit := ResolveLimit(relPath, cfg)
@@ -74,7 +74,7 @@ func CheckFile(path string, cfg Config) (Result, error) {
 // matching the given extensions (e.g., []string{".md"}), and returns
 // results. An empty or nil extensions slice checks all files.
 // Directories listed in cfg.SkipDirs are not entered.
-func CheckDir(root string, exts []string, cfg Config) ([]Result, error) {
+func CheckDir(root string, exts []string, cfg Config) ([]Result, error) { //nolint:gocritic // hugeParam: stable public API
 	return CheckDirContext(context.Background(), root, exts, cfg)
 }
 
@@ -82,7 +82,7 @@ func CheckDir(root string, exts []string, cfg Config) ([]Result, error) {
 // for cancellation support. When the context is canceled, the walk
 // stops and CheckDirContext returns the context error along with any
 // results collected before cancellation.
-func CheckDirContext(ctx context.Context, root string, exts []string, cfg Config) ([]Result, error) {
+func CheckDirContext(ctx context.Context, root string, exts []string, cfg Config) ([]Result, error) { //nolint:gocritic // hugeParam: stable public API
 	// Build a set for fast SkipDirs lookup.
 	skipSet := make(map[string]bool, len(cfg.SkipDirs))
 	for _, d := range cfg.SkipDirs {

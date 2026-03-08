@@ -1,11 +1,57 @@
 package repogov
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
+
+// initOptions bundles all options that influence scaffolding behavior so that
+// internal helpers can be updated without cascading signature changes.
+type initOptions struct {
+	// skipConfig suppresses writing repogov-config.json (used by all-agent init).
+	skipConfig bool
+	// alwaysCreate seeds template files into existing non-empty directories.
+	alwaysCreate bool
+	// descriptive selects <name>.instructions.md naming (true) vs <name>.md (false).
+	descriptive bool
+	// include is an allowlist of template stems; when non-empty only listed stems are created.
+	include []string
+	// exclude is a blocklist of template stems; listed stems are skipped (ignored when include is set).
+	exclude []string
+}
+
+// templateStem strips any ".instructions.md", ".mdc", or ".md" suffix from
+// name and returns the bare stem (e.g. "general.instructions.md" -> "general").
+func templateStem(name string) string {
+	name = strings.TrimSuffix(name, ".instructions.md")
+	name = strings.TrimSuffix(name, ".mdc")
+	name = strings.TrimSuffix(name, ".md")
+	return name
+}
+
+// shouldSeedFile reports whether the template with the given stem should be
+// created during init. When include is non-empty, only stems present in that
+// list are created (takes precedence over exclude). When exclude is non-empty
+// and include is empty, stems present in exclude are skipped.
+func shouldSeedFile(stem string, include, exclude []string) bool {
+	if len(include) > 0 {
+		for _, n := range include {
+			if templateStem(n) == stem {
+				return true
+			}
+		}
+		return false
+	}
+	for _, n := range exclude {
+		if templateStem(n) == stem {
+			return false
+		}
+	}
+	return true
+}
 
 // InitLayout creates the directory structure defined by a [LayoutSchema]
 // under the given repository root. It creates:
@@ -16,8 +62,99 @@ import (
 //     (GitHub schemas only, when no existing file is present)
 //
 // Existing files and directories are never overwritten or modified.
+// Default template files are only seeded when their target directory is
+// empty or newly created. Use [InitLayoutWithConfig] with
+// [Config.InitAlwaysCreate] set to true to seed missing files into existing
+// non-empty directories.
 // InitLayout returns the list of paths that were created.
 func InitLayout(root string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: LayoutSchema is part of the public API; changing to pointer would be a breaking change
+	return initLayoutSingle(root, schema, initOptions{})
+}
+
+// InitLayoutWithConfig is like [InitLayout] but honors configuration options
+// that influence scaffolding behavior, in particular [Config.InitAlwaysCreate].
+// When cfg.InitAlwaysCreate is true, default template files are seeded into
+// existing non-empty directories whenever an individual file is absent.
+func InitLayoutWithConfig(root string, schema LayoutSchema, cfg Config) ([]string, error) { //nolint:gocritic // hugeParam: LayoutSchema is part of the public API; changing to pointer would be a breaking change
+	return initLayoutSingle(root, schema, initOptions{
+		alwaysCreate: cfg.InitAlwaysCreate,
+		descriptive:  cfg.DescriptiveNames,
+		include:      cfg.InitIncludeFiles,
+		exclude:      cfg.InitExcludeFiles,
+	})
+}
+
+// InitLayoutAll initializes all schemas in a single pass and writes a single
+// repogov-config.json at the repository root covering all agent platforms.
+// It is the preferred entry point when scaffolding multiple platforms at once.
+// Use [InitLayout] for a single-platform init.
+//
+// InitLayoutAll also updates AGENTS.md with a merged ## Context section that
+// references every scaffolded platform directory.
+func InitLayoutAll(root string, schemas []LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	return initLayoutAllWithOptions(root, schemas, initOptions{})
+}
+
+// InitLayoutAllWithConfig is like [InitLayoutAll] but honors configuration
+// options that influence scaffolding behavior, in particular
+// [Config.InitAlwaysCreate].
+func InitLayoutAllWithConfig(root string, schemas []LayoutSchema, cfg Config) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	return initLayoutAllWithOptions(root, schemas, initOptions{
+		alwaysCreate: cfg.InitAlwaysCreate,
+		descriptive:  cfg.DescriptiveNames,
+		include:      cfg.InitIncludeFiles,
+		exclude:      cfg.InitExcludeFiles,
+	})
+}
+
+// initLayoutAllWithOptions is the shared implementation for [InitLayoutAll]
+// and [InitLayoutAllWithConfig].
+func initLayoutAllWithOptions(root string, schemas []LayoutSchema, opts initOptions) ([]string, error) {
+	var allCreated []string
+	for i := range schemas {
+		created, err := initLayoutSingle(root, schemas[i], initOptions{
+			skipConfig:   true,
+			alwaysCreate: opts.alwaysCreate,
+			descriptive:  opts.descriptive,
+			include:      opts.include,
+			exclude:      opts.exclude,
+		})
+		if err != nil {
+			return allCreated, err
+		}
+		allCreated = append(allCreated, created...)
+	}
+	paths, err := createDefaultConfigAll(root)
+	if err != nil {
+		return allCreated, err
+	}
+	allCreated = append(allCreated, paths...)
+	if err := UpdateAgentsMdContextAll(root, schemas); err != nil {
+		return allCreated, err
+	}
+	return allCreated, nil
+}
+
+// [InitLayoutAll] handle config placement centrally. When opts.alwaysCreate is
+// true, default template files are seeded into existing non-empty directories
+// as well as empty or new ones; existing files are never overwritten.
+// opts.descriptive controls whether template files use the <name>.instructions.md
+// convention (true) or the plain <name>.md convention (false).
+func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
+	// Validate include/exclude stems before touching the filesystem.
+	// This prevents unsafe characters from JSON/YAML config values reaching
+	// file creation paths (allowed: A-Z, a-z, 0-9, _, -, .).
+	for i, s := range opts.include {
+		if bare := templateStem(s); !isSafeFileSegment(bare) {
+			return nil, fmt.Errorf("init_include_files[%d]: unsafe stem %q (allowed: A-Z, a-z, 0-9, _, -, .)", i, s)
+		}
+	}
+	for i, s := range opts.exclude {
+		if bare := templateStem(s); !isSafeFileSegment(bare) {
+			return nil, fmt.Errorf("init_exclude_files[%d]: unsafe stem %q (allowed: A-Z, a-z, 0-9, _, -, .)", i, s)
+		}
+	}
+
 	var created []string
 
 	layoutDir := filepath.Join(root, filepath.FromSlash(schema.Root))
@@ -32,7 +169,6 @@ func InitLayout(root string, schema LayoutSchema) ([]string, error) { //nolint:g
 
 	// Create subdirectories defined in Dirs.
 	for dirName, rule := range schema.Dirs {
-
 		dirPath := filepath.Join(layoutDir, filepath.FromSlash(dirName))
 		isNew := dirIsNew(dirPath)
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
@@ -59,6 +195,16 @@ func InitLayout(root string, schema LayoutSchema) ([]string, error) { //nolint:g
 
 	// Create placeholder files for required entries that don't exist.
 	for _, req := range schema.Required {
+		// copilot-instructions.md is handled by createCopilotInstructions
+		// below with purpose-built content; skip it here.
+		if schema.Root == ".github" && req == "copilot-instructions.md" {
+			continue
+		}
+		// CLAUDE.md is handled by createClaudeMd below with purpose-built
+		// content; skip it here.
+		if schema.Root == ".claude" && req == "CLAUDE.md" {
+			continue
+		}
 		filePath := filepath.Join(layoutDir, filepath.FromSlash(req))
 
 		// Ensure parent directory exists.
@@ -77,8 +223,7 @@ func InitLayout(root string, schema LayoutSchema) ([]string, error) { //nolint:g
 	}
 
 	// Create copilot-instructions.md for GitHub schemas when it doesn't
-	// already exist. The file references the instructions/ directory for
-	// scoped instruction files.
+	// already exist. Always references instructions/ directory.
 	if schema.Root == ".github" {
 		paths, err := createCopilotInstructions(root, layoutDir, schema)
 		if err != nil {
@@ -87,24 +232,59 @@ func InitLayout(root string, schema LayoutSchema) ([]string, error) { //nolint:g
 		created = append(created, paths...)
 	}
 
-	// Create repogov-config.json with sensible defaults when it doesn't
-	// already exist.
-	if schema.Root == ".github" {
-		paths, err := createDefaultConfig(layoutDir, schema)
+	// Create CLAUDE.md for Claude schemas when it doesn't already exist.
+	if schema.Root == ".claude" {
+		paths, err := createClaudeMd(layoutDir, schema)
 		if err != nil {
 			return created, err
 		}
 		created = append(created, paths...)
 	}
 
-	// Seed the instructions directory with default scoped instruction
-	// files when it exists but is empty (only GitHub schemas).
-	if _, ok := schema.Dirs["instructions"]; ok {
-		paths, err := createDefaultInstructions(layoutDir, schema)
+	// Create repogov-config.json with sensible defaults when it doesn't
+	// already exist. Prefer .github/ if it already exists (FindConfig checks
+	// there first); otherwise write it into the agent's own layout directory.
+	// Skipped when called from InitLayoutAll, which writes a single root-level
+	// config covering all platforms instead.
+	if !opts.skipConfig {
+		configDir := layoutDir
+		if schema.Root != ".github" {
+			if info, err := os.Stat(filepath.Join(root, ".github")); err == nil && info.IsDir() {
+				configDir = filepath.Join(root, ".github")
+			}
+		}
+		paths, err := createDefaultConfig(root, configDir, schema)
 		if err != nil {
 			return created, err
 		}
 		created = append(created, paths...)
+	}
+
+	// Seed instruction/rule template files.
+	//
+	// Copilot (.github): always seeds the full template set into instructions/
+	// so that scoped rules live in instructions/ (the GitHub-native location).
+	// The rules/ directory remains available for user-defined plain rules.
+	//
+	// All other agents (Claude, Cursor, Windsurf, …): seed the full template
+	// set into rules/ — the same rich set Copilot gets in instructions/.
+	// Existing .md and .mdc files are never overwritten.
+	if schema.Root == ".github" {
+		if _, ok := schema.Dirs["instructions"]; ok {
+			paths, err := createDefaultInstructions(root, layoutDir, schema, opts, "instructions")
+			if err != nil {
+				return created, err
+			}
+			created = append(created, paths...)
+		}
+	} else {
+		if _, ok := schema.Dirs["rules"]; ok {
+			paths, err := createDefaultInstructions(root, layoutDir, schema, opts, "rules")
+			if err != nil {
+				return created, err
+			}
+			created = append(created, paths...)
+		}
 	}
 
 	// Create AGENTS.md at the repo root when it doesn't already exist.
@@ -120,8 +300,8 @@ func InitLayout(root string, schema LayoutSchema) ([]string, error) { //nolint:g
 }
 
 // createCopilotInstructions creates .github/copilot-instructions.md with
-// references to the instructions/ directory. If the file
-// already exists, nothing is created. Returns the list of created paths.
+// references to the instructions/ directory. If the file already exists,
+// nothing is created. Returns the list of created paths.
 func createCopilotInstructions(root, layoutDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	filePath := filepath.Join(layoutDir, "copilot-instructions.md")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
@@ -137,21 +317,23 @@ func createCopilotInstructions(root, layoutDir string, schema LayoutSchema) ([]s
 }
 
 // copilotInstructionsContent generates the content of copilot-instructions.md.
-// It detects whether the schema includes an instructions/ directory and links
-// to it accordingly. The output is kept under
+// The Scoped Instructions section always references instructions/ — the
+// canonical location for Copilot scoped rule files. The output is kept under
 // 50 lines to comply with the default copilot-instructions.md line limit.
 func copilotInstructionsContent(schema LayoutSchema) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	var b strings.Builder
 	b.WriteString("# Copilot Instructions\n\n")
 	b.WriteString("This file provides repository-level context to GitHub Copilot and compatible AI coding agents.\n\n")
 
-	// Link to instructions directory if present in the schema.
+	// Link to the scoped-rule directory.
 	if _, ok := schema.Dirs["instructions"]; ok {
 		b.WriteString("## Scoped Instructions\n\n")
-		b.WriteString("See modular instruction files in [instructions/](instructions/) for scoped rules.\n")
-		b.WriteString("Place scoped instruction files in [")
-		b.WriteString(schema.Root + "/instructions/](")
-		b.WriteString(schema.Root + "/instructions/) using `*.instructions.md`.\n\n")
+		b.WriteString("See modular instruction files in `" + schema.Root + "/instructions/` for scoped rules.\n")
+		b.WriteString("Use the `*.instructions.md` naming convention and set `applyTo` in the YAML header (e.g. `applyTo: \"**/*.go\"`) to scope each file.\n")
+		if _, ok2 := schema.Dirs["rules"]; ok2 {
+			b.WriteString("See plain rule files in `" + schema.Root + "/rules/` for additional cross-cutting rules.\n")
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString("Long-form project context lives in [README.md](../README.md) and [docs/](../docs/).\n\n")
@@ -181,6 +363,37 @@ func copilotInstructionsContent(schema LayoutSchema) string { //nolint:gocritic 
 	return b.String()
 }
 
+// createClaudeMd creates .claude/CLAUDE.md with a default template when it
+// doesn't already exist. Returns the list of created paths.
+func createClaudeMd(layoutDir string, _ LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
+	filePath := filepath.Join(layoutDir, "CLAUDE.md")
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		return nil, nil
+	}
+	content := claudeMdContent()
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		return nil, err
+	}
+	return []string{".claude/CLAUDE.md"}, nil
+}
+
+// claudeMdContent returns the default content for .claude/CLAUDE.md.
+func claudeMdContent() string {
+	var b strings.Builder
+	b.WriteString("# CLAUDE.md\n\n")
+	b.WriteString("Project-level instructions for Claude Code in this repository.\n\n")
+	b.WriteString("## Context\n\n")
+	b.WriteString("- Project overview: [README.md](../README.md)\n")
+	b.WriteString("- Extended documentation: [docs/](../docs/)\n")
+	b.WriteString("- Scoped rule files: [.claude/rules/](rules/)\n")
+	b.WriteString("- Subagent definitions: [.claude/agents/](agents/)\n\n")
+	b.WriteString("## Repository Conventions\n\n")
+	b.WriteString("- Follow existing code style and patterns\n")
+	b.WriteString("- Keep files within configured line limits\n")
+	b.WriteString("- Write tests for new functionality\n")
+	return b.String()
+}
+
 // dirIsNew returns true if the directory does not yet exist.
 func dirIsNew(path string) bool {
 	_, err := os.Stat(path)
@@ -203,59 +416,209 @@ func isDirEmpty(path string) bool {
 	return true
 }
 
+// detectConfigFile returns the basename and the relative path (from
+// detectConfigRelFrom returns the basename and the relative path (from fromDir)
+// of the first repogov config file found at root or inside root/.github/.
+// If no config file exists yet, it returns the default JSON name so that
+// governance links are always valid after a fresh init (which always creates
+// repogov-config.json in .github/).
+func detectConfigRelFrom(root, fromDir string) (name, relPath string) {
+	candidates := []string{
+		filepath.Join(root, ".github"),
+		root,
+	}
+	for _, dir := range candidates {
+		for _, n := range configNames {
+			configPath := filepath.Join(dir, n)
+			if _, err := os.Stat(configPath); err == nil {
+				rel, err := filepath.Rel(fromDir, configPath)
+				if err != nil {
+					rel = configPath
+				}
+				return n, filepath.ToSlash(rel)
+			}
+		}
+	}
+	// Default: init will create repogov-config.json in .github/.
+	defaultPath := filepath.Join(root, ".github", "repogov-config.json")
+	rel, err := filepath.Rel(fromDir, defaultPath)
+	if err != nil {
+		rel = defaultPath
+	}
+	return "repogov-config.json", filepath.ToSlash(rel)
+}
+
 // defaultInstructionFiles defines the instruction files seeded by
 // [InitLayout] when the instructions/ directory is empty. Each entry
 // maps a filename to a content-generating function. Content must stay
 // within the 300-line limit for .github/instructions/*.md.
+// governance.instructions.md is handled separately in createDefaultInstructions
+// because its content depends on which config file exists at init time.
 var defaultInstructionFiles = map[string]func() string{
 	"general.instructions.md":          generalInstructionsContent,
 	"codereview.instructions.md":       codereviewInstructionsContent,
-	"governance.instructions.md":       governanceInstructionsContent,
 	"library.instructions.md":          libraryInstructionsContent,
 	"testing.instructions.md":          testingInstructionsContent,
 	"emoji-prevention.instructions.md": emojiPreventionInstructionsContent,
 	"backend.instructions.md":          backendInstructionsContent,
 	"frontend.instructions.md":         frontendInstructionsContent,
+	"repo.instructions.md":             repoInstructionsContent,
 }
 
-// createDefaultInstructions seeds the instructions/ directory with default
-// scoped instruction files when the directory is empty (or contains only a
-// .gitkeep). Existing files are never overwritten. Returns created paths.
-func createDefaultInstructions(layoutDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
-	instrDir := filepath.Join(layoutDir, "instructions")
-	if !isDirEmpty(instrDir) {
+// instructionFileName returns the on-disk filename for a default template.
+// When descriptive is true the *.instructions.md convention is kept unchanged;
+// when false the ".instructions" segment is stripped so that, for example,
+// "general.instructions.md" becomes "general.md".
+func instructionFileName(name string, descriptive bool) string {
+	if descriptive {
+		return name
+	}
+	return strings.TrimSuffix(name, ".instructions.md") + ".md"
+}
+
+// createDefaultInstructions seeds a target subdirectory (instructions/ or rules/)
+// with default template files when the directory is empty (or contains only a
+// .gitkeep). When opts.alwaysCreate is true, individual missing files are created
+// even when the directory already has content. Existing .md and .mdc files are
+// never overwritten regardless of this setting.
+// subdir is the target directory name ("instructions" or "rules").
+// opts.descriptive controls filename style: true -> *.instructions.md,
+// false -> *.md (e.g., general.md, codereview.md).
+// opts.include/exclude filter which templates are seeded (see shouldSeedFile).
+// root is the repository root; used to detect the active repogov config file
+// so that the governance file can link to it accurately.
+func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts initOptions, subdir string) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	targetDir := filepath.Join(layoutDir, subdir)
+	if !opts.alwaysCreate && !isDirEmpty(targetDir) {
 		return nil, nil
 	}
 
 	var created []string
-	for name, contentFn := range defaultInstructionFiles {
-		filePath := filepath.Join(instrDir, name)
-		if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+	for templateName, contentFn := range defaultInstructionFiles {
+		stem := templateStem(templateName)
+		if !shouldSeedFile(stem, opts.include, opts.exclude) {
 			continue
 		}
-		if err := os.MkdirAll(instrDir, 0755); err != nil {
+		actualName := instructionFileName(templateName, opts.descriptive)
+		filePath := filepath.Join(targetDir, actualName)
+		if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+			// File already exists; never overwrite.
+			continue
+		}
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
 			return created, err
 		}
 		if err := os.WriteFile(filePath, []byte(contentFn()), 0644); err != nil {
 			return created, err
 		}
-		rel := filepath.ToSlash(filepath.Join(schema.Root, "instructions", name))
+		rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, actualName))
 		created = append(created, rel)
 	}
+
+	// governance file is seeded separately so its config link reflects whichever
+	// repogov config file is present at init time.
+	if shouldSeedFile("governance", opts.include, opts.exclude) {
+		govName := instructionFileName("governance.instructions.md", opts.descriptive)
+		govFile := filepath.Join(targetDir, govName)
+		if _, err := os.Stat(govFile); os.IsNotExist(err) {
+			cfgName, cfgRel := detectConfigRelFrom(root, targetDir)
+			if err := os.MkdirAll(targetDir, 0755); err != nil {
+				return created, err
+			}
+			if err := os.WriteFile(govFile, []byte(governanceInstructionsContent(cfgName, cfgRel)), 0644); err != nil {
+				return created, err
+			}
+			rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, govName))
+			created = append(created, rel)
+		}
+	}
+
 	return created, nil
+}
+
+// repoInstructionsContent returns default content for repo.instructions.md.
+// It documents the .github folder layout, pull request / merge request
+// conventions, and commit standards (including the conventional-commits type
+// table) for AI agents.
+func repoInstructionsContent() string {
+	var b strings.Builder
+	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
+	b.WriteString("# Repository Instructions\n\n")
+
+	b.WriteString("## .github Layout\n\n")
+	b.WriteString("Standard files and directories for this repository's `.github/` folder:\n\n")
+	b.WriteString("- `.github/ISSUE_TEMPLATE/`\n")
+	b.WriteString("- `.github/PULL_REQUEST_TEMPLATE/`\n")
+	b.WriteString("- `.github/workflows/`\n")
+	b.WriteString("- `.github/ISSUE_TEMPLATE.md`\n")
+	b.WriteString("- `.github/pull_request_template.md`\n")
+	b.WriteString("- `.github/CONTRIBUTING.md`\n")
+	b.WriteString("- `.github/CODE_OF_CONDUCT.md`\n")
+	b.WriteString("- `.github/SECURITY.md`\n")
+	b.WriteString("- `.github/SUPPORT.md`\n")
+	b.WriteString("- `.github/FUNDING.yml`\n")
+	b.WriteString("- `.github/CODEOWNERS`\n")
+	b.WriteString("- `.github/dependabot.yml`\n\n")
+
+	b.WriteString("## .gitlab Layout\n\n")
+	b.WriteString("Standard files and directories for this repository's `.gitlab/` folder:\n\n")
+	b.WriteString("- `.gitlab/issue_templates/`\n")
+	b.WriteString("- `.gitlab/merge_request_templates/`\n")
+	b.WriteString("- `.gitlab/CODEOWNERS`\n")
+	b.WriteString("- `.gitlab-ci.yml`\n\n")
+
+	b.WriteString("## Shared Root Files\n\n")
+	b.WriteString("Files in the repository root recognized by both GitHub and GitLab:\n\n")
+	b.WriteString("- `README.md`\n")
+	b.WriteString("- `LICENSE`\n")
+	b.WriteString("- `CHANGELOG.md`\n")
+	b.WriteString("- `CONTRIBUTING.md`\n")
+	b.WriteString("- `CODE_OF_CONDUCT.md`\n")
+	b.WriteString("- `SECURITY.md`\n")
+	b.WriteString("- `AGENTS.md`\n")
+	b.WriteString("- `.gitignore`\n")
+	b.WriteString("- `.gitattributes`\n\n")
+
+	b.WriteString("## Pull Requests / Merge Requests\n\n")
+	b.WriteString("- Keep pull requests focused on a single concern\n")
+	b.WriteString("- Use a descriptive title that summarizes the change (imperative mood)\n")
+	b.WriteString("- Reference related issues in the PR description\n")
+	b.WriteString("- Ensure all CI checks pass before requesting review\n")
+	b.WriteString("- Resolve or respond to every review comment before merging\n")
+	b.WriteString("- Update documentation in the same PR that changes behavior\n\n")
+
+	b.WriteString("## Commit Standards\n\n")
+	b.WriteString("Format: `<type>(<scope>): <subject>` -- subject in imperative mood, under 72 characters.\n\n")
+	b.WriteString("- Separate subject from body with a blank line when detail is needed\n")
+	b.WriteString("- Reference issue or PR numbers in the body when relevant\n")
+	b.WriteString("- Do not include generated, vendor, or binary files in commits\n")
+	b.WriteString("- Do not commit secrets, credentials, or environment-specific values\n\n")
+	b.WriteString("| Type | Use |\n")
+	b.WriteString("|------|-----|\n")
+	b.WriteString("| `feat:` | New exported symbol or option |\n")
+	b.WriteString("| `fix:` | Bug fix |\n")
+	b.WriteString("| `docs:` | Documentation only |\n")
+	b.WriteString("| `style:` | Formatting (no logic change) |\n")
+	b.WriteString("| `refactor:` | Code restructuring |\n")
+	b.WriteString("| `test:` | Adding/updating tests |\n")
+	b.WriteString("| `chore:` | Maintenance, dependencies |\n")
+	b.WriteString("| `perf:` | Performance improvement |\n")
+	b.WriteString("| `ci:` | CI/CD changes |\n")
+	return b.String()
 }
 
 // generalInstructionsContent returns default content for general.instructions.md.
 func generalInstructionsContent() string {
 	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**/*.md\"\n---\n\n")
+	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
 	b.WriteString("# General Instructions\n\n")
 	b.WriteString("## Writing Style\n\n")
 	b.WriteString("- Use clear, concise language\n")
 	b.WriteString("- Prefer active voice over passive voice\n")
 	b.WriteString("- Write in complete sentences\n")
 	b.WriteString("- Keep paragraphs focused on a single idea\n")
-	b.WriteString("- Avoid jargon unless the audience expects it\n\n")
+	b.WriteString("- Avoid jargon unless the audience expects it\n")
+	b.WriteString(`- Use US English spelling (e.g., "behavior" not "behaviour", "summarize" not "summarise")` + "\n\n") //nolint:misspell // intentional British-English example
 	b.WriteString("## Document Structure\n\n")
 	b.WriteString("- Start every document with a level-1 heading (`# Title`)\n")
 	b.WriteString("- Use heading levels sequentially -- do not skip levels\n")
@@ -328,44 +691,25 @@ func codereviewInstructionsContent() string {
 }
 
 // governanceInstructionsContent returns default content for governance.instructions.md.
-func governanceInstructionsContent() string {
+// configName is the basename of the config file (e.g. "repogov-config.yaml") and
+// configRelPath is its relative path from .github/instructions/ (e.g. "../repogov-config.yaml").
+func governanceInstructionsContent(configName, configRelPath string) string {
 	var b strings.Builder
 	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
 	b.WriteString("# Governance Instructions\n\n")
 	b.WriteString("## Line Limits\n\n")
 	b.WriteString("All files must stay within their configured line limit.\n")
-	b.WriteString("See [repogov-config.json](../repogov-config.json) for limits and rules.\n\n")
+	b.WriteString("See [" + configName + "](" + configRelPath + ") for limits and rules.\n\n")
 	b.WriteString("- **Resolution order**: per-file override, first matching glob, default\n")
 	b.WriteString("- A limit of `0` exempts the file (status = SKIP)\n")
 	b.WriteString("- WARN at the configured `warning_threshold` percentage\n\n")
 	b.WriteString("## Enforcing Limits\n\n")
-	b.WriteString("Run `repogov -root . limits` or use the library before committing.\n")
-	b.WriteString("Refactor or split files that approach their limit -- do not raise limits\n")
-	b.WriteString("without justification.\n\n")
-	b.WriteString("## Layout\n\n")
-	b.WriteString("The `.github/` directory must satisfy the GitHub layout preset.\n")
-	b.WriteString("Run `repogov -root . layout` to validate structure.\n\n")
-	b.WriteString("## AI Agent Support\n\n")
-	b.WriteString("When adding or modifying agent support, consult [docs/ai-agents-audit.md](../../docs/ai-agents-audit.md)\n")
-	b.WriteString("for the current support matrix, per-agent config patterns, and maintenance steps.\n\n")
-	b.WriteString("## Zero Dependencies\n\n")
-	b.WriteString("This repository has no external Go module dependencies.\n")
-	b.WriteString("Do not add `require` directives to the root `go.mod`.\n\n")
-	b.WriteString("## Pre-commit Hook Example\n\n")
-	b.WriteString("Use repogov as a dependency-free pre-commit hook:\n\n")
-	b.WriteString("```go\npackage main\n\nimport (\n")
-	b.WriteString("    \"fmt\"\n    \"os\"\n    \"github.com/nicholashoule/repogov\"\n)\n\n")
-	b.WriteString("func main() {\n")
-	b.WriteString("    cfg := repogov.DefaultConfig()\n")
-	b.WriteString("    results, _ := repogov.CheckDir(\".\", []string{\".md\"}, cfg)\n")
-	b.WriteString("    fmt.Fprint(os.Stderr, repogov.Summary(results))\n")
-	b.WriteString("    layout, _ := repogov.CheckLayout(\".\", repogov.DefaultGitHubLayout())\n")
-	b.WriteString("    fmt.Fprint(os.Stderr, repogov.LayoutSummary(layout))\n")
-	b.WriteString("    if !repogov.Passed(results) || !repogov.LayoutPassed(layout) {\n")
-	b.WriteString("        os.Exit(1)\n    }\n}\n```\n\n")
-	b.WriteString("## Minimal CLI Example\n\n")
-	b.WriteString("```bash\ngo install github.com/nicholashoule/repogov/cmd/repogov@latest\n")
-	b.WriteString("repogov -root . -exts .md all\n```\n")
+	b.WriteString("### Minimal CLI Example\n\n")
+	b.WriteString("```sh\ngo install github.com/nicholashoule/repogov/cmd/repogov@latest\n")
+	b.WriteString("repogov -root . -agent copilot init\n```\n\n")
+	b.WriteString("Pre-commit hook (`.git/hooks/pre-commit`):\n\n")
+	b.WriteString("```sh\n#!/bin/sh\n")
+	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest -root . limits\n```\n")
 	return b.String()
 }
 
@@ -447,7 +791,7 @@ func testingInstructionsContent() string {
 // emojiPreventionInstructionsContent returns default content for emoji-prevention.instructions.md.
 func emojiPreventionInstructionsContent() string {
 	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**/*.md\"\n---\n\n")
+	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
 	b.WriteString("# Emoji Prevention Instructions\n\n")
 	b.WriteString("## Rule\n\n")
 	b.WriteString("Do **not** introduce emoji or Unicode pictographic characters into\n")
@@ -455,25 +799,21 @@ func emojiPreventionInstructionsContent() string {
 	b.WriteString("Use plain-text equivalents instead.\n\n")
 	b.WriteString("## Why\n\n")
 	b.WriteString("- Emoji render inconsistently across terminals, editors, and fonts\n")
-	b.WriteString("- They break grep, diff, and other line-oriented tools\n")
+	b.WriteString("- They can complicate grep, diff, and other line-oriented tools\n")
 	b.WriteString("- Screen readers may announce them unexpectedly or skip them entirely\n")
 	b.WriteString("- They inflate token counts in LLM-assisted workflows\n")
 	b.WriteString("- They add no semantic value that plain text cannot convey\n\n")
-	b.WriteString("## Common Substitutions\n\n")
-	b.WriteString("| Instead of | Write |\n")
-	b.WriteString("|------------|-------|\n")
-	b.WriteString("| U+2705 / U+2714 | `[PASS]`, `OK`, `yes` |\n")
-	b.WriteString("| U+274C / U+2716 | `[FAIL]`, `ERROR`, `no` |\n")
-	b.WriteString("| U+26A0 | `[WARN]`, `WARNING` |\n")
-	b.WriteString("| U+2139 | `[INFO]`, `NOTE` |\n")
-	b.WriteString("| U+1F680 | `deploy`, `launch`, `ship` |\n")
-	b.WriteString("| U+1F41B | `bug`, `defect`, `issue` |\n")
-	b.WriteString("| U+1F527 | `fix`, `patch`, `repair` |\n")
-	b.WriteString("| U+2728 | `new`, `feature`, `add` |\n")
-	b.WriteString("| U+1F4DD | `docs`, `note`, `document` |\n")
-	b.WriteString("| U+1F525 | `hot`, `critical`, `urgent` |\n")
-	b.WriteString("| U+27A1 / U+2192 | `->`, `-->`, `==>` |\n")
-	b.WriteString("| U+1F504 | `refactor`, `rework`, `restructure` |\n\n")
+	b.WriteString("## Scope\n\n")
+	b.WriteString("These rules apply to all files tracked by git:\n\n")
+	b.WriteString("- Source files like (`.go`, `.py`, `.js`, etc.)\n")
+	b.WriteString("- Markdown documentation (`.md`, `.markdown`, etc.)\n")
+	b.WriteString("- YAML and JSON configuration (`.yml`, `.yaml`, `.json`)\n")
+	b.WriteString("- Shell scripts and Makefiles (`.sh`, `Makefile`, etc.)\n")
+	b.WriteString("- Commit messages and PR descriptions\n\n")
+	b.WriteString("## Exceptions\n\n")
+	b.WriteString("- Test fixtures that explicitly exercise emoji handling\n")
+	b.WriteString("- Docs that describe or reference emoji (e.g., unicode-coverage.md)\n")
+	b.WriteString("- Third-party files vendored as-is\n\n")
 	b.WriteString("## Text alternatives\n\n")
 	b.WriteString("| Instead of | Write |\n")
 	b.WriteString("|------------|-------|\n")
@@ -485,24 +825,40 @@ func emojiPreventionInstructionsContent() string {
 	b.WriteString("| rocket emoji | `Deployment` or `Released` |\n")
 	b.WriteString("| chart emoji | `Report` or `Metrics` |\n")
 	b.WriteString("| star emoji | `[FEATURED]` |\n")
-	b.WriteString("| lock emoji | `Security` |\n\n")
+	b.WriteString("| lock emoji | `Security` |\n")
+	b.WriteString("| fire emoji | `HOT:` or `[BREAKING]` |\n")
+	b.WriteString("| bug emoji | `BUG:` or `[BUG]` |\n")
+	b.WriteString("| wrench/gear emoji | `Config:` or `Setup:` |\n")
+	b.WriteString("| package emoji | `Package:` or `Build:` |\n")
+	b.WriteString("| magnifying glass emoji | `Search:` or `[AUDIT]` |\n")
+	b.WriteString("| clipboard emoji | `TODO:` or `[TASK]` |\n")
+	b.WriteString("| calendar emoji | `Date:` or `Schedule:` |\n")
+	b.WriteString("| clock emoji | `Time:` or `Timeout:` |\n")
+	b.WriteString("| folder emoji | `Dir:` or `Path:` |\n")
+	b.WriteString("| link emoji | `URL:` or `Ref:` |\n")
+	b.WriteString("| pencil/pen emoji | `Edit:` or `Draft:` |\n")
+	b.WriteString("| trash emoji | `Removed:` or `[DEPRECATED]` |\n")
+	b.WriteString("| recycle emoji | `Refactor:` or `Reuse:` |\n")
+	b.WriteString("| shield emoji | `Security:` or `[PROTECTED]` |\n")
+	b.WriteString("| key emoji | `Auth:` or `Credentials:` |\n")
+	b.WriteString("| electrical plug emoji | `Plugin:` or `Integration:` |\n")
+	b.WriteString("| books emoji | `Docs:` or `Reference:` |\n")
+	b.WriteString("| test tube emoji | `Test:` or `[EXPERIMENTAL]` |\n")
+	b.WriteString("| seedling/tree emoji | `[NEW]` or `[GROWING]` |\n")
+	b.WriteString("| arrow emoji (right) | `->` or `=>` |\n")
+	b.WriteString("| thumbs up emoji | `[APPROVED]` or `[ACK]` |\n")
+	b.WriteString("| thumbs down emoji | `[REJECTED]` or `[NAK]` |\n")
+	b.WriteString("| construction emoji | `[WIP]` or `Draft:` |\n\n")
 	b.WriteString("## Enforcement\n\n")
 	b.WriteString("Use the `demojify-sanitize` tool to detect emoji:\n\n")
 	b.WriteString("```sh\ngo install github.com/nicholashoule/demojify-sanitize/cmd/demojify@latest\n```\n\n")
-	b.WriteString("- **Pre-commit hook**: install `demojify` as a pre-commit hook to prevent new emoji from being committed.\n")
-	b.WriteString("- **Manual audit**: `go run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root .`\n")
-	b.WriteString("- **Auto-fix with removal**: `demojify -root . -fix`\n\n")
-	b.WriteString("## Scope\n\n")
-	b.WriteString("This rule applies to all files tracked by git:\n\n")
-	b.WriteString("- Go source files (`.go`)\n")
-	b.WriteString("- Markdown documentation (`.md`)\n")
-	b.WriteString("- YAML and JSON configuration (`.yml`, `.yaml`, `.json`)\n")
-	b.WriteString("- Shell scripts and Makefiles\n")
-	b.WriteString("- Commit messages and PR descriptions\n\n")
-	b.WriteString("## Exceptions\n\n")
-	b.WriteString("- Test fixtures that explicitly exercise emoji handling\n")
-	b.WriteString("- Docs that describe or reference emoji (e.g., unicode-coverage.md)\n")
-	b.WriteString("- Third-party files vendored as-is\n")
+	b.WriteString("Run as a command (audit only -- exit 1 if emoji found):\n\n")
+	b.WriteString("```sh\ngo run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md\n```\n\n")
+	b.WriteString("Strip emoji in place (`-fix`):\n\n")
+	b.WriteString("```sh\ngo run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md -fix\n```\n\n")
+	b.WriteString("Pre-commit hook (`.git/hooks/pre-commit`):\n\n")
+	b.WriteString("```sh\n#!/bin/sh\n")
+	b.WriteString("go run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md -quiet || { echo \"ERROR: emoji found -- run: demojify -root . -exts .go,.md -fix\"; exit 1; }\n```\n")
 	return b.String()
 }
 
@@ -610,7 +966,7 @@ func createAgentsMd(root string, schema LayoutSchema) ([]string, error) { //noli
 // AGENTS.md file using links derived from schema. All other sections are
 // preserved exactly. If no "## Context" heading is found the file is left
 // unchanged.
-func updateAgentsMdContext(filePath string, schema LayoutSchema) error {
+func updateAgentsMdContext(filePath string, schema LayoutSchema) error { //nolint:gocritic // hugeParam: intentional value semantics
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
@@ -650,6 +1006,115 @@ func updateAgentsMdContext(filePath string, schema LayoutSchema) error {
 // the "## Context" heading and ends with the last list item followed by "\n";
 // the blank-line separator before the next section is NOT included so that
 // updateAgentsMdContext can splice it in without introducing extra blank lines.
+
+// UpdateAgentsMdContextAll updates the "## Context" section of an existing
+// AGENTS.md at the given root with merged links from all provided schemas.
+// It is intended for use after initializing multiple agents in one command
+// (e.g., -agent all) so that the Context section reflects every agent
+// that was scaffolded rather than only the last one processed.
+//
+// If AGENTS.md does not exist, or has no ## Context section, it is left
+// unchanged and no error is returned.
+func UpdateAgentsMdContextAll(root string, schemas []LayoutSchema) error { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	filePath := filepath.Join(root, "AGENTS.md")
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+
+	const sectionMarker = "## Context\n"
+	startIdx := strings.Index(content, sectionMarker)
+	if startIdx == -1 {
+		return nil
+	}
+
+	newSection := agentsMdMergedContextSection(schemas)
+	afterSection := startIdx + len(sectionMarker)
+	nextHeadingOffset := strings.Index(content[afterSection:], "\n## ")
+
+	var updated string
+	if nextHeadingOffset == -1 {
+		updated = content[:startIdx] + newSection
+	} else {
+		splitIdx := afterSection + nextHeadingOffset
+		updated = content[:startIdx] + newSection + content[splitIdx:]
+	}
+
+	return os.WriteFile(filePath, []byte(updated), 0644)
+}
+
+// rulesLabel returns a human-readable label for the rules directory link based
+// on the agent platform root directory.
+func rulesLabel(root string) string {
+	switch root {
+	case ".github":
+		return "Copilot rule files"
+	case ".cursor":
+		return "Cursor rule files"
+	case ".windsurf":
+		return "Windsurf rule files"
+	case ".claude":
+		return "Claude rule files"
+	default:
+		return "Agent rule files"
+	}
+}
+
+// agentsMdMergedContextSection generates a "## Context" section that includes
+// links for all provided schemas, deduplicated and in stable order. It is used
+// when multiple platforms are initialized together so that the Context section
+// references every scaffolded platform directory.
+func agentsMdMergedContextSection(schemas []LayoutSchema) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	var b strings.Builder
+	b.WriteString("## Context\n\n")
+	b.WriteString("- Project overview: [README.md](README.md)\n")
+	b.WriteString("- Extended documentation: [docs/](docs/)\n")
+
+	seen := make(map[string]bool)
+	for _, schema := range schemas {
+		if _, ok := schema.Dirs["instructions"]; ok {
+			line := "- Scoped instruction files: [" + schema.Root + "/instructions/](" + schema.Root + "/instructions/) (`applyTo` frontmatter)\n"
+			if !seen[line] {
+				seen[line] = true
+				b.WriteString(line)
+			}
+		}
+		if _, ok := schema.Dirs["rules"]; ok {
+			line := "- " + rulesLabel(schema.Root) + ": [" + schema.Root + "/rules/](" + schema.Root + "/rules/)\n"
+			if !seen[line] {
+				seen[line] = true
+				b.WriteString(line)
+			}
+		}
+		if _, ok := schema.Dirs["agents"]; ok {
+			line := "- Agent definitions: [" + schema.Root + "/agents/](" + schema.Root + "/agents/)\n"
+			if !seen[line] {
+				seen[line] = true
+				b.WriteString(line)
+			}
+		}
+		if schema.Root == ".github" {
+			line := "- Copilot repo-wide context: [.github/copilot-instructions.md](.github/copilot-instructions.md)\n"
+			if !seen[line] {
+				seen[line] = true
+				b.WriteString(line)
+			}
+		}
+		if schema.Root == ".claude" {
+			line := "- Claude repo-wide context: [.claude/CLAUDE.md](.claude/CLAUDE.md)\n"
+			if !seen[line] {
+				seen[line] = true
+				b.WriteString(line)
+			}
+		}
+	}
+	return b.String()
+}
+
 func agentsMdContextSection(schema LayoutSchema) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	var b strings.Builder
 	b.WriteString("## Context\n\n")
@@ -661,10 +1126,16 @@ func agentsMdContextSection(schema LayoutSchema) string { //nolint:gocritic // h
 		b.WriteString("- Scoped instruction files: [" + schema.Root + "/instructions/](" + schema.Root + "/instructions/) (`applyTo` frontmatter)\n")
 	}
 	if _, ok := schema.Dirs["rules"]; ok {
-		b.WriteString("- Agent rule files: [" + schema.Root + "/rules/](" + schema.Root + "/rules/)\n")
+		b.WriteString("- " + rulesLabel(schema.Root) + ": [" + schema.Root + "/rules/](" + schema.Root + "/rules/)\n")
+	}
+	if _, ok := schema.Dirs["agents"]; ok {
+		b.WriteString("- Agent definitions: [" + schema.Root + "/agents/](" + schema.Root + "/agents/)\n")
 	}
 	if schema.Root == ".github" {
 		b.WriteString("- Copilot repo-wide context: [.github/copilot-instructions.md](.github/copilot-instructions.md)\n")
+	}
+	if schema.Root == ".claude" {
+		b.WriteString("- Claude repo-wide context: [.claude/CLAUDE.md](.claude/CLAUDE.md)\n")
 	}
 	return b.String()
 }
@@ -686,52 +1157,47 @@ func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugePara
 	b.WriteString("Agents load the nearest `AGENTS.md` walking up to the repo root; more specific\n")
 	b.WriteString("files take precedence over less specific ones.\n\n")
 
-	if schema.Root == ".github" {
-		b.WriteString("## .github Layout\n\n")
-		b.WriteString("Standard files and directories for this repository's `.github/` folder:\n\n")
-		b.WriteString("- `.github/ISSUE_TEMPLATE/`\n")
-		b.WriteString("- `.github/PULL_REQUEST_TEMPLATE/`\n")
-		b.WriteString("- `.github/workflows/`\n")
-		b.WriteString("- `.github/ISSUE_TEMPLATE.md`\n")
-		b.WriteString("- `.github/pull_request_template.md`\n")
-		b.WriteString("- `.github/CONTRIBUTING.md`\n")
-		b.WriteString("- `.github/CODE_OF_CONDUCT.md`\n")
-		b.WriteString("- `.github/SECURITY.md`\n")
-		b.WriteString("- `.github/SUPPORT.md`\n")
-		b.WriteString("- `.github/FUNDING.yml`\n")
-		b.WriteString("- `.github/CODEOWNERS`\n")
-		b.WriteString("- `.github/dependabot.yml`\n")
-		b.WriteString("\n")
-	}
-
-	b.WriteString("## Dev Environment\n\n")
-	b.WriteString("TODO: describe setup steps (dependencies, tools, environment variables).\n\n")
-
-	b.WriteString("## Testing\n\n")
-	b.WriteString("Validate our boundaries by snapshotting the current `" + schema.Root + "/` contents, running all init commands, and inspecting the generated files in a temp path (e.g., `./temp`) for every agent flag and config. Confirm that `AGENTS.md` reflects the correct context for the init\u2011selected agent.\n\n")
-
-	b.WriteString("## PR Instructions\n\n")
-	b.WriteString("TODO: describe pull request conventions (title format, required checks, review expectations).\n")
-
 	return b.String()
 }
 
-// createDefaultConfig creates .github/repogov-config.json with config values
-// filtered to the schema's root (e.g. only .github/ rules for a GitHub init).
-// The file is not created when it already exists.
-func createDefaultConfig(layoutDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
-	filePath := filepath.Join(layoutDir, "repogov-config.json")
-	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-		return nil, nil
+// createDefaultConfigAll creates repogov-config.json at root with the full
+// default configuration covering all agent platforms. The file is not created
+// when any supported repogov config file already exists at root.
+func createDefaultConfigAll(root string) ([]string, error) {
+	for _, n := range configNames {
+		if _, err := os.Stat(filepath.Join(root, n)); err == nil {
+			return nil, nil
+		}
+	}
+	filePath := filepath.Join(root, "repogov-config.json")
+	cfg := DefaultConfig()
+	data := defaultConfigJSON(cfg)
+	if err := os.WriteFile(filePath, []byte(data), 0644); err != nil {
+		return nil, err
+	}
+	return []string{"repogov-config.json"}, nil
+}
+
+// createDefaultConfig creates repogov-config.json in configDir with config
+// values filtered to the schema's root. The file is not created when any
+// repogov config file already exists in configDir (JSON or YAML). The
+// reported relative path is derived from configDir relative to root.
+func createDefaultConfig(root, configDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	// Skip if any supported config filename already exists in configDir.
+	for _, n := range configNames {
+		if _, err := os.Stat(filepath.Join(configDir, n)); err == nil {
+			return nil, nil
+		}
 	}
 
+	filePath := filepath.Join(configDir, "repogov-config.json")
 	cfg := schemaConfig(DefaultConfig(), schema.Root)
 	data := defaultConfigJSON(cfg)
 	if err := os.WriteFile(filePath, []byte(data), 0644); err != nil {
 		return nil, err
 	}
-	rel := filepath.ToSlash(filepath.Join(schema.Root, "repogov-config.json"))
-	return []string{rel}, nil
+	rel, _ := filepath.Rel(root, filepath.Join(configDir, "repogov-config.json"))
+	return []string{filepath.ToSlash(rel)}, nil
 }
 
 // schemaConfig returns a copy of cfg with rules and files filtered to only
@@ -739,11 +1205,12 @@ func createDefaultConfig(layoutDir string, schema LayoutSchema) ([]string, error
 // Root-level file entries (no "/" in key) are always preserved because they
 // are cross-platform (e.g. AGENTS.md).
 // The base scalars (Default, WarningThreshold, SkipDirs) are kept as-is.
-func schemaConfig(cfg Config, root string) Config {
+func schemaConfig(cfg Config, root string) Config { //nolint:gocritic // hugeParam: intentional value semantics
 	prefix := root + "/"
 	out := Config{
 		Default:          cfg.Default,
 		WarningThreshold: cfg.WarningThreshold,
+		IncludeExts:      cfg.IncludeExts,
 		SkipDirs:         cfg.SkipDirs,
 	}
 	for _, r := range cfg.Rules {
@@ -766,10 +1233,15 @@ func schemaConfig(cfg Config, root string) Config {
 // defaultConfigJSON returns a compact JSON representation of a Config
 // that matches the preferred on-disk style: skip_dirs on one line,
 // rules as compact single-line objects.
-func defaultConfigJSON(cfg Config) string {
+func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: intentional value semantics
 	var b strings.Builder
 	b.WriteString("{\n")
 	b.WriteString("  \"default\": " + intStr(cfg.Default) + ",\n")
+	if cfg.DescriptiveNames {
+		b.WriteString("  \"descriptive_names\": true,\n")
+	} else {
+		b.WriteString("  \"descriptive_names\": false,\n")
+	}
 	b.WriteString("  \"warning_threshold\": \"" + intStr(int(cfg.WarningThreshold)) + "%\",\n")
 
 	// skip_dirs as compact array.
@@ -782,10 +1254,24 @@ func defaultConfigJSON(cfg Config) string {
 	}
 	b.WriteString("],\n")
 
+	// include_exts as compact array.
+	b.WriteString("  \"include_exts\": [")
+	for i, e := range cfg.IncludeExts {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString("\"" + e + "\"")
+	}
+	b.WriteString("],\n")
+
 	// rules as compact single-line objects.
 	b.WriteString("  \"rules\": [\n")
 	for i, r := range cfg.Rules {
-		b.WriteString("    {\"glob\": \"" + r.Glob + "\",\"limit\": " + intStr(r.Limit) + "}")
+		if r.Limit != nil {
+			b.WriteString("    {\"glob\": \"" + r.Glob + "\", \"limit\": " + intStr(*r.Limit) + "}")
+		} else {
+			b.WriteString("    {\"glob\": \"" + r.Glob + "\"}")
+		}
 		if i < len(cfg.Rules)-1 {
 			b.WriteString(",")
 		}

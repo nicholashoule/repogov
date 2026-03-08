@@ -1,14 +1,14 @@
 # repogov
 
-A dependency-free Go library and CLI for repository governance: enforce file-length limits and validate or scaffold AI-agent-ready directory layouts for GitHub, GitLab, Cursor, Windsurf, and Claude.
+A dependency-free Go library and CLI for repository governance: enforce file-length limits and validate or scaffold AI-agent-ready directory layouts for Copilot, Cursor, Windsurf, and Claude.
 
 ## Features
 
 - **Line-count limits** -- configurable per-file, per-glob, and default
   limits with PASS/WARN/FAIL/SKIP classification
-- **Layout governance** -- schema-based validation of `.github/` and
-  `.gitlab/` directory structure
-- **Platform presets** -- built-in rules for GitHub and GitLab conventions
+- **Layout governance** -- schema-based validation of `.github/`, `.cursor/`,
+  `.windsurf/`, and `.claude/` directory structure
+- **Platform presets** -- built-in rules for Copilot, Cursor, Windsurf, and Claude conventions
 - **Zero dependencies** -- pure stdlib, no external imports
 - **Cross-platform** -- works on Windows, Linux, and macOS
 
@@ -46,7 +46,7 @@ func main() {
     }
     fmt.Print(repogov.Summary(results))
 
-    schema := repogov.DefaultGitHubLayout()
+    schema := repogov.DefaultCopilotLayout()
     layout, err := repogov.CheckLayout(".", schema)
     if err != nil {
         panic(err)
@@ -58,11 +58,17 @@ func main() {
 ### As a CLI
 
 ```bash
-# Check line limits
-repogov -root . -exts .md limits
+# Check line limits (defaults to .md and .mdc files)
+repogov -root . limits
 
-# Check GitHub layout
+# Include additional file types
+repogov -root . -exts .md,.mdc,.yaml limits
+
+# Check Copilot layout
 repogov -root . layout
+
+# Scaffold platform directory structure (agent flag must precede subcommand)
+repogov -root . -agent copilot init
 
 # Run both checks
 repogov -root . all
@@ -80,6 +86,7 @@ Create `.github/repogov.json`:
   "default": 300,
   "warning_threshold": 80,
   "skip_dirs": [".git", "vendor"],
+  "include_exts": [".md", ".mdc"],
   "rules": [
     {"glob": "docs/*.md", "limit": 1000}
   ],
@@ -89,6 +96,17 @@ Create `.github/repogov.json`:
   }
 }
 ```
+
+### Extension Filter
+
+`include_exts` controls which file types are scanned. Defaults to `[".md", ".mdc"]`.
+Set to `[]` (empty array) to scan every file type. Add `.yaml`, `.txt`, or any extension:
+
+```json
+"include_exts": [".md", ".mdc", ".yaml"]
+```
+
+The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the filter.
 
 ### Limit Resolution Order
 
@@ -114,8 +132,7 @@ Create `.github/repogov.json`:
 | `InitLayout(root, schema)` | init.go | Scaffold platform directory structure |
 | `CheckLayout(root, schema)` | layout.go | Validate directory structure |
 | `CheckLayoutContext(ctx, root, schema)` | layout.go | Context-aware layout check |
-| `DefaultGitHubLayout()` | presets.go | GitHub .github/ preset |
-| `DefaultGitLabLayout()` | presets.go | GitLab .gitlab/ preset |
+| `DefaultCopilotLayout()` | presets.go | GitHub Copilot .github/ preset |
 | `Passed(results)` | format.go | Check if all results pass |
 | `Summary(results)` | format.go | Human-readable limit summary |
 | `LayoutPassed(results)` | format.go | Check if all layout results pass |
@@ -138,8 +155,8 @@ Create `.github/repogov.json`:
 |------|---------|-------------|
 | `-config` | `.github/repogov.json` | Path to JSON config file |
 | `-root` | `.` | Repository root directory |
-| `-exts` | (all) | Comma-separated extension filter |
-| `-platform` | `github` | Layout preset: `github` or `gitlab` |
+| `-exts` | from config | Comma-separated extension filter override; use `all` to scan every file type (default read from `include_exts` in config) |
+| `-agent` | | Agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `all`, or comma-separated list |
 | `-quiet` | `false` | Suppress output; exit code only |
 | `-json` | `false` | Output results as JSON |
 

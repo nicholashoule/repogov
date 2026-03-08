@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Layout governance: `LayoutSchema`, `DirRule`, `NamingRule`, `LayoutResult` (`layout.go`)
 - Layout validation: `CheckLayout`, `CheckLayoutContext` (`layout.go`)
 - Layout scaffolding: `InitLayout` with default instruction file seeding (`init.go`)
-- Platform presets: `DefaultGitHubLayout`, `DefaultGitLabLayout` (`presets.go`)
+- Platform presets: `DefaultCopilotLayout`, `DefaultCursorLayout`, `DefaultWindsurfLayout`, `DefaultClaudeLayout` (`presets.go`)
 - Configuration: `LoadConfig`, `FindConfig`, `SaveConfig`, `ValidateConfig` (`config.go`)
 - Configuration types: `Violation` for structured config validation (`config.go`)
 - YAML config support: load and save `.yaml`/`.yml` config files (`yaml.go`)

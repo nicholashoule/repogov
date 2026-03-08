@@ -9,10 +9,10 @@ import (
 )
 
 // LayoutSchema defines the expected directory structure for a repository's
-// platform directory (e.g., .github/ or .gitlab/).
+// platform directory (e.g., .github/ or .cursor/).
 type LayoutSchema struct {
 	// Root is the directory to validate, relative to the repo root
-	// (e.g., ".github" or ".gitlab").
+	// (e.g., ".github" or ".cursor").
 	Root string
 
 	// Required lists files that must exist within Root.

@@ -1,5 +1,5 @@
 ---
-applyTo: "**/*.md"
+applyTo: "**"
 ---
 
 # General Instructions
@@ -11,6 +11,7 @@ applyTo: "**/*.md"
 - Write in complete sentences
 - Keep paragraphs focused on a single idea
 - Avoid jargon unless the audience expects it
+- Use US English spelling (e.g., "behavior" not "behaviour", "summarize" not "summarise")
 
 ## Document Structure
 

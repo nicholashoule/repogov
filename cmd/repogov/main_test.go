@@ -70,9 +70,9 @@ func TestRun_BadFlag(t *testing.T) {
 func TestRun_DefaultAll(t *testing.T) {
 	root := t.TempDir()
 	// Pre-init github so limits has a config and layout has its dir.
-	runInit(root, "github", true, false, new(bytes.Buffer), new(bytes.Buffer))
+	runInit(root, "", "copilot", true, false, new(bytes.Buffer), new(bytes.Buffer))
 	stdout, stderr := bufs()
-	code := run([]string{"-root", root, "-platform", "github", "-quiet"}, stdout, stderr)
+	code := run([]string{"-root", root, "-agent", "copilot", "-quiet"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
@@ -93,9 +93,9 @@ func TestRun_Limits(t *testing.T) {
 func TestRun_Layout(t *testing.T) {
 	root := t.TempDir()
 	// Pre-init all platforms so every layout check has its dir.
-	runInit(root, "all", true, false, new(bytes.Buffer), new(bytes.Buffer))
+	runInit(root, "", "all", true, false, new(bytes.Buffer), new(bytes.Buffer))
 	stdout, stderr := bufs()
-	code := run([]string{"-root", root, "-platform", "all", "-quiet", "layout"}, stdout, stderr)
+	code := run([]string{"-root", root, "-agent", "all", "-quiet", "layout"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
@@ -104,7 +104,7 @@ func TestRun_Layout(t *testing.T) {
 func TestRun_Init(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	code := run([]string{"-root", root, "-platform", "all", "-quiet", "init"}, stdout, stderr)
+	code := run([]string{"-root", root, "-agent", "all", "-quiet", "init"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
@@ -246,17 +246,18 @@ func TestRunLimits_Verbose(t *testing.T) {
 
 func TestRunLayout_MissingDir(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runLayout(t.TempDir(), "github", true, false, stdout, stderr); code != 1 {
+	if code := runLayout(t.TempDir(), "copilot", true, false, stdout, stderr); code != 1 {
 		t.Fatalf("expected 1, got %d", code)
 	}
 }
 
 func TestRunLayout_Pass(t *testing.T) {
 	root := writeTempDir(t, map[string]string{
-		".github/workflows/ci.yml": "name: CI\non: push\n",
+		".github/workflows/ci.yml":        "name: CI\non: push\n",
+		".github/copilot-instructions.md": "# Copilot\n",
 	})
 	stdout, stderr := bufs()
-	if code := runLayout(root, "github", true, false, stdout, stderr); code != 0 {
+	if code := runLayout(root, "copilot", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 }
@@ -266,17 +267,18 @@ func TestRunLayout_UnknownPlatform(t *testing.T) {
 	if code := runLayout(t.TempDir(), "bitbucket", true, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected 2, got %d", code)
 	}
-	if !strings.Contains(stderr.String(), "unknown platform") {
+	if !strings.Contains(stderr.String(), "unknown agent") {
 		t.Fatalf("expected error message, got: %s", stderr.String())
 	}
 }
 
 func TestRunLayout_JSON_Pass(t *testing.T) {
 	root := writeTempDir(t, map[string]string{
-		".github/workflows/ci.yml": "name: CI\non: push\n",
+		".github/workflows/ci.yml":        "name: CI\non: push\n",
+		".github/copilot-instructions.md": "# Copilot\n",
 	})
 	stdout, stderr := bufs()
-	if code := runLayout(root, "github", false, true, stdout, stderr); code != 0 {
+	if code := runLayout(root, "copilot", false, true, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var results []repogov.LayoutResult
@@ -287,7 +289,7 @@ func TestRunLayout_JSON_Pass(t *testing.T) {
 
 func TestRunLayout_JSON_Fail(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runLayout(t.TempDir(), "github", false, true, stdout, stderr); code != 1 {
+	if code := runLayout(t.TempDir(), "copilot", false, true, stdout, stderr); code != 1 {
 		t.Fatalf("expected 1, got %d", code)
 	}
 	var results []repogov.LayoutResult
@@ -297,10 +299,10 @@ func TestRunLayout_JSON_Fail(t *testing.T) {
 }
 
 func TestRunLayout_GitLab(t *testing.T) {
-	root := writeTempDir(t, map[string]string{".gitlab/.gitkeep": ""})
+	// "gitlab" is not a supported agent in this build; expect exit 2.
 	stdout, stderr := bufs()
-	if code := runLayout(root, "gitlab", true, false, stdout, stderr); code != 0 {
-		t.Fatalf("expected 0, got %d", code)
+	if code := runLayout(t.TempDir(), "gitlab", true, false, stdout, stderr); code != 2 {
+		t.Fatalf("expected 2 for unknown agent, got %d (stderr: %s)", code, stderr.String())
 	}
 }
 
@@ -322,6 +324,7 @@ func TestRunLayout_Windsurf(t *testing.T) {
 
 func TestRunLayout_Claude(t *testing.T) {
 	root := writeTempDir(t, map[string]string{
+		".claude/CLAUDE.md":       "# CLAUDE.md\n",
 		".claude/rules/.gitkeep":  "",
 		".claude/agents/.gitkeep": "",
 	})
@@ -333,12 +336,13 @@ func TestRunLayout_Claude(t *testing.T) {
 
 func TestRunLayout_All_Pass(t *testing.T) {
 	root := writeTempDir(t, map[string]string{
-		".github/workflows/ci.yml": "name: CI\n",
-		".gitlab/.gitkeep":         "",
-		".cursor/rules/.gitkeep":   "",
-		".windsurf/rules/.gitkeep": "",
-		".claude/rules/.gitkeep":   "",
-		".claude/agents/.gitkeep":  "",
+		".github/workflows/ci.yml":        "name: CI\n",
+		".github/copilot-instructions.md": "# Copilot\n",
+		".cursor/rules/.gitkeep":          "",
+		".windsurf/rules/.gitkeep":        "",
+		".claude/CLAUDE.md":               "# CLAUDE.md\n",
+		".claude/rules/.gitkeep":          "",
+		".claude/agents/.gitkeep":         "",
 	})
 	stdout, stderr := bufs()
 	if code := runLayout(root, "all", true, false, stdout, stderr); code != 0 {
@@ -348,12 +352,13 @@ func TestRunLayout_All_Pass(t *testing.T) {
 
 func TestRunLayout_All_JSON(t *testing.T) {
 	root := writeTempDir(t, map[string]string{
-		".github/workflows/ci.yml": "name: CI\n",
-		".gitlab/.gitkeep":         "",
-		".cursor/rules/.gitkeep":   "",
-		".windsurf/rules/.gitkeep": "",
-		".claude/rules/.gitkeep":   "",
-		".claude/agents/.gitkeep":  "",
+		".github/workflows/ci.yml":        "name: CI\n",
+		".github/copilot-instructions.md": "# Copilot\n",
+		".cursor/rules/.gitkeep":          "",
+		".windsurf/rules/.gitkeep":        "",
+		".claude/CLAUDE.md":               "# CLAUDE.md\n",
+		".claude/rules/.gitkeep":          "",
+		".claude/agents/.gitkeep":         "",
 	})
 	stdout, stderr := bufs()
 	if code := runLayout(root, "all", false, true, stdout, stderr); code != 0 {
@@ -363,7 +368,7 @@ func TestRunLayout_All_JSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("invalid JSON: %v\noutput: %s", err, stdout.String())
 	}
-	for _, p := range []string{"github", "gitlab", "cursor", "windsurf", "claude"} {
+	for _, p := range []string{"copilot", "cursor", "windsurf", "claude"} {
 		if _, ok := result[p]; !ok {
 			t.Errorf("expected key %q in JSON output", p)
 		}
@@ -372,10 +377,11 @@ func TestRunLayout_All_JSON(t *testing.T) {
 
 func TestRunLayout_Verbose(t *testing.T) {
 	root := writeTempDir(t, map[string]string{
-		".github/workflows/ci.yml": "name: CI\non: push\n",
+		".github/workflows/ci.yml":        "name: CI\non: push\n",
+		".github/copilot-instructions.md": "# Copilot\n",
 	})
 	stdout, stderr := bufs()
-	if code := runLayout(root, "github", false, false, stdout, stderr); code != 0 {
+	if code := runLayout(root, "copilot", false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if !strings.Contains(stdout.String(), "Layout:") {
@@ -387,10 +393,10 @@ func TestRunLayout_Verbose(t *testing.T) {
 
 func TestRunInit_RequiresPlatform(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "", true, false, stdout, stderr); code != 2 {
+	if code := runInit(t.TempDir(), "", "", true, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected exit 2 when no platform given, got %d", code)
 	}
-	if !strings.Contains(stderr.String(), "-platform is required") {
+	if !strings.Contains(stderr.String(), "-agent is required") {
 		t.Fatalf("expected usage error, got: %s", stderr.String())
 	}
 }
@@ -402,8 +408,7 @@ func TestRunInit_EachPlatformToTemp(t *testing.T) {
 		platform string
 		dir      string
 	}{
-		{"github", ".github"},
-		{"gitlab", ".gitlab"},
+		{"copilot", ".github"},
 		{"cursor", ".cursor"},
 		{"windsurf", ".windsurf"},
 		{"claude", ".claude"},
@@ -417,7 +422,7 @@ func TestRunInit_EachPlatformToTemp(t *testing.T) {
 			stdout, stderr := bufs()
 
 			// Init the platform layout.
-			if code := runInit(temp, tc.platform, true, false, stdout, stderr); code != 0 {
+			if code := runInit(temp, "", tc.platform, true, false, stdout, stderr); code != 0 {
 				t.Fatalf("runInit %s: exit %d (stderr: %s)", tc.platform, code, stderr.String())
 			}
 
@@ -444,7 +449,7 @@ func TestRunInit_AllToTemp(t *testing.T) {
 	stdout, stderr := bufs()
 
 	// First init: create all platforms.
-	if code := runInit(temp, "all", false, false, stdout, stderr); code != 0 {
+	if code := runInit(temp, "", "all", false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit all: exit %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -455,7 +460,7 @@ func TestRunInit_AllToTemp(t *testing.T) {
 
 	// Second init: must be idempotent (nothing new created).
 	stdout.Reset()
-	if code := runInit(temp, "all", false, false, stdout, stderr); code != 0 {
+	if code := runInit(temp, "", "all", false, false, stdout, stderr); code != 0 {
 		t.Fatalf("second runInit all: exit %d", code)
 	}
 	if strings.Contains(stdout.String(), "Scaffolded") {
@@ -466,32 +471,29 @@ func TestRunInit_AllToTemp(t *testing.T) {
 func TestRunInit_CreatesLayout(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "github", true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".github")); err != nil {
 		t.Fatalf(".github not created: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, ".github", "instructions")); err != nil {
-		t.Fatalf(".github/instructions not created: %v", err)
+	if _, err := os.Stat(filepath.Join(root, ".github", "rules")); err != nil {
+		t.Fatalf(".github/rules not created: %v", err)
 	}
 }
 
 func TestRunInit_GitLab(t *testing.T) {
-	root := t.TempDir()
+	// "gitlab" is not a supported agent; expect exit 2.
 	stdout, stderr := bufs()
-	if code := runInit(root, "gitlab", true, false, stdout, stderr); code != 0 {
-		t.Fatalf("expected 0, got %d", code)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".gitlab")); err != nil {
-		t.Fatalf(".gitlab not created: %v", err)
+	if code := runInit(t.TempDir(), "", "gitlab", true, false, stdout, stderr); code != 2 {
+		t.Fatalf("expected 2 for unknown agent, got %d (stderr: %s)", code, stderr.String())
 	}
 }
 
 func TestRunInit_Cursor(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "cursor", true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "cursor", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".cursor", "rules")); err != nil {
@@ -502,7 +504,7 @@ func TestRunInit_Cursor(t *testing.T) {
 func TestRunInit_Windsurf(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "windsurf", true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "windsurf", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".windsurf", "rules")); err != nil {
@@ -513,7 +515,7 @@ func TestRunInit_Windsurf(t *testing.T) {
 func TestRunInit_Claude(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "claude", true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "claude", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	for _, dir := range []string{".claude/rules", ".claude/agents"} {
@@ -526,10 +528,10 @@ func TestRunInit_Claude(t *testing.T) {
 func TestRunInit_All(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "all", true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "all", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
-	for _, dir := range []string{".github", ".gitlab", ".cursor/rules", ".windsurf/rules", ".claude/rules", ".claude/agents"} {
+	for _, dir := range []string{".github", ".cursor/rules", ".windsurf/rules", ".claude/rules", ".claude/agents"} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir))); err != nil {
 			t.Fatalf("%s not created: %v", dir, err)
 		}
@@ -539,7 +541,7 @@ func TestRunInit_All(t *testing.T) {
 func TestRunInit_All_JSON(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "all", false, true, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "all", false, true, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var results []struct {
@@ -549,32 +551,33 @@ func TestRunInit_All_JSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &results); err != nil {
 		t.Fatalf("invalid JSON: %v\noutput: %s", err, stdout.String())
 	}
-	if len(results) != 5 {
-		t.Fatalf("expected 5 platform entries, got %d", len(results))
+	if len(results) != 1 {
+		t.Fatalf("expected 1 combined entry for all platforms, got %d", len(results))
 	}
-	for _, r := range results {
-		if r.Platform == "" {
-			t.Error("expected non-empty platform name")
-		}
+	if results[0].Platform != "all" {
+		t.Errorf("expected platform \"all\", got %q", results[0].Platform)
+	}
+	if len(results[0].Created) == 0 {
+		t.Error("expected non-empty created list")
 	}
 }
 
 func TestRunInit_AlreadyExists(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "github", true, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, stdout, stderr)
 	stdout.Reset()
-	if code := runInit(root, "github", true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 }
 
 func TestRunInit_UnknownPlatform(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "bitbucket", true, false, stdout, stderr); code != 2 {
+	if code := runInit(t.TempDir(), "", "bitbucket", true, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected 2, got %d", code)
 	}
-	if !strings.Contains(stderr.String(), "unknown platform") {
+	if !strings.Contains(stderr.String(), "unknown agent") {
 		t.Fatalf("expected error message, got: %s", stderr.String())
 	}
 }
@@ -582,7 +585,7 @@ func TestRunInit_UnknownPlatform(t *testing.T) {
 func TestRunInit_JSON(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "github", false, true, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, true, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var result struct {
@@ -592,7 +595,7 @@ func TestRunInit_JSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("invalid JSON: %v\noutput: %s", err, stdout.String())
 	}
-	if result.Platform != "github" {
+	if result.Platform != "copilot" {
 		t.Fatalf("expected github, got %s", result.Platform)
 	}
 	if len(result.Created) == 0 {
@@ -603,9 +606,9 @@ func TestRunInit_JSON(t *testing.T) {
 func TestRunInit_JSON_AlreadyExists(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "github", true, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, stdout, stderr)
 	stdout.Reset()
-	if code := runInit(root, "github", false, true, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, true, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var result struct {
@@ -622,7 +625,7 @@ func TestRunInit_JSON_AlreadyExists(t *testing.T) {
 func TestRunInit_Verbose(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "github", false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if !strings.Contains(stdout.String(), "Scaffolded") {
@@ -633,9 +636,9 @@ func TestRunInit_Verbose(t *testing.T) {
 func TestRunInit_Verbose_AlreadyExists(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "github", true, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, stdout, stderr)
 	stdout.Reset()
-	if code := runInit(root, "github", false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if !strings.Contains(stdout.String(), "nothing to create") {

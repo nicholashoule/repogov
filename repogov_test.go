@@ -47,11 +47,19 @@ func TestDefaultConfig(t *testing.T) {
 		t.Fatal("Files map is nil, should be initialized")
 	}
 
+	// Verify default IncludeExts.
+	if len(cfg.IncludeExts) == 0 {
+		t.Fatal("IncludeExts is empty, want [\".md\", \".mdc\"]")
+	}
+	if cfg.IncludeExts[0] != ".md" {
+		t.Errorf("IncludeExts[0] = %q, want \".md\"", cfg.IncludeExts[0])
+	}
+
 	// Verify default rules.
 	if len(cfg.Rules) < 1 {
 		t.Fatalf("Rules count = %d, want >= 1", len(cfg.Rules))
 	}
-	if cfg.Rules[0].Glob != ".github/instructions/*.md" || cfg.Rules[0].Limit != 300 {
+	if cfg.Rules[0].Glob != ".github/instructions/*.md" || cfg.Rules[0].Limit == nil || *cfg.Rules[0].Limit != 300 {
 		t.Errorf("Rules[0] = %+v, want {Glob:.github/instructions/*.md Limit:300}", cfg.Rules[0])
 	}
 
@@ -60,14 +68,19 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Files[.github/copilot-instructions.md] = %d, want 50",
 			cfg.Files[".github/copilot-instructions.md"])
 	}
+
+	// Verify CLAUDE.md per-file limit.
+	if cfg.Files[".claude/CLAUDE.md"] != 200 {
+		t.Errorf("Files[.claude/CLAUDE.md] = %d, want 200", cfg.Files[".claude/CLAUDE.md"])
+	}
 }
 
 func TestResolveLimit(t *testing.T) {
 	cfg := repogov.Config{
 		Default: 300,
 		Rules: []repogov.Rule{
-			{Glob: "docs/*.md", Limit: 1000},
-			{Glob: "*.go", Limit: 600},
+			{Glob: "docs/*.md", Limit: repogov.RuleLimit(1000)},
+			{Glob: "*.go", Limit: repogov.RuleLimit(600)},
 		},
 		Files: map[string]int{
 			"README.md":    1200,
@@ -92,6 +105,17 @@ func TestResolveLimit(t *testing.T) {
 				t.Errorf("ResolveLimit(%q) = %d, want %d", tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestResolveLimit_NilLimitFallsThrough(t *testing.T) {
+	// A rule with nil Limit should fall through to the config default.
+	cfg := repogov.Config{
+		Default: 500,
+		Rules:   []repogov.Rule{{Glob: "*.md"}}, // Limit is nil
+	}
+	if got := repogov.ResolveLimit("README.md", cfg); got != 500 {
+		t.Errorf("nil Limit should fall through to default 500, got %d", got)
 	}
 }
 

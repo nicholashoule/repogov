@@ -4,8 +4,9 @@ This file provides repository-level context to GitHub Copilot and compatible AI 
 
 ## Scoped Instructions
 
-See modular instruction files in [instructions/](instructions/) for scoped rules.
-Place scoped instruction files in [.github/instructions/](.github/instructions/) using `*.instructions.md`.
+See modular instruction files in `.github/instructions/` for scoped rules.
+Use the `*.instructions.md` naming convention and set `applyTo` in the YAML header (e.g. `applyTo: "**/*.go"`) to scope each file.
+See plain rule files in `.github/rules/` for additional cross-cutting rules.
 
 Long-form project context lives in [README.md](../README.md) and [docs/](../docs/).
 

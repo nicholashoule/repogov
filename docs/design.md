@@ -4,7 +4,7 @@
 
 repogov is a dependency-free Go library and CLI for auditing repository
 file lengths and directory layout conventions. It helps teams enforce
-consistent structure across GitHub and GitLab repositories.
+consistent structure across Copilot, Cursor, Windsurf, and Claude repositories.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ The library is split into two orthogonal concerns:
    limits that classify files as PASS, WARN, FAIL, or SKIP.
 
 2. **Layout governance** -- schema-based validation of directory structure
-   using preset rules for GitHub (.github/) and GitLab (.gitlab/).
+   using preset rules for GitHub (.github/), Cursor (.cursor/), Windsurf (.windsurf/), and Claude (.claude/).
 
 Both concerns produce structured results that can be consumed
 programmatically or formatted for human-readable output.
@@ -25,7 +25,7 @@ programmatically or formatted for human-readable output.
 repogov.go      -- Core types: Status, Config, Rule, Result
 check.go        -- CountLines, CheckFile, CheckDir, CheckDirContext
 layout.go       -- LayoutSchema, CheckLayout, CheckLayoutContext
-presets.go       -- DefaultGitHubLayout, DefaultGitLabLayout
+presets.go       -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout, DefaultClaudeLayout
 config.go        -- LoadConfig, SaveConfig (JSON)
 format.go        -- Summary, Passed, LayoutSummary, LayoutPassed
 cmd/repogov/     -- CLI with limits/layout/all/version subcommands
@@ -66,7 +66,7 @@ A `LayoutSchema` defines:
 - Directory rules (glob patterns and minimum file counts)
 - Naming conventions (case rules with exceptions)
 
-Presets are provided for GitHub and GitLab; custom schemas can be
+Presets are provided for Copilot, Cursor, Windsurf, and Claude; custom schemas can be
 constructed programmatically.
 
 ## Status Classification
@@ -88,7 +88,7 @@ Flags:
   -config    Path to JSON/YAML config (default: auto-discovered)
   -root      Repository root (default: .)
   -exts      Extension filter (e.g., .go,.md)
-  -platform  Layout preset: github or gitlab
+  -agent     Agent preset: copilot, cursor, windsurf, claude, or all
   -quiet     Exit code only
   -json      JSON output
 ```

@@ -1,7 +1,19 @@
 #!/bin/sh
-# pre-commit hook -- delegates to the cross-platform Go implementation.
+# pre-commit hook -- runs repogov checks via the CLI.
 # Works on Linux, macOS, and Windows (via Git for Windows' bundled sh.exe).
 #
 # Install once with: make hooks
 root="$(git rev-parse --show-toplevel)"
-cd "$root/scripts/hooks" && exec go run . "$root"
+cd "$root"
+
+go run ./cmd/repogov all
+repogov_exit=$?
+
+go run github.com/nicholashoule/demojify-sanitize/cmd/demojify@latest \
+  -root "$root" -sub
+demojify_exit=$?
+
+# other pre-commit checks can be added here, with their exit codes combined into the final exit status.
+exec go run "$root/scripts/hooks/pre-commit.go"
+
+exit $((repogov_exit | demojify_exit))

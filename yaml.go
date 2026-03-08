@@ -26,6 +26,7 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 	const (
 		sNone section = iota
 		sSkipDirs
+		sIncludeExts
 		sRules
 		sFiles
 	)
@@ -78,6 +79,9 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 			case "skip_dirs":
 				sec = sSkipDirs
 				cfg.SkipDirs = nil
+			case "include_exts":
+				sec = sIncludeExts
+				cfg.IncludeExts = []string{} // explicit empty means scan all
 			case "rules":
 				sec = sRules
 				cfg.Rules = nil
@@ -96,6 +100,12 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 			if strings.HasPrefix(trimmed, "- ") {
 				val := yamlUnquote(strings.TrimSpace(trimmed[2:]))
 				cfg.SkipDirs = append(cfg.SkipDirs, val)
+			}
+
+		case sIncludeExts:
+			if strings.HasPrefix(trimmed, "- ") {
+				val := yamlUnquote(strings.TrimSpace(trimmed[2:]))
+				cfg.IncludeExts = append(cfg.IncludeExts, val)
 			}
 
 		case sRules:
@@ -139,7 +149,7 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 
 // marshalYAML produces a minimal YAML representation of cfg.
 // Map keys are sorted for deterministic output.
-func marshalYAML(cfg Config) ([]byte, error) {
+func marshalYAML(cfg Config) ([]byte, error) { //nolint:gocritic // hugeParam: intentional value semantics
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "default: %d\n", cfg.Default)
 	fmt.Fprintf(&b, "warning_threshold: %d%%\n", int(cfg.WarningThreshold))
@@ -151,11 +161,20 @@ func marshalYAML(cfg Config) ([]byte, error) {
 		}
 	}
 
+	if cfg.IncludeExts != nil {
+		fmt.Fprintln(&b, "include_exts:")
+		for _, e := range cfg.IncludeExts {
+			fmt.Fprintf(&b, "  - %s\n", yamlQuote(e))
+		}
+	}
+
 	if len(cfg.Rules) > 0 {
 		fmt.Fprintln(&b, "rules:")
 		for _, r := range cfg.Rules {
 			fmt.Fprintf(&b, "  - glob: %s\n", yamlQuote(r.Glob))
-			fmt.Fprintf(&b, "    limit: %d\n", r.Limit)
+			if r.Limit != nil {
+				fmt.Fprintf(&b, "    limit: %d\n", *r.Limit)
+			}
 		}
 	}
 
@@ -250,7 +269,7 @@ func yamlSetRuleField(r *Rule, key, val string) error {
 		if err != nil {
 			return fmt.Errorf("invalid limit %q: %w", val, err)
 		}
-		r.Limit = n
+		r.Limit = &n
 	}
 	return nil
 }

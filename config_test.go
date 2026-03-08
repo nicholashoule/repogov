@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nicholashoule/repogov"
@@ -383,7 +384,7 @@ files:
 	if len(cfg.SkipDirs) != 2 {
 		t.Errorf("SkipDirs count = %d, want 2", len(cfg.SkipDirs))
 	}
-	if len(cfg.Rules) != 1 || cfg.Rules[0].Glob != "*.md" || cfg.Rules[0].Limit != 200 {
+	if len(cfg.Rules) != 1 || cfg.Rules[0].Glob != "*.md" || cfg.Rules[0].Limit == nil || *cfg.Rules[0].Limit != 200 {
 		t.Errorf("Rules = %+v, want [{*.md 200}]", cfg.Rules)
 	}
 	if cfg.Files["README.md"] != 1200 {
@@ -526,7 +527,7 @@ func TestValidateConfig_EmptyGlob(t *testing.T) {
 	cfg := repogov.Config{
 		Default:          500,
 		WarningThreshold: 80,
-		Rules:            []repogov.Rule{{Glob: "", Limit: 100}},
+		Rules:            []repogov.Rule{{Glob: "", Limit: repogov.RuleLimit(100)}},
 	}
 	vs := repogov.ValidateConfig(cfg)
 	hasError := false
@@ -545,8 +546,8 @@ func TestValidateConfig_DuplicateGlob(t *testing.T) {
 		Default:          500,
 		WarningThreshold: 80,
 		Rules: []repogov.Rule{
-			{Glob: "*.md", Limit: 300},
-			{Glob: "*.md", Limit: 200},
+			{Glob: "*.md", Limit: repogov.RuleLimit(300)},
+			{Glob: "*.md", Limit: repogov.RuleLimit(200)},
 		},
 	}
 	vs := repogov.ValidateConfig(cfg)
@@ -584,7 +585,7 @@ func TestValidateConfig_FileOverridesRule(t *testing.T) {
 	cfg := repogov.Config{
 		Default:          500,
 		WarningThreshold: 80,
-		Rules:            []repogov.Rule{{Glob: "*.md", Limit: 300}},
+		Rules:            []repogov.Rule{{Glob: "*.md", Limit: repogov.RuleLimit(300)}},
 		Files:            map[string]int{"README.md": 1200},
 	}
 	vs := repogov.ValidateConfig(cfg)
@@ -604,7 +605,7 @@ func TestValidateConfig_FileStricterThanRule(t *testing.T) {
 	cfg := repogov.Config{
 		Default:          500,
 		WarningThreshold: 80,
-		Rules:            []repogov.Rule{{Glob: "*.md", Limit: 300}},
+		Rules:            []repogov.Rule{{Glob: "*.md", Limit: repogov.RuleLimit(300)}},
 		Files:            map[string]int{"README.md": 50},
 	}
 	vs := repogov.ValidateConfig(cfg)
@@ -612,5 +613,226 @@ func TestValidateConfig_FileStricterThanRule(t *testing.T) {
 		if v.Field == `files["README.md"]` {
 			t.Errorf("stricter per-file limit should not produce a violation, got: %s", v.Message)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// isSafeFileSegment – tested indirectly through ValidateConfig and Init APIs.
+// ---------------------------------------------------------------------------
+
+func TestValidateConfig_UnsafeFilesKeySegment(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{"space in segment", "docs/my file.md"},
+		{"path traversal", "../hack.md"},
+		{"double-dot segment", ".github/../secret.md"},
+		{"colon (Windows reserved)", "docs/file:name.md"},
+		{"asterisk", "docs/*.md"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := repogov.Config{
+				Default:          300,
+				WarningThreshold: 80,
+				Files:            map[string]int{tc.path: 200},
+			}
+			vs := repogov.ValidateConfig(cfg)
+			hasError := false
+			for _, v := range vs {
+				if v.Severity == "error" && v.Field == `files["`+tc.path+`"]` {
+					hasError = true
+				}
+			}
+			if !hasError {
+				t.Errorf("path %q should produce an error violation", tc.path)
+			}
+		})
+	}
+}
+
+func TestValidateConfig_SafeFilesKey_NoFalsePositive(t *testing.T) {
+	// DefaultConfig paths must not trigger the segment-safety check.
+	cfg := repogov.DefaultConfig()
+	vs := repogov.ValidateConfig(cfg)
+	for _, v := range vs {
+		if v.Severity == "error" && strings.Contains(v.Field, "files[") {
+			t.Errorf("DefaultConfig files key raised unexpected error: [%s] %s", v.Field, v.Message)
+		}
+	}
+}
+
+func TestValidateConfig_UnsafeIncludeFiles(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		stem  string
+		field string
+	}{
+		{"path traversal", "../hack", "init_include_files[0]"},
+		{"space in name", "my template", "init_include_files[0]"},
+		{"double-dot", "..", "init_include_files[0]"},
+		{"with extension and traversal", "../../etc/passwd.md", "init_include_files[0]"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := repogov.Config{
+				Default:          300,
+				WarningThreshold: 80,
+				InitIncludeFiles: []string{tc.stem},
+			}
+			vs := repogov.ValidateConfig(cfg)
+			hasError := false
+			for _, v := range vs {
+				if v.Severity == "error" && v.Field == tc.field {
+					hasError = true
+				}
+			}
+			if !hasError {
+				t.Errorf("stem %q should produce an error on field %s", tc.stem, tc.field)
+			}
+		})
+	}
+}
+
+func TestValidateConfig_UnsafeExcludeFiles(t *testing.T) {
+	cfg := repogov.Config{
+		Default:          300,
+		WarningThreshold: 80,
+		InitExcludeFiles: []string{"safe-stem", "bad stem!"},
+	}
+	vs := repogov.ValidateConfig(cfg)
+	hasError := false
+	for _, v := range vs {
+		if v.Severity == "error" && v.Field == "init_exclude_files[1]" {
+			hasError = true
+		}
+	}
+	if !hasError {
+		t.Error("unsafe exclude stem should produce an error violation")
+	}
+	// The safe stem at index 0 must not produce an error.
+	for _, v := range vs {
+		if v.Field == "init_exclude_files[0]" {
+			t.Errorf("safe stem raised unexpected violation: %s", v.Message)
+		}
+	}
+}
+
+func TestValidateConfig_SafeIncludeExcludeFiles_NoFalsePositive(t *testing.T) {
+	cfg := repogov.Config{
+		Default:          300,
+		WarningThreshold: 80,
+		InitIncludeFiles: []string{"general", "testing", "repo.md", "emoji-prevention"},
+		InitExcludeFiles: []string{"backend", "frontend"},
+	}
+	vs := repogov.ValidateConfig(cfg)
+	for _, v := range vs {
+		if v.Severity == "error" &&
+			(strings.HasPrefix(v.Field, "init_include_files") || strings.HasPrefix(v.Field, "init_exclude_files")) {
+			t.Errorf("safe stem raised unexpected error: [%s] %s", v.Field, v.Message)
+		}
+	}
+}
+
+func TestFindAllConfigs_None(t *testing.T) {
+	root := t.TempDir()
+	all := repogov.FindAllConfigs(root)
+	if len(all) != 0 {
+		t.Errorf("expected no configs, got %v", all)
+	}
+}
+
+func TestFindAllConfigs_OnlyGitHub(t *testing.T) {
+	root := t.TempDir()
+	ghCfg := filepath.Join(root, ".github", "repogov-config.json")
+	if err := os.MkdirAll(filepath.Dir(ghCfg), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	all := repogov.FindAllConfigs(root)
+	if len(all) != 1 || all[0] != ghCfg {
+		t.Errorf("expected [%s], got %v", ghCfg, all)
+	}
+}
+
+func TestLoadConfig_InitAlwaysCreate(t *testing.T) {
+	data := `{"default": 300, "init_always_create": true}`
+	path := writeTempFile(t, "config.json", data)
+
+	cfg, err := repogov.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.InitAlwaysCreate {
+		t.Error("expected InitAlwaysCreate=true")
+	}
+}
+
+func TestLoadConfig_InitAlwaysCreate_DefaultFalse(t *testing.T) {
+	// When the field is absent it must default to false.
+	data := `{"default": 300}`
+	path := writeTempFile(t, "config.json", data)
+
+	cfg, err := repogov.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.InitAlwaysCreate {
+		t.Error("expected InitAlwaysCreate=false when not specified")
+	}
+}
+
+func TestLoadConfig_Descriptive(t *testing.T) {
+	data := `{"default": 300, "descriptive_names": true}`
+	path := writeTempFile(t, "config.json", data)
+
+	cfg, err := repogov.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DescriptiveNames {
+		t.Error("expected Descriptive=true")
+	}
+}
+
+func TestLoadConfig_Descriptive_DefaultFalse(t *testing.T) {
+	// When the field is absent it must default to false.
+	data := `{"default": 300}`
+	path := writeTempFile(t, "config.json", data)
+
+	cfg, err := repogov.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DescriptiveNames {
+		t.Error("expected Descriptive=false when not specified")
+	}
+}
+
+func TestFindAllConfigs_BothPresent(t *testing.T) {
+	root := t.TempDir()
+	rootCfg := filepath.Join(root, "repogov-config.json")
+	ghCfg := filepath.Join(root, ".github", "repogov-config.json")
+	if err := os.MkdirAll(filepath.Dir(ghCfg), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootCfg, []byte(`{"default":400}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ghCfg, []byte(`{"default":300}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	all := repogov.FindAllConfigs(root)
+	if len(all) != 2 {
+		t.Fatalf("expected 2 configs, got %d: %v", len(all), all)
+	}
+	if all[0] != rootCfg {
+		t.Errorf("first (active) config should be root: got %s", all[0])
+	}
+	if all[1] != ghCfg {
+		t.Errorf("second (overridden) config should be .github: got %s", all[1])
 	}
 }

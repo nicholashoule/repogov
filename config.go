@@ -58,6 +58,9 @@ func LoadConfig(path string) (Config, error) {
 	if cfg.SkipDirs == nil {
 		cfg.SkipDirs = def.SkipDirs
 	}
+	if cfg.IncludeExts == nil {
+		cfg.IncludeExts = def.IncludeExts
+	}
 	if cfg.Rules == nil {
 		cfg.Rules = def.Rules
 	}
@@ -100,10 +103,31 @@ func FindConfig(root string) string {
 	return ""
 }
 
+// FindAllConfigs returns every config file present under root, ordered from
+// highest to lowest precedence (matching the search order of [FindConfig]).
+// The first entry, if any, is the active config. Subsequent entries are
+// present but overridden.
+func FindAllConfigs(root string) []string {
+	dirs := []string{
+		root,
+		filepath.Join(root, ".github"),
+	}
+	var found []string
+	for _, dir := range dirs {
+		for _, name := range configNames {
+			p := filepath.Join(dir, name)
+			if _, err := os.Stat(p); err == nil {
+				found = append(found, p)
+			}
+		}
+	}
+	return found
+}
+
 // SaveConfig writes cfg to the given path. The format is determined by
 // file extension: .yaml/.yml produces YAML, everything else produces
 // indented JSON. The file is created with mode 0644.
-func SaveConfig(path string, cfg Config) error {
+func SaveConfig(path string, cfg Config) error { //nolint:gocritic // hugeParam: stable public API
 	var data []byte
 	var err error
 	if isYAML(path) {
@@ -135,7 +159,7 @@ type Violation struct {
 // ValidateConfig checks cfg for structural and semantic issues and
 // returns any [Violation] entries found. An empty slice means the
 // config is valid. This is intended for CLI feedback and CI pipelines.
-func ValidateConfig(cfg Config) []Violation {
+func ValidateConfig(cfg Config) []Violation { //nolint:gocritic // hugeParam: stable public API
 	var vs []Violation
 
 	// default must be non-negative.
@@ -172,10 +196,10 @@ func ValidateConfig(cfg Config) []Violation {
 				Severity: "error",
 			})
 		}
-		if r.Limit < 0 {
+		if r.Limit != nil && *r.Limit < 0 {
 			vs = append(vs, Violation{
 				Field:    field + ".limit",
-				Message:  fmt.Sprintf("must be >= 0, got %d", r.Limit),
+				Message:  fmt.Sprintf("must be >= 0, got %d", *r.Limit),
 				Severity: "error",
 			})
 		}
@@ -206,6 +230,39 @@ func ValidateConfig(cfg Config) []Violation {
 				Severity: "warning",
 			})
 		}
+		// Each path segment must use safe characters (A-Z, a-z, 0-9, _, -, .).
+		// Normalize backslashes first so Windows-style separators do not produce
+		// a second violation on top of the backslash warning above.
+		for _, seg := range strings.Split(strings.ReplaceAll(path, "\\", "/"), "/") {
+			if seg != "" && !isSafeFileSegment(seg) {
+				vs = append(vs, Violation{
+					Field:    field,
+					Message:  fmt.Sprintf("path segment %q contains unsafe characters: only A-Z, a-z, 0-9, _, -, . are allowed", seg),
+					Severity: "error",
+				})
+				break
+			}
+		}
+	}
+
+	// init_include_files / init_exclude_files must contain safe stem names.
+	for i, entry := range cfg.InitIncludeFiles {
+		if bare := templateStem(entry); !isSafeFileSegment(bare) {
+			vs = append(vs, Violation{
+				Field:    fmt.Sprintf("init_include_files[%d]", i),
+				Message:  fmt.Sprintf("unsafe stem %q: only A-Z, a-z, 0-9, _, -, . are allowed", entry),
+				Severity: "error",
+			})
+		}
+	}
+	for i, entry := range cfg.InitExcludeFiles {
+		if bare := templateStem(entry); !isSafeFileSegment(bare) {
+			vs = append(vs, Violation{
+				Field:    fmt.Sprintf("init_exclude_files[%d]", i),
+				Message:  fmt.Sprintf("unsafe stem %q: only A-Z, a-z, 0-9, _, -, . are allowed", entry),
+				Severity: "error",
+			})
+		}
 	}
 
 	// Warn on duplicate glob patterns.
@@ -227,10 +284,10 @@ func ValidateConfig(cfg Config) []Violation {
 	for path, limit := range cfg.Files {
 		for _, r := range cfg.Rules {
 			if ok, _ := filepath.Match(r.Glob, path); ok {
-				if limit > r.Limit && r.Limit > 0 {
+				if r.Limit != nil && *r.Limit > 0 && limit > *r.Limit {
 					vs = append(vs, Violation{
 						Field:    fmt.Sprintf("files[%q]", path),
-						Message:  fmt.Sprintf("limit %d exceeds rule %q (limit %d); per-file entry takes precedence", limit, r.Glob, r.Limit),
+						Message:  fmt.Sprintf("limit %d exceeds rule %q (limit %d); per-file entry takes precedence", limit, r.Glob, *r.Limit),
 						Severity: "warning",
 					})
 				}

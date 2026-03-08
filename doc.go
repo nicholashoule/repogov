@@ -1,6 +1,6 @@
 // Package repogov enforces repository governance conventions: line-count
 // limits on text files and directory-structure validation for GitHub and
-// GitLab repositories.
+// AI-agent repositories.
 //
 // # Line-Count Limits
 //
@@ -20,10 +20,10 @@
 // # Layout Governance
 //
 // [LayoutSchema] declares the expected directory structure for a repository's
-// platform directory (e.g., .github/ or .gitlab/).
+// platform directory (e.g., .github/ or .cursor/).
 //
-//   - [DefaultGitHubLayout] and [DefaultGitLabLayout] return built-in
-//     schemas matching each platform's conventions.
+//   - [DefaultCopilotLayout] returns the built-in schema matching
+//     each platform's conventions.
 //   - [CheckLayout] validates a directory against a schema and returns
 //     [LayoutResult] entries for required, optional, and unexpected files.
 //   - [CheckLayoutContext] is like [CheckLayout] with cancellation support.

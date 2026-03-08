@@ -12,6 +12,8 @@
 /temp
 temp/*
 temp*
+/tmp
+cmd/repogov/tmp/
 
 # Test binary, built with `go test -c`
 *.test

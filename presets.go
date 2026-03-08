@@ -1,14 +1,20 @@
+// presets.go provides built-in [LayoutSchema] factories for each supported
+// AI-agent platform: GitHub Copilot, Cursor, Windsurf, and Claude.
+// Each function returns an opinionated default that mirrors the platform's
+// published conventions; callers may further customize the returned schema.
+
 package repogov
 
-// DefaultGitHubLayout returns a [LayoutSchema] matching standard GitHub
+// DefaultCopilotLayout returns a [LayoutSchema] matching GitHub Copilot
 // repository conventions. It expects a .github/ directory with agent
 // instruction files, Copilot instructions, and funding configuration.
-func DefaultGitHubLayout() LayoutSchema {
+func DefaultCopilotLayout() LayoutSchema {
 	return LayoutSchema{
-		Root:     ".github",
-		Required: []string{},
-		Optional: []string{
+		Root: ".github",
+		Required: []string{
 			"copilot-instructions.md",
+		},
+		Optional: []string{
 			"CODEOWNERS",
 			"FUNDING.yml",
 			"SECURITY.md",
@@ -22,8 +28,11 @@ func DefaultGitHubLayout() LayoutSchema {
 				Glob:        "*.instructions.md",
 				Min:         0,
 				Description: "Scoped instruction files",
-			},
-		},
+			}, "rules": {
+				Glob:        "*.md",
+				Min:         0,
+				Description: "Copilot scoped rule files",
+			}},
 		Naming: NamingRule{
 			Case: "lowercase",
 			Exceptions: []string{
@@ -81,15 +90,16 @@ func DefaultWindsurfLayout() LayoutSchema {
 
 // DefaultClaudeLayout returns a [LayoutSchema] matching Claude Code (Anthropic)
 // repository conventions. It expects a .claude/ directory with subdirectories
-// for rules and subagent definitions. Hooks are configured inside
-// settings.json, not as a directory. CLAUDE.md may live at the repo root or
-// at .claude/CLAUDE.md; both locations are valid.
+// for rules and subagent definitions. CLAUDE.md is the primary instruction file,
+// analogous to copilot-instructions.md for GitHub Copilot. Hooks are configured
+// inside settings.json, not as a directory.
 func DefaultClaudeLayout() LayoutSchema {
 	return LayoutSchema{
-		Root:     ".claude",
-		Required: []string{},
-		Optional: []string{
+		Root: ".claude",
+		Required: []string{
 			"CLAUDE.md",
+		},
+		Optional: []string{
 			"settings.json",
 			"settings.local.json",
 		},
@@ -110,37 +120,6 @@ func DefaultClaudeLayout() LayoutSchema {
 			Exceptions: []string{
 				"CLAUDE.md",
 			},
-		},
-	}
-}
-
-// DefaultGitLabLayout returns a [LayoutSchema] matching standard GitLab
-// repository conventions. It expects a .gitlab/ directory with merge
-// request templates, issue templates, and CI includes.
-func DefaultGitLabLayout() LayoutSchema {
-	return LayoutSchema{
-		Root:     ".gitlab",
-		Required: []string{},
-		Optional: []string{},
-		Dirs: map[string]DirRule{
-			"merge_request_templates": {
-				Glob:        "*.md",
-				Min:         0,
-				Description: "GitLab merge request templates",
-			},
-			"issue_templates": {
-				Glob:        "*.md",
-				Min:         0,
-				Description: "GitLab issue templates",
-			},
-			"ci": {
-				Glob:        "*.yml",
-				Min:         0,
-				Description: "GitLab CI includes",
-			},
-		},
-		Naming: NamingRule{
-			Case: "lowercase",
 		},
 	}
 }

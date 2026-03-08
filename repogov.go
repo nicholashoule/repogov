@@ -114,6 +114,11 @@ type Config struct {
 	// the check result changes from PASS to WARN. Default: 80.
 	WarningThreshold PercentInt `json:"warning_threshold"`
 
+	// IncludeExts lists the file extensions that the limits check scans.
+	// An empty slice means all files are scanned (no extension filter).
+	// Default: [".md", ".mdc"].
+	IncludeExts []string `json:"include_exts"`
+
 	// SkipDirs lists directory names to skip during directory walks.
 	SkipDirs []string `json:"skip_dirs"`
 
@@ -124,6 +129,33 @@ type Config struct {
 	// Files maps repo-relative paths (forward slashes) to per-file
 	// limits. A limit of 0 exempts the file from checking.
 	Files map[string]int `json:"files"`
+
+	// InitAlwaysCreate controls whether [InitLayout] and [InitLayoutAll]
+	// seed default template files even when the target directory already
+	// exists and contains files. When false (the default), default files
+	// are only seeded into empty or newly-created directories. When true,
+	// any individual template file that is missing from an existing directory
+	// is created; existing files are never overwritten regardless of this
+	// setting.
+	InitAlwaysCreate bool `json:"init_always_create,omitempty"`
+
+	// DescriptiveNames controls the filename convention used when scaffolding
+	// instruction and rule files. When false (the default), all template files
+	// use plain <name>.md (e.g., general.md, codereview.md). When true, files
+	// use the <name>.instructions.md convention (e.g., general.instructions.md).
+	DescriptiveNames bool `json:"descriptive_names"`
+
+	// InitIncludeFiles is an allowlist of template stem names to seed during
+	// init (e.g., ["general", "governance", "testing"]). When non-empty, only
+	// templates whose stem matches an entry are created. Takes precedence over
+	// InitExcludeFiles. Stem matching strips any ".instructions.md", ".md", or
+	// ".mdc" suffix before comparison.
+	InitIncludeFiles []string `json:"init_include_files,omitempty"`
+
+	// InitExcludeFiles is a blocklist of template stem names to skip during
+	// init (e.g., ["backend", "frontend", "emoji-prevention"]). Entries whose
+	// stem matches are not created. Ignored when InitIncludeFiles is non-empty.
+	InitExcludeFiles []string `json:"init_exclude_files,omitempty"`
 }
 
 // Rule maps a glob pattern to a line limit.
@@ -131,9 +163,15 @@ type Rule struct {
 	// Glob is a filepath.Match pattern using forward slashes.
 	Glob string `json:"glob"`
 
-	// Limit is the maximum number of lines. Zero exempts matched files.
-	Limit int `json:"limit"`
+	// Limit is the maximum number of lines. When nil, the config-level
+	// default is used. When set to 0, matched files are exempt from checking.
+	Limit *int `json:"limit,omitempty"`
 }
+
+// RuleLimit returns a pointer to n for use in Rule literals.
+// A nil Limit falls through to the config default; use RuleLimit(0) to
+// explicitly exempt all files matched by the rule.
+func RuleLimit(n int) *int { return &n }
 
 // Result holds the check outcome for a single file.
 type Result struct {
@@ -173,17 +211,19 @@ func DefaultConfig() Config {
 	return Config{
 		Default:          defaultLimit,
 		WarningThreshold: defaultWarningThreshold,
+		IncludeExts:      []string{".md", ".mdc"},
 		SkipDirs:         []string{".git", "vendor"},
 		Rules: []Rule{
-			{Glob: ".github/instructions/*.md", Limit: 300},
-			{Glob: ".cursor/rules/*.md", Limit: 300},
-			{Glob: ".cursor/rules/*.mdc", Limit: 300},
-			{Glob: ".windsurf/rules/*.md", Limit: 300},
-			{Glob: ".claude/rules/*.md", Limit: 300},
-			{Glob: ".claude/agents/*.md", Limit: 300},
+			{Glob: ".github/instructions/*.md", Limit: RuleLimit(300)},
+			{Glob: ".cursor/rules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".cursor/rules/*.mdc", Limit: RuleLimit(300)},
+			{Glob: ".windsurf/rules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".claude/rules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".claude/agents/*.md", Limit: RuleLimit(300)},
 		},
 		Files: map[string]int{
 			".github/copilot-instructions.md": 50,
+			".claude/CLAUDE.md":               200,
 			"AGENTS.md":                       200,
 		},
 	}
@@ -196,7 +236,7 @@ func DefaultConfig() Config {
 //  1. Per-file override in Config.Files (exact match)
 //  2. First matching glob in Config.Rules
 //  3. Config.Default (falls back to 300 if zero)
-func ResolveLimit(path string, cfg Config) int {
+func ResolveLimit(path string, cfg Config) int { //nolint:gocritic // hugeParam: stable public API
 	// 1. Per-file override.
 	if v, ok := cfg.Files[path]; ok {
 		return v
@@ -208,7 +248,10 @@ func ResolveLimit(path string, cfg Config) int {
 			filepath.FromSlash(r.Glob),
 			filepath.FromSlash(path),
 		); ok {
-			return r.Limit
+			if r.Limit == nil {
+				break // nil limit -> fall through to config default
+			}
+			return *r.Limit
 		}
 	}
 
@@ -221,9 +264,28 @@ func ResolveLimit(path string, cfg Config) int {
 
 // effectiveWarningThreshold returns the warning percentage threshold,
 // falling back to the built-in default when cfg.WarningThreshold is zero.
-func effectiveWarningThreshold(cfg Config) int {
+func effectiveWarningThreshold(cfg Config) int { //nolint:gocritic // hugeParam: intentional value semantics
 	if cfg.WarningThreshold > 0 {
 		return int(cfg.WarningThreshold)
 	}
 	return int(defaultWarningThreshold)
+}
+
+// isSafeFileSegment reports whether s is a safe, cross-platform filename
+// segment. Allowed characters: A–Z, a–z, 0–9, underscore, hyphen, and dot.
+// Empty strings, ".", and ".." are rejected. The constraint prevents
+// path-separator injection, path-traversal via "..", and characters reserved
+// on Windows (e.g. *, ?, :, <, >, |, "\") from reaching the filesystem via
+// JSON/YAML config values.
+func isSafeFileSegment(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.') {
+			return false
+		}
+	}
+	return true
 }

@@ -2,8 +2,6 @@ package repogov_test
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -27,14 +25,9 @@ func TestCheckLayout_MissingRoot(t *testing.T) {
 }
 
 func TestCheckLayout_RequiredFiles(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github", "workflows")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ghDir, "ci.yml"), []byte("name: CI\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	root := writeTempDir(t, map[string]string{
+		".github/workflows/ci.yml": "name: CI\n",
+	})
 
 	schema := repogov.LayoutSchema{
 		Root:     ".github",
@@ -61,11 +54,9 @@ func TestCheckLayout_RequiredFiles(t *testing.T) {
 }
 
 func TestCheckLayout_MissingRequiredFile(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	root := writeTempDir(t, map[string]string{
+		".github/.gitkeep": "",
+	})
 
 	schema := repogov.LayoutSchema{
 		Root:     ".github",
@@ -89,14 +80,9 @@ func TestCheckLayout_MissingRequiredFile(t *testing.T) {
 }
 
 func TestCheckLayout_OptionalFiles(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ghDir, "CODEOWNERS"), []byte("* @owner\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	root := writeTempDir(t, map[string]string{
+		".github/CODEOWNERS": "* @owner\n",
+	})
 
 	schema := repogov.LayoutSchema{
 		Root:     ".github",
@@ -120,15 +106,10 @@ func TestCheckLayout_OptionalFiles(t *testing.T) {
 }
 
 func TestCheckLayout_NamingViolation(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
 	// Create a file with uppercase name that is not in exceptions.
-	if err := os.WriteFile(filepath.Join(ghDir, "MyConfig.yml"), []byte("test\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	root := writeTempDir(t, map[string]string{
+		".github/MyConfig.yml": "test\n",
+	})
 
 	schema := repogov.LayoutSchema{
 		Root: ".github",
@@ -155,15 +136,10 @@ func TestCheckLayout_NamingViolation(t *testing.T) {
 }
 
 func TestCheckLayout_NamingException(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
 	// CODEOWNERS is uppercase but listed as exception.
-	if err := os.WriteFile(filepath.Join(ghDir, "CODEOWNERS"), []byte("* @owner\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	root := writeTempDir(t, map[string]string{
+		".github/CODEOWNERS": "* @owner\n",
+	})
 
 	schema := repogov.LayoutSchema{
 		Root:     ".github",
@@ -187,14 +163,9 @@ func TestCheckLayout_NamingException(t *testing.T) {
 }
 
 func TestCheckLayoutContext_Cancellation(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ghDir, "test.md"), []byte("test\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	root := writeTempDir(t, map[string]string{
+		".github/test.md": "test\n",
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -206,8 +177,8 @@ func TestCheckLayoutContext_Cancellation(t *testing.T) {
 	}
 }
 
-func TestDefaultGitHubLayout(t *testing.T) {
-	schema := repogov.DefaultGitHubLayout()
+func TestDefaultCopilotLayout(t *testing.T) {
+	schema := repogov.DefaultCopilotLayout()
 
 	if schema.Root != ".github" {
 		t.Errorf("Root = %q, want .github", schema.Root)
@@ -227,27 +198,11 @@ func TestDefaultGitHubLayout(t *testing.T) {
 	}
 }
 
-func TestDefaultGitLabLayout(t *testing.T) {
-	schema := repogov.DefaultGitLabLayout()
-
-	if schema.Root != ".gitlab" {
-		t.Errorf("Root = %q, want .gitlab", schema.Root)
-	}
-	if len(schema.Dirs) == 0 {
-		t.Error("DefaultGitLabLayout has no dir rules")
-	}
-}
-
 func TestCheckLayout_DirMinimum(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github", "workflows")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
 	// Create workflow files to satisfy Min=1.
-	if err := os.WriteFile(filepath.Join(ghDir, "ci.yml"), []byte("name: CI\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	root := writeTempDir(t, map[string]string{
+		".github/workflows/ci.yml": "name: CI\n",
+	})
 
 	schema := repogov.LayoutSchema{
 		Root: ".github",
@@ -273,12 +228,10 @@ func TestCheckLayout_DirMinimum(t *testing.T) {
 }
 
 func TestCheckLayout_DirBelowMinimum(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github", "workflows")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
 	// Directory exists but has no matching files.
+	root := writeTempDir(t, map[string]string{
+		".github/workflows/.gitkeep": "",
+	})
 
 	schema := repogov.LayoutSchema{
 		Root: ".github",
@@ -304,18 +257,11 @@ func TestCheckLayout_DirBelowMinimum(t *testing.T) {
 }
 
 func TestCheckLayout_GitkeepSkipped(t *testing.T) {
-	root := t.TempDir()
-	ghDir := filepath.Join(root, ".github", "workflows")
-	if err := os.MkdirAll(ghDir, 0755); err != nil {
-		t.Fatal(err)
-	}
 	// .gitkeep is created by 'repogov init' and should not produce a WARN.
-	if err := os.WriteFile(filepath.Join(ghDir, ".gitkeep"), []byte(""), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ghDir, "ci.yml"), []byte("name: CI\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	root := writeTempDir(t, map[string]string{
+		".github/workflows/.gitkeep": "",
+		".github/workflows/ci.yml":   "name: CI\n",
+	})
 
 	schema := repogov.LayoutSchema{
 		Root:     ".github",
