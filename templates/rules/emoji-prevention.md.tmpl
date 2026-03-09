@@ -36,40 +36,16 @@ These rules apply to all files tracked by git:
 
 ## Text alternatives
 
+Use plain-text equivalents that convey the same meaning:
+
 | Instead of | Write |
 |------------|-------|
-| checkmark emoji | `[PASS]` or `[OK]` |
-| cross/X emoji | `[FAIL]` or `[ERROR]` |
-| warning emoji | `WARNING:` |
-| info/note emoji | `[INFO]` or `NOTE:` |
-| lightbulb emoji | `TIP:` |
-| rocket emoji | `Deployment` or `Released` |
-| chart emoji | `Report` or `Metrics` |
-| star emoji | `[FEATURED]` |
-| lock emoji | `Security` |
-| fire emoji | `HOT:` or `[BREAKING]` |
-| bug emoji | `BUG:` or `[BUG]` |
-| wrench/gear emoji | `Config:` or `Setup:` |
-| package emoji | `Package:` or `Build:` |
-| magnifying glass emoji | `Search:` or `[AUDIT]` |
-| clipboard emoji | `TODO:` or `[TASK]` |
-| calendar emoji | `Date:` or `Schedule:` |
-| clock emoji | `Time:` or `Timeout:` |
-| folder emoji | `Dir:` or `Path:` |
-| link emoji | `URL:` or `Ref:` |
-| pencil/pen emoji | `Edit:` or `Draft:` |
-| trash emoji | `Removed:` or `[DEPRECATED]` |
-| recycle emoji | `Refactor:` or `Reuse:` |
-| shield emoji | `Security:` or `[PROTECTED]` |
-| key emoji | `Auth:` or `Credentials:` |
-| electrical plug emoji | `Plugin:` or `Integration:` |
-| books emoji | `Docs:` or `Reference:` |
-| test tube emoji | `Test:` or `[EXPERIMENTAL]` |
-| seedling/tree emoji | `[NEW]` or `[GROWING]` |
-| arrow emoji (right) | `->` or `=>` |
-| thumbs up emoji | `[APPROVED]` or `[ACK]` |
-| thumbs down emoji | `[REJECTED]` or `[NAK]` |
-| construction emoji | `[WIP]` or `Draft:` |
+| checkmark / cross | `[PASS]` / `[FAIL]` |
+| warning / info | `WARNING:` / `NOTE:` |
+| fire / breaking change | `[BREAKING]` |
+| lock / key | `Security:` / `Auth:` |
+| bug | `BUG:` |
+| construction / WIP | `[WIP]` or `Draft:` |
 
 ## Enforcement
 
@@ -88,5 +64,6 @@ demojify
 Fix in place:
 
 ```sh
-demojify -fix
+demojify -fix # Rewrite stripped affected files in place after reporting
+demojify -sub # Substitute emoji with text tokens instead of stripping; implies -fix
 ```

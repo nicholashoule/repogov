@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-03-09
+
+### Added
+
+- `templates/rules/security.md.tmpl` — new scoped rule template covering secrets hygiene, input validation, authentication/authorization, dependency pinning, and vulnerability disclosure.
+
+### Changed
+
+- `templates/rules/general.md.tmpl` — removed `Maintenance` section and generic writing platitudes that provide no agent-specific signal.
+- `templates/rules/emoji-prevention.md.tmpl` — condensed 30-row alternatives table to 6 representative rows; table length was inflating the token count the file itself warns against.
+- `templates/rules/repo.md.tmpl` — replaced three bulleted layout lists (`.github`, `.gitlab`, root) with concise prose lines.
+- `templates/rules/codereview.md.tmpl` — removed `Review Etiquette` section; interpersonal guidance for human reviewers, not actionable agent behavior.
+- `templates/rules/testing.md.tmpl` — removed `Development Section` section; duplicated guidance already covered by `library.md.tmpl`.
+
+### Fixed
+
+- `templates/agents/CLAUDE.md.tmpl` — replaced hardcoded `claude` in `go run` commands with `{{.Agent}}` so the template renders correctly for any agent target.
+
 ## [v0.3.0] - 2026-03-08
 
 ### Added
@@ -71,7 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.3.1...HEAD
+[v0.3.1]: https://github.com/nicholashoule/repogov/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/nicholashoule/repogov/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/nicholashoule/repogov/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/nicholashoule/repogov/releases/tag/v0.1.0
