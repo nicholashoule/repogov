@@ -8,11 +8,11 @@ cd "$root"
 
 # Run repogov governance checks (line limits + layout) using the tagged release.
 # If the module cannot be fetched the check will fail with a descriptive error.
-go run github.com/nicholashoule/repogov/cmd/repogov@v0.1.0 -root "$root" -agent copilot
+go run github.com/nicholashoule/repogov/cmd/repogov@v0.2.0 -root "$root" -agent copilot
 repogov_exit=$?
 if [ "$repogov_exit" -ne 0 ]; then
   echo "ERROR: repogov checks failed. To fix, run:"
-  echo "  go run github.com/nicholashoule/repogov/cmd/repogov@v0.1.0 -root \"$root\" -agent copilot"
+  echo "  go run github.com/nicholashoule/repogov/cmd/repogov@v0.2.0 -root \"$root\" -agent copilot"
 fi
 
 # Run demojify-sanitize. If emoji are found, substitute them automatically,

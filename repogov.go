@@ -253,7 +253,9 @@ func ResolveLimit(path string, cfg Config) int { //nolint:gocritic // hugeParam:
 		matched := false
 		if strings.HasSuffix(r.Glob, "/") {
 			// Trailing-slash glob: match any file under this directory prefix.
-			matched = strings.HasPrefix(path, r.Glob)
+			glob := filepath.ToSlash(r.Glob)
+			p := filepath.ToSlash(path)
+			matched = strings.HasPrefix(p, glob)
 		} else {
 			matched, _ = filepath.Match(
 				filepath.FromSlash(r.Glob),
