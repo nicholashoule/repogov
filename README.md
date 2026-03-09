@@ -1,5 +1,11 @@
 # repogov
 
+[![CI](https://github.com/nicholashoule/repogov/actions/workflows/ci.yml/badge.svg)](https://github.com/nicholashoule/repogov/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/nicholashoule/repogov.svg)](https://pkg.go.dev/github.com/nicholashoule/repogov)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/nicholashoule/repogov)](go.mod)
+[![License](https://img.shields.io/github/license/nicholashoule/repogov)](LICENSE)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](go.mod)
+
 A dependency-free Go library and CLI for repository governance: enforce file-length limits and validate or scaffold AI-agent-ready directory layouts for Copilot, Cursor, Windsurf, Claude, GitLab, and common repository root conventions.
 
 ## Features

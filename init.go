@@ -27,6 +27,19 @@ func mustReadTemplate(name string) string {
 	return strings.ReplaceAll(string(data), "\r\n", "\n")
 }
 
+// mustRenderTemplate reads the named embedded template and renders it with
+// text/template using the provided data value (pass nil for static templates).
+// Unlike mustReadTemplate, this ensures that any future {{.Placeholder}}
+// additions to a template are never silently emitted as literal text.
+func mustRenderTemplate(name string, data any) string {
+	tmpl := template.Must(template.New(name).Parse(mustReadTemplate(name)))
+	var b strings.Builder
+	if err := tmpl.Execute(&b, data); err != nil {
+		panic(fmt.Sprintf("repogov: template render error %q: %v", name, err))
+	}
+	return b.String()
+}
+
 // initOptions bundles all options that influence scaffolding behavior so that
 // internal helpers can be updated without cascading signature changes.
 type initOptions struct {
@@ -373,31 +386,27 @@ func copilotInstructionsContent(schema LayoutSchema, descriptive bool) string { 
 		InstructionsDir: instrDir,
 		NamingHint:      namingHint,
 	}
-	tmpl := template.Must(template.New("copilot-instructions").Parse(mustReadTemplate("agents/copilot-instructions.md.tmpl")))
-	var b strings.Builder
-	if err := tmpl.Execute(&b, data); err != nil {
-		panic(fmt.Sprintf("repogov: copilot-instructions template error: %v", err))
-	}
-	return b.String()
+	return mustRenderTemplate("agents/copilot-instructions.md.tmpl", data)
 }
 
 // createClaudeMd creates .claude/CLAUDE.md with a default template when it
 // doesn't already exist. Returns the list of created paths.
-func createClaudeMd(layoutDir string, _ LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
+func createClaudeMd(layoutDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
 	filePath := filepath.Join(layoutDir, "CLAUDE.md")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		return nil, nil
 	}
-	content := claudeMdContent()
+	content := claudeMdContent(schemaRootToAgent(schema.Root))
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{".claude/CLAUDE.md"}, nil
 }
 
-// claudeMdContent returns the default content for .claude/CLAUDE.md.
-func claudeMdContent() string {
-	return mustReadTemplate("agents/CLAUDE.md.tmpl")
+// claudeMdContent returns the default content for .claude/CLAUDE.md rendered
+// from the embedded template. agent is the CLI agent name (e.g. "claude").
+func claudeMdContent(agent string) string {
+	return mustRenderTemplate("agents/CLAUDE.md.tmpl", struct{ Agent string }{agent})
 }
 
 // dirIsNew returns true if the directory does not yet exist.
@@ -573,17 +582,17 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 
 // repoInstructionsContent returns default content for repo.instructions.md.
 func repoInstructionsContent() string {
-	return mustReadTemplate("rules/repo.md.tmpl")
+	return mustRenderTemplate("rules/repo.md.tmpl", nil)
 }
 
 // generalInstructionsContent returns default content for general.instructions.md.
 func generalInstructionsContent() string {
-	return mustReadTemplate("rules/general.md.tmpl")
+	return mustRenderTemplate("rules/general.md.tmpl", nil)
 }
 
 // codereviewInstructionsContent returns default content for codereview.instructions.md.
 func codereviewInstructionsContent() string {
-	return mustReadTemplate("rules/codereview.md.tmpl")
+	return mustRenderTemplate("rules/codereview.md.tmpl", nil)
 }
 
 // governanceInstructionsContent returns default content for governance.instructions.md
@@ -596,12 +605,7 @@ func governanceInstructionsContent(configName, configRelPath, agent string) stri
 		ConfigRelPath string
 		Agent         string
 	}{configName, configRelPath, agent}
-	tmpl := template.Must(template.New("governance").Parse(mustReadTemplate("rules/governance.md.tmpl")))
-	var b strings.Builder
-	if err := tmpl.Execute(&b, data); err != nil {
-		panic(fmt.Sprintf("repogov: governance template error: %v", err))
-	}
-	return b.String()
+	return mustRenderTemplate("rules/governance.md.tmpl", data)
 }
 
 // schemaRootToAgent maps a schema root directory name to its CLI -agent flag value.
@@ -622,27 +626,27 @@ func schemaRootToAgent(root string) string {
 
 // libraryInstructionsContent returns default content for library.instructions.md.
 func libraryInstructionsContent() string {
-	return mustReadTemplate("rules/library.md.tmpl")
+	return mustRenderTemplate("rules/library.md.tmpl", nil)
 }
 
 // testingInstructionsContent returns default content for testing.instructions.md.
 func testingInstructionsContent() string {
-	return mustReadTemplate("rules/testing.md.tmpl")
+	return mustRenderTemplate("rules/testing.md.tmpl", nil)
 }
 
 // emojiPreventionInstructionsContent returns default content for emoji-prevention.instructions.md.
 func emojiPreventionInstructionsContent() string {
-	return mustReadTemplate("rules/emoji-prevention.md.tmpl")
+	return mustRenderTemplate("rules/emoji-prevention.md.tmpl", nil)
 }
 
 // backendInstructionsContent returns default content for backend.instructions.md.
 func backendInstructionsContent() string {
-	return mustReadTemplate("rules/backend.md.tmpl")
+	return mustRenderTemplate("rules/backend.md.tmpl", nil)
 }
 
 // frontendInstructionsContent returns default content for frontend.instructions.md.
 func frontendInstructionsContent() string {
-	return mustReadTemplate("rules/frontend.md.tmpl")
+	return mustRenderTemplate("rules/frontend.md.tmpl", nil)
 }
 
 // createAgentsMd creates AGENTS.md at the repository root when it does not
@@ -887,12 +891,7 @@ func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugePara
 		IsCopilot:       schema.Root == ".github",
 		IsClaude:        schema.Root == ".claude",
 	}
-	tmpl := template.Must(template.New("agents-md").Parse(mustReadTemplate("agents/AGENTS.md.tmpl")))
-	var b strings.Builder
-	if err := tmpl.Execute(&b, data); err != nil {
-		panic(fmt.Sprintf("repogov: AGENTS.md template error: %v", err))
-	}
-	return b.String()
+	return mustRenderTemplate("agents/AGENTS.md.tmpl", data)
 }
 
 // createDefaultConfigAll creates repogov-config.json at root with the full

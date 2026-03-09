@@ -91,7 +91,7 @@ func checkTest() bool {
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "[FAIL] go test (run: go test ./...)")
+		fmt.Fprintln(os.Stderr, "[FAIL] go test (run: make test)")
 		return false
 	}
 	fmt.Fprintln(os.Stderr, "[PASS] go test")

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.3.2] - 2026-03-09
+
+### Added
+
+- `mustRenderTemplate` helper in `init.go` — single chokepoint that parses and executes every embedded template through `text/template`. All content functions now route through it, so adding a `{{.Field}}` placeholder to any template in the future will never silently emit literal text.
+
+### Fixed
+
+- `init.go` `claudeMdContent` — was returning raw `mustReadTemplate` output instead of rendering through `text/template`, causing `{{.Agent}}` to appear verbatim in generated `.claude/CLAUDE.md` files. Now rendered correctly via the new `mustRenderTemplate` helper.
+- `scripts/hooks/pre-commit.go` — `go test` failure hint now points to `make test` instead of `go test ./...`, consistent with all other hook failure hints and picking up any flags added to the make target.
+
 ## [v0.3.1] - 2026-03-09
 
 ### Added
