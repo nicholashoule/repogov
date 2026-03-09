@@ -108,8 +108,8 @@ To add support:
 
 1. Create `DefaultKiroLayout()` in `presets.go`:
    - `Root`: `.kiro`
-   - `Dirs`: `steering` → glob `*.md`, min 0, description "Kiro steering files"
-   - Optional agents dir: `agents` → glob `*.json`
+   - `Dirs`: `steering` -> glob `*.md`, min 0, description "Kiro steering files"
+   - Optional agents dir: `agents` -> glob `*.json`
    - `Naming.Case`: `lowercase`
 2. Add `TestInitLayout_KiroSchema` to `init_test.go`.
 3. Add `kiro` as a CLI agent name in `cmd/repogov/main.go` mapping to

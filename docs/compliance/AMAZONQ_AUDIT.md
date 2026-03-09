@@ -5,7 +5,7 @@ Sources:
 - https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/q-chat-custom-instructions.html — blocked/no content (multiple attempts)
 - https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/customizing-q.html — blocked/no content (multiple attempts)
 
-## ⚠️ Deprecation Notice (verified 2026-03-07)
+## WARNING Deprecation Notice (verified 2026-03-07)
 
 > **Amazon Q Developer CLI is no longer actively maintained** and will only
 > receive critical security fixes. Amazon Q Developer CLI is transitioning to
