@@ -9,7 +9,7 @@ applyTo: "**"
 - Keep components focused on a single responsibility
 - Separate presentational components from data-fetching logic
 - Co-locate styles, tests, and stories with the component file
-- Use consistent file naming: `ComponentName.tsx`, `ComponentName.test.tsx`
+- Use consistent file naming for the framework (e.g., `ComponentName.tsx`, `ComponentName.test.tsx`)
 
 ## State Management
 

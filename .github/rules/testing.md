@@ -28,7 +28,7 @@ applyTo: "**/*.md"
 ## Test Result Formatting
 
 - Use plain-text status markers: `[PASS]`, `[FAIL]`, `[SKIP]`
-- Do not use emoji in test output (see emoji-prevention.instructions.md)
+- Do not use emoji in test output (see `emoji-prevention.md`)
 - Present results in tables when summarizing multiple checks
 - Include counts: total, passed, failed, skipped
 

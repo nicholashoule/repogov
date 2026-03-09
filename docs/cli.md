@@ -2,7 +2,7 @@
 
 `repogov` is a command-line tool for auditing repository file line-count limits and
 directory layout conventions for AI-agent platforms (GitHub Copilot, Cursor, Windsurf,
-Claude).
+Claude, GitLab) and common repository root structure.
 
 ## Installation
 
@@ -31,7 +31,7 @@ repogov [flags] <subcommand>
 | `-config <path>` | auto-discovered | Path to a JSON or YAML config file. Searched in repo root, then `.github/`. |
 | `-root <dir>` | `.` | Repository root directory. |
 | `-exts .md,.mdc` | from config `include_exts` | Comma-separated extension filter. Use `all` to scan every file type. |
-| `-agent <name[,name…]>` | _(none)_ | Agent/layout preset(s): `copilot`, `cursor`, `windsurf`, `claude`, or `all`. Required for `init`. Comma-separate for multiple. |
+| `-agent <name[,name…]>` | _(none)_ | Agent/layout preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `gitlab`, `root`, or `all`. Required for `init`. Comma-separate for multiple. |
 | `-quiet` | false | Suppress output; rely on exit code only. |
 | `-json` | false | Output results as JSON. |
 
@@ -60,12 +60,18 @@ Validate the directory structure against one or more platform presets.
 ```sh
 repogov -root . -agent copilot layout
 repogov -root . -agent cursor layout
+repogov -root . -agent gitlab layout
+repogov -root . -agent root layout
 repogov -root . -agent all layout
 repogov -root . layout                  # defaults to all agents
 ```
 
 Checks for required files, optional files, unexpected files, and naming conventions
 (e.g., lowercase filenames inside `.cursor/rules/`). Exits `1` on any failure.
+
+> **Note:** `-agent all` skips platform directories that do not exist in the
+> repository (e.g., a Copilot-only repo will not fail for missing `.cursor/`).
+> The `root` preset is excluded from `all` — use `-agent root` explicitly.
 
 ### `init`
 
@@ -74,12 +80,13 @@ Scaffold the platform directory structure under the repository root.
 ```sh
 repogov -root . -agent copilot init
 repogov -root . -agent cursor init
+repogov -root . -agent gitlab init
 repogov -root . -agent copilot,windsurf init
 repogov -root . -agent all init
 ```
 
 Creates:
-- The platform root directory (`.github/`, `.cursor/`, `.windsurf/`, `.claude/`)
+- The platform root directory (`.github/`, `.cursor/`, `.windsurf/`, `.claude/`, `.gitlab/`)
 - Required subdirectories
 - Placeholder files for each required file that does not already exist
 
@@ -203,8 +210,17 @@ repogov -root .
 # Check only Copilot layout
 repogov -root . -agent copilot layout
 
+# Check GitLab layout
+repogov -root . -agent gitlab layout
+
+# Check root-level files (README, LICENSE, CONTRIBUTING, etc.)
+repogov -root . -agent root layout
+
 # Scaffold Copilot + Windsurf
 repogov -root . -agent copilot,windsurf init
+
+# Scaffold GitLab layout
+repogov -root . -agent gitlab init
 
 # Scan every file type, not just .md
 repogov -root . -exts all limits

@@ -299,10 +299,15 @@ func TestRunLayout_JSON_Fail(t *testing.T) {
 }
 
 func TestRunLayout_GitLab(t *testing.T) {
-	// "gitlab" is not a supported agent in this build; expect exit 2.
+	// .gitlab/ exists with optional CODEOWNERS and template dirs.
+	root := writeTempDir(t, map[string]string{
+		".gitlab/issue_templates/.gitkeep":         "",
+		".gitlab/merge_request_templates/.gitkeep": "",
+		".gitlab/CODEOWNERS":                       "* @team\n",
+	})
 	stdout, stderr := bufs()
-	if code := runLayout(t.TempDir(), "gitlab", true, false, stdout, stderr); code != 2 {
-		t.Fatalf("expected 2 for unknown agent, got %d (stderr: %s)", code, stderr.String())
+	if code := runLayout(root, "gitlab", true, false, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
 }
 
@@ -331,6 +336,59 @@ func TestRunLayout_Claude(t *testing.T) {
 	stdout, stderr := bufs()
 	if code := runLayout(root, "claude", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
+	}
+}
+
+func TestRunLayout_Root_Pass(t *testing.T) {
+	// A typical repo root containing only recognized optional files and a
+	// managed subdirectory should pass with no unexpected-file warnings.
+	root := writeTempDir(t, map[string]string{
+		"README.md":     "# Project\n",
+		"LICENSE":       "MIT\n",
+		".gitignore":    "*.o\n",
+		"docs/index.md": "# Docs\n",
+	})
+	stdout, stderr := bufs()
+	if code := runLayout(root, "root", true, false, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
+	}
+}
+
+func TestRunLayout_Root_NamingViolation(t *testing.T) {
+	// A root-level file that violates the lowercase naming convention must
+	// cause a Fail result and a non-zero exit code.
+	root := writeTempDir(t, map[string]string{
+		"README.md":   "# Project\n",
+		"MyScript.sh": "#!/bin/sh\n", // mixed-case: violates "lowercase" naming rule
+	})
+	stdout, stderr := bufs()
+	if code := runLayout(root, "root", true, false, stdout, stderr); code == 0 {
+		t.Fatalf("expected non-zero exit for naming violation (stdout: %s stderr: %s)", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunLayout_Root_GitDirNotFlagged(t *testing.T) {
+	// .git as a directory (normal clone) must never appear as an unexpected entry.
+	root := writeTempDir(t, map[string]string{
+		"README.md": "# Project\n",
+		".git/HEAD": "ref: refs/heads/main\n",
+	})
+	stdout, stderr := bufs()
+	if code := runLayout(root, "root", true, false, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
+	}
+}
+
+func TestRunLayout_Root_GitFileNotFlagged(t *testing.T) {
+	// .git as a plain file (Git worktree gitdir pointer) must not be flagged
+	// as an unexpected file by the root layout checker.
+	root := writeTempDir(t, map[string]string{
+		"README.md": "# Project\n",
+		".git":      "gitdir: ../.git/worktrees/feature\n",
+	})
+	stdout, stderr := bufs()
+	if code := runLayout(root, "root", true, false, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
 }
 
@@ -371,6 +429,44 @@ func TestRunLayout_All_JSON(t *testing.T) {
 	for _, p := range []string{"copilot", "cursor", "windsurf", "claude"} {
 		if _, ok := result[p]; !ok {
 			t.Errorf("expected key %q in JSON output", p)
+		}
+	}
+}
+
+func TestRunLayout_All_SkipsAbsentPlatforms(t *testing.T) {
+	// A repo that only has .github/ should pass for -agent all because
+	// platforms whose root directories are absent are silently skipped.
+	root := writeTempDir(t, map[string]string{
+		".github/workflows/ci.yml":        "name: CI\n",
+		".github/copilot-instructions.md": "# Copilot\n",
+	})
+	stdout, stderr := bufs()
+	if code := runLayout(root, "all", true, false, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
+	}
+}
+
+func TestRunLayout_All_SkipsAbsentPlatforms_JSON(t *testing.T) {
+	// JSON output should only include platforms whose root directories are
+	// present; absent platforms must not appear as keys at all.
+	root := writeTempDir(t, map[string]string{
+		".github/workflows/ci.yml":        "name: CI\n",
+		".github/copilot-instructions.md": "# Copilot\n",
+	})
+	stdout, stderr := bufs()
+	if code := runLayout(root, "all", false, true, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\noutput: %s", err, stdout.String())
+	}
+	if _, ok := result["copilot"]; !ok {
+		t.Error("expected key \"copilot\" in JSON output (platform root present)")
+	}
+	for _, absent := range []string{"cursor", "windsurf", "claude", "gitlab"} {
+		if _, ok := result[absent]; ok {
+			t.Errorf("unexpected key %q in JSON output (platform root absent, should be skipped)", absent)
 		}
 	}
 }
@@ -484,10 +580,13 @@ func TestRunInit_CreatesLayout(t *testing.T) {
 }
 
 func TestRunInit_GitLab(t *testing.T) {
-	// "gitlab" is not a supported agent; expect exit 2.
+	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "", "gitlab", true, false, false, stdout, stderr); code != 2 {
-		t.Fatalf("expected 2 for unknown agent, got %d (stderr: %s)", code, stderr.String())
+	if code := runInit(root, "", "gitlab", true, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, ".gitlab")); err != nil {
+		t.Fatalf(".gitlab not created: %v", err)
 	}
 }
 

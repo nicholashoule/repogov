@@ -19,7 +19,7 @@
 //	-config <path>        Path to config file (default: auto-discovered)
 //	-root <dir>           Repository root directory (default: .)
 //	-exts .md,.mdc        Extension filter override; default from config include_exts; use "all" to scan every type
-//	-agent <name[,name…]>  Agent/layout preset(s): copilot, cursor, windsurf, claude, or all (required for init)
+//	-agent <name[,name…]>  Agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, root, or all (required for init)
 //	-descriptive          Use *.instructions.md naming convention for seeded files (overrides config descriptive_names)
 //	-quiet                Suppress output; exit code only
 //	-json                 Output results as JSON
@@ -88,6 +88,9 @@ Examples:
   # Scaffold Copilot + Windsurf support
   repogov -root . -agent copilot,windsurf init
 
+  # Check root-level layout (README, LICENSE, CONTRIBUTING, etc.)
+  repogov -root . -agent root layout
+
   # Use a custom config file
   repogov -root . -config path/to/config.json limits
 
@@ -105,7 +108,7 @@ Examples:
 	fs.StringVar(&configPath, "config", "", "path to config file (JSON or YAML; auto-discovered if omitted)")
 	fs.StringVar(&root, "root", ".", "repository root directory")
 	fs.StringVar(&exts, "exts", "", "comma-separated extension filter override (default: from config include_exts; use \"all\" to scan every file type)")
-	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, all, or comma-separated list (required for init)")
+	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, root, all, or comma-separated list (required for init)")
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
@@ -342,7 +345,7 @@ type platformEntry struct {
 // keyword; it is handled separately in run.
 func isKnownAgentName(s string) bool {
 	switch strings.ToLower(s) {
-	case "copilot", "cursor", "windsurf", "claude":
+	case "copilot", "cursor", "windsurf", "claude", "gitlab", "root":
 		return true
 	}
 	return false
@@ -355,6 +358,7 @@ func allPlatformSchemas() []platformEntry {
 		{"cursor", repogov.DefaultCursorLayout()},
 		{"windsurf", repogov.DefaultWindsurfLayout()},
 		{"claude", repogov.DefaultClaudeLayout()},
+		{"gitlab", repogov.DefaultGitLabLayout()},
 	}
 }
 
@@ -370,10 +374,14 @@ func resolvePlatform(platform string) (repogov.LayoutSchema, string) {
 		return repogov.DefaultWindsurfLayout(), ""
 	case "claude":
 		return repogov.DefaultClaudeLayout(), ""
+	case "gitlab":
+		return repogov.DefaultGitLabLayout(), ""
+	case "root":
+		return repogov.DefaultRootLayout(), ""
 	case "all":
 		return repogov.LayoutSchema{}, ""
 	}
-	return repogov.LayoutSchema{}, "unknown agent: " + platform + " (use copilot, cursor, windsurf, claude, or all)"
+	return repogov.LayoutSchema{}, "unknown agent: " + platform + " (use copilot, cursor, windsurf, claude, gitlab, root, or all)"
 }
 
 func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
@@ -384,6 +392,11 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 			code := 0
 			for i := range platforms {
 				p := &platforms[i]
+				// Skip platforms whose root directory is absent (same as text path).
+				platformRoot := filepath.Join(root, filepath.FromSlash(p.schema.Root))
+				if _, statErr := os.Stat(platformRoot); os.IsNotExist(statErr) {
+					continue
+				}
 				results, err := repogov.CheckLayout(root, p.schema)
 				if err != nil {
 					fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
@@ -402,6 +415,13 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 		code := 0
 		for i := range platforms {
 			p := &platforms[i]
+			// When running all platforms, skip any whose root directory is absent.
+			// Repos that only implement a subset of platforms should not fail
+			// for platforms they haven't adopted.
+			platformRoot := filepath.Join(root, filepath.FromSlash(p.schema.Root))
+			if _, statErr := os.Stat(platformRoot); os.IsNotExist(statErr) {
+				continue
+			}
 			results, err := repogov.CheckLayout(root, p.schema)
 			if err != nil {
 				fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)

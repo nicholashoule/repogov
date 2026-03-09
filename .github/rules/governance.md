@@ -18,13 +18,13 @@ See [repogov-config.json](../repogov-config.json) for limits and rules.
 ### Minimal CLI Example
 
 ```sh
-go run ./cmd/repogov -agent copilot
-go run ./cmd/repogov -agent copilot init
+go run github.com/nicholashoule/repogov/cmd/repogov@latest -agent copilot
+go run github.com/nicholashoule/repogov/cmd/repogov@latest -agent copilot init
 ```
 
 Pre-commit hook (`.git/hooks/pre-commit`):
 
 ```sh
 #!/bin/sh
-go run github.com/nicholashoule/repogov/cmd/repogov@latest -root . limits
+go run github.com/nicholashoule/repogov/cmd/repogov@latest limits
 ```

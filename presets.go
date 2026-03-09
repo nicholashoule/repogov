@@ -5,6 +5,70 @@
 
 package repogov
 
+// DefaultRootLayout returns a [LayoutSchema] for the repository root directory.
+// It recognizes common root-level files shared across GitHub and GitLab
+// conventions, and marks well-known subdirectories as managed so their contents
+// do not produce unexpected-file warnings. No files are required; all entries
+// are optional. Use -agent root to validate or scaffold the root layout.
+func DefaultRootLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".",
+		Required: []string{},
+		Optional: []string{
+			".editorconfig",
+			".gitattributes",
+			".gitignore",
+			"AGENTS.md",
+			"CHANGELOG.md",
+			"CODE_OF_CONDUCT.md",
+			"CONTRIBUTING.md",
+			"LICENSE",
+			"Makefile",
+			"README.md",
+			"SECURITY.md",
+		},
+		Dirs: map[string]DirRule{
+			// AI-agent platform dirs — managed by their own layout schemas.
+			".claude":   {Description: "Claude Code configuration", NoCreate: true},
+			".cursor":   {Description: "Cursor AI configuration", NoCreate: true},
+			".github":   {Description: "GitHub configuration", NoCreate: true},
+			".gitlab":   {Description: "GitLab configuration", NoCreate: true},
+			".windsurf": {Description: "Windsurf AI configuration", NoCreate: true},
+			// Common project subdirectories.
+			"bin":          {Description: "Compiled binaries", NoCreate: true},
+			"build":        {Description: "Build output", NoCreate: true},
+			"cmd":          {Description: "Main entry points", NoCreate: true},
+			"dist":         {Description: "Distribution output", NoCreate: true},
+			"docs":         {Description: "Documentation", NoCreate: true},
+			"internal":     {Description: "Private packages", NoCreate: true},
+			"lib":          {Description: "Library code", NoCreate: true},
+			"node_modules": {Description: "Node.js dependencies", NoCreate: true},
+			"pkg":          {Description: "Public packages", NoCreate: true},
+			"scripts":      {Description: "Helper scripts", NoCreate: true},
+			"src":          {Description: "Source code", NoCreate: true},
+			"target":       {Description: "Build target (Rust/Maven)", NoCreate: true},
+			"test":         {Description: "Test code", NoCreate: true},
+			"testdata":     {Description: "Test fixtures", NoCreate: true},
+			"tests":        {Description: "Test code", NoCreate: true},
+			"vendor":       {Description: "Vendored dependencies", NoCreate: true},
+			".vscode":      {Description: "VS Code workspace settings", NoCreate: true},
+		},
+		Naming: NamingRule{
+			Case: "lowercase",
+			Exceptions: []string{
+				"AGENTS.md",
+				"CHANGELOG.md",
+				"CODE_OF_CONDUCT.md",
+				"CONTRIBUTING.md",
+				"LICENSE",
+				"Makefile",
+				"README.md",
+				"SECURITY.md",
+			},
+		},
+	}
+}
+
 // DefaultCopilotLayout returns a [LayoutSchema] matching GitHub Copilot
 // repository conventions. It expects a .github/ directory with agent
 // instruction files, Copilot instructions, and funding configuration.
@@ -15,15 +79,33 @@ func DefaultCopilotLayout() LayoutSchema {
 			"copilot-instructions.md",
 		},
 		Optional: []string{
+			"CODE_OF_CONDUCT.md",
 			"CODEOWNERS",
+			"CONTRIBUTING.md",
 			"FUNDING.yml",
+			"ISSUE_TEMPLATE.md",
+			"PULL_REQUEST_TEMPLATE.md",
 			"SECURITY.md",
+			"SUPPORT.md",
 			"dependabot.yml",
+			"pull_request_template.md",
 			"repogov-config.json",
 			"repogov-config.yaml",
 			"repogov-config.yml",
 		},
 		Dirs: map[string]DirRule{
+			"ISSUE_TEMPLATE": {
+				Glob:        "",
+				Min:         0,
+				Description: "GitHub issue templates",
+				NoCreate:    true,
+			},
+			"PULL_REQUEST_TEMPLATE": {
+				Glob:        "",
+				Min:         0,
+				Description: "GitHub pull request templates",
+				NoCreate:    true,
+			},
 			"instructions": {
 				Glob:        "*.md",
 				Min:         0,
@@ -43,9 +125,16 @@ func DefaultCopilotLayout() LayoutSchema {
 		Naming: NamingRule{
 			Case: "lowercase",
 			Exceptions: []string{
+				"CODE_OF_CONDUCT.md",
 				"CODEOWNERS",
+				"CONTRIBUTING.md",
 				"FUNDING.yml",
+				"ISSUE_TEMPLATE",
+				"ISSUE_TEMPLATE.md",
+				"PULL_REQUEST_TEMPLATE",
+				"PULL_REQUEST_TEMPLATE.md",
 				"SECURITY.md",
+				"SUPPORT.md",
 			},
 		},
 	}
@@ -91,6 +180,39 @@ func DefaultWindsurfLayout() LayoutSchema {
 		},
 		Naming: NamingRule{
 			Case: "lowercase",
+		},
+	}
+}
+
+// DefaultGitLabLayout returns a [LayoutSchema] matching GitLab repository
+// conventions. It expects a .gitlab/ directory with subdirectories for issue
+// and merge request templates, and an optional CODEOWNERS file. Note that
+// .gitlab-ci.yml lives at the repository root and is outside the scope of this
+// layout schema; enforce its size via the limits config if needed.
+func DefaultGitLabLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".gitlab",
+		Required: []string{},
+		Optional: []string{
+			"CODEOWNERS",
+		},
+		Dirs: map[string]DirRule{
+			"issue_templates": {
+				Glob:        "",
+				Min:         0,
+				Description: "GitLab issue templates",
+			},
+			"merge_request_templates": {
+				Glob:        "",
+				Min:         0,
+				Description: "GitLab merge request templates",
+			},
+		},
+		Naming: NamingRule{
+			Case: "lowercase",
+			Exceptions: []string{
+				"CODEOWNERS",
+			},
 		},
 	}
 }
