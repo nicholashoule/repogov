@@ -127,6 +127,53 @@ func TestResolveLimit_ZeroDefault(t *testing.T) {
 	}
 }
 
+// TestResolveLimit_DirGlob verifies that a glob ending with "/" is treated as
+// a recursive directory prefix match, covering the common pattern
+//
+//	{"glob": "docs/", "limit": 500}
+//
+// which should apply to every file under docs/, not just direct children.
+func TestResolveLimit_DirGlob(t *testing.T) {
+	cfg := repogov.Config{
+		Default: 300,
+		Rules: []repogov.Rule{
+			{Glob: "docs/", Limit: repogov.RuleLimit(500)},
+		},
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want int
+	}{
+		{"direct child", "docs/replacements.md", 500},
+		{"nested child", "docs/compliance/AGENTS_MD_AUDIT.md", 500},
+		{"deeply nested", "docs/a/b/c.md", 500},
+		{"no match - sibling dir", "notdocs/a.md", 300},
+		{"no match - root file", "README.md", 300},
+		{"no match - partial prefix", "documentation/a.md", 300},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := repogov.ResolveLimit(tt.path, cfg); got != tt.want {
+				t.Errorf("ResolveLimit(%q) = %d, want %d", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestResolveLimit_DirGlob_NilLimit verifies that a trailing-slash glob with a
+// nil limit falls through to the config default, consistent with other rules.
+func TestResolveLimit_DirGlob_NilLimit(t *testing.T) {
+	cfg := repogov.Config{
+		Default: 500,
+		Rules:   []repogov.Rule{{Glob: "docs/"}}, // Limit is nil
+	}
+	if got := repogov.ResolveLimit("docs/design.md", cfg); got != 500 {
+		t.Errorf("dir glob with nil Limit should fall through to default 500, got %d", got)
+	}
+}
+
 func TestStatusMarshalJSON(t *testing.T) {
 	tests := []struct {
 		status repogov.Status
