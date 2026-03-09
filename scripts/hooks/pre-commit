@@ -9,7 +9,7 @@ cd "$root"
 go run ./cmd/repogov all
 repogov_exit=$?
 
-# Audit only -- demojify must be installed: go install github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.4.0
+# Audit only -- demojify must be installed: go install github.com/nicholashoule/demojify-sanitize/cmd/demojify@latest
 # Using -fix here would rewrite the working tree without re-staging, leaving the index still dirty.
 demojify -quiet
 demojify_exit=$?

@@ -44,7 +44,7 @@ type DirRule struct {
 	Description string `json:"description"`
 
 	// NoCreate prevents this directory from being created by 'repogov init'.
-	// The directory is still recognised and checked by layout commands.
+	// The directory is still recognized and checked by layout commands.
 	NoCreate bool `json:"no_create,omitempty"`
 }
 
