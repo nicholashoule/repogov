@@ -170,10 +170,18 @@ func TestInitLayout_ClaudeSchema(t *testing.T) {
 		}
 	}
 
-	// CLAUDE.md must be created.
+	// CLAUDE.md must be created with {{.Agent}} rendered — not emitted literally.
 	claudeMd := filepath.Join(claudeDir, "CLAUDE.md")
 	if _, err := os.Stat(claudeMd); os.IsNotExist(err) {
 		t.Error(".claude/CLAUDE.md was not created")
+	}
+	if data, err := os.ReadFile(claudeMd); err == nil {
+		if strings.Contains(string(data), "{{.Agent}}") {
+			t.Error(".claude/CLAUDE.md contains literal {{.Agent}} — template was not rendered")
+		}
+		if !strings.Contains(string(data), "-agent claude") {
+			t.Error(".claude/CLAUDE.md missing '-agent claude'; {{.Agent}} was not substituted")
+		}
 	}
 }
 
