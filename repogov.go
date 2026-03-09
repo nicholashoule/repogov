@@ -236,6 +236,12 @@ func DefaultConfig() Config {
 //  1. Per-file override in Config.Files (exact match)
 //  2. First matching glob in Config.Rules
 //  3. Config.Default (falls back to 300 if zero)
+//
+// Glob matching uses [filepath.Match]. As a special case, a glob that ends
+// with "/" is treated as a recursive directory prefix: it matches any file
+// whose path starts with that prefix (e.g. "docs/" matches "docs/a.md" and
+// "docs/sub/b.md"). This allows directory-scoped rules without requiring
+// shell-style "**" patterns, which [filepath.Match] does not support.
 func ResolveLimit(path string, cfg Config) int { //nolint:gocritic // hugeParam: stable public API
 	// 1. Per-file override.
 	if v, ok := cfg.Files[path]; ok {
@@ -244,10 +250,17 @@ func ResolveLimit(path string, cfg Config) int { //nolint:gocritic // hugeParam:
 
 	// 2. First matching glob rule.
 	for _, r := range cfg.Rules {
-		if ok, _ := filepath.Match(
-			filepath.FromSlash(r.Glob),
-			filepath.FromSlash(path),
-		); ok {
+		matched := false
+		if strings.HasSuffix(r.Glob, "/") {
+			// Trailing-slash glob: match any file under this directory prefix.
+			matched = strings.HasPrefix(path, r.Glob)
+		} else {
+			matched, _ = filepath.Match(
+				filepath.FromSlash(r.Glob),
+				filepath.FromSlash(path),
+			)
+		}
+		if matched {
 			if r.Limit == nil {
 				break // nil limit -> fall through to config default
 			}

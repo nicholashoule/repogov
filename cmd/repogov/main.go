@@ -139,6 +139,11 @@ Examples:
 		sub = "all"
 	}
 
+	// Auto-detect the git repository root when root is the default ".".
+	// This prevents the tool from scaffolding inside a subdirectory (e.g.
+	// .github/ or .gitlab/) when the user forgot to pass an explicit -root.
+	root = resolveRoot(root)
+
 	switch sub {
 	case "version":
 		fmt.Fprintln(stdout, "repogov", version)
@@ -693,6 +698,42 @@ func runValidate(root, configPath string, quiet, jsonOut bool, stdout, stderr io
 		return 1
 	}
 	return 0
+}
+
+// findGitRoot walks up from dir searching for a directory that contains a
+// ".git" entry (directory or file, to support Git worktrees). It returns the
+// path to that directory, or "" when none is found before the filesystem root.
+func findGitRoot(dir string) string {
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached filesystem root with no .git found.
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// resolveRoot returns the effective repository root to use for all operations.
+// When root is the default "." it resolves the working directory and walks up
+// to find the nearest git repository root, preventing confusing results when
+// the tool is invoked from a subdirectory such as ".github" or ".gitlab".
+// Falls back to the literal value when no git root is found.
+func resolveRoot(root string) string {
+	if root != "." {
+		return root
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return root
+	}
+	if git := findGitRoot(wd); git != "" {
+		return git
+	}
+	return root
 }
 
 // isAbsolute returns true if the path looks absolute on any platform.

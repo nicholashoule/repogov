@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-03-08
+
+### Added
+
+- `findGitRoot` / `resolveRoot` helpers in `cmd/repogov`: when `-root` is the default `.`, the CLI now walks up from the working directory to find the nearest `.git` ancestor and uses that as the repository root. Running `repogov init` from inside a subdirectory (e.g. `.github/instructions/`) no longer scaffolds files into that subdirectory.
+- Trailing-slash directory glob support in `ResolveLimit`: a rule glob ending with `/` (e.g. `"docs/"`) is now treated as a recursive directory prefix, matching any file under that directory at any depth. Previously, such globs were passed to `filepath.Match` and never matched any file.
+
+### Fixed
+
+- `ResolveLimit` now correctly applies directory-scoped rules written as `"docs/"` — the limit was silently ignored and the global default was used instead.
+
+
 ## [v0.1.0] - 2026-03-08
 
 ### Added
@@ -38,5 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.2.0...HEAD
+[v0.2.0]: https://github.com/nicholashoule/repogov/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/nicholashoule/repogov/releases/tag/v0.1.0

@@ -914,3 +914,163 @@ func TestIsAbsolute(t *testing.T) {
 		}
 	}
 }
+
+func TestFindGitRoot_Found(t *testing.T) {
+	// Create a temp dir with a .git sub-directory and a nested sub-directory.
+	repoRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(repoRoot, ".github", "instructions")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := findGitRoot(sub)
+	if got != repoRoot {
+		t.Errorf("findGitRoot(%q) = %q, want %q", sub, got, repoRoot)
+	}
+}
+
+func TestFindGitRoot_FoundAtSelf(t *testing.T) {
+	// findGitRoot should return the directory itself when .git lives there.
+	repoRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := findGitRoot(repoRoot)
+	if got != repoRoot {
+		t.Errorf("findGitRoot(%q) = %q, want %q", repoRoot, got, repoRoot)
+	}
+}
+
+func TestFindGitRoot_GitFile(t *testing.T) {
+	// .git as a plain file (Git worktree) should also be recognized.
+	repoRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoRoot, ".git"), []byte("gitdir: ../.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(repoRoot, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := findGitRoot(sub)
+	if got != repoRoot {
+		t.Errorf("findGitRoot(%q) = %q, want %q", sub, got, repoRoot)
+	}
+}
+
+func TestFindGitRoot_NotFound(t *testing.T) {
+	// A temp directory with no ancestor .git should return "".
+	dir := t.TempDir()
+	// Walk past the temp dir to a sub with no .git anywhere.
+	sub := filepath.Join(dir, "a", "b", "c")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// We can't guarantee the test runner itself isn't inside a git repo, so
+	// only verify that findGitRoot on a path with no .git returns some value
+	// (may or may not be "" depending on the environment).  Instead, test the
+	// behavior we care about: the returned path, if non-empty, must contain .git.
+	got := findGitRoot(sub)
+	if got != "" {
+		if _, err := os.Stat(filepath.Join(got, ".git")); err != nil {
+			t.Errorf("findGitRoot returned %q which has no .git: %v", got, err)
+		}
+	}
+}
+
+func TestResolveRoot_ExplicitPath(t *testing.T) {
+	// When root is not ".", it should be returned unchanged.
+	dir := t.TempDir()
+	got := resolveRoot(dir)
+	if got != dir {
+		t.Errorf("resolveRoot(%q) = %q, want %q (explicit path should be unchanged)", dir, got, dir)
+	}
+}
+
+func TestResolveRoot_AutoDetect(t *testing.T) {
+	// When root is "." and the CWD is inside a git repo, resolveRoot should
+	// return the git root.
+	repoRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(repoRoot, ".github", "instructions")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+	if err := os.Chdir(sub); err != nil {
+		t.Fatal(err)
+	}
+
+	got := resolveRoot(".")
+	if got != repoRoot {
+		t.Errorf("resolveRoot(\".\") = %q, want %q", got, repoRoot)
+	}
+}
+
+func TestResolveRoot_DotNonDefault(t *testing.T) {
+	// An explicit non-"." path must not be processed by git-root detection.
+	got := resolveRoot("/nonexistent/path")
+	if got != "/nonexistent/path" {
+		t.Errorf("resolveRoot returned %q, want /nonexistent/path", got)
+	}
+}
+
+// TestRun_Init_NestedDir verifies that running init with root="." from a
+// nested subdirectory (e.g. .github/) creates files in the git repo root,
+// not in the subdirectory.
+func TestRun_Init_NestedDir(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(repoRoot, ".github", "instructions")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr := bufs()
+	// No -root flag: should auto-detect repoRoot via git root resolution.
+	code := run([]string{"-agent", "copilot", "init"}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
+	}
+
+	// Files must be created under repoRoot, not under nested.
+	if _, err := os.Stat(filepath.Join(repoRoot, ".github", "copilot-instructions.md")); err != nil {
+		t.Errorf(".github/copilot-instructions.md not found under repo root: %v", err)
+	}
+	// Nothing should have been created inside the nested directory itself
+	// (other than the .github/instructions dir that we pre-created).
+	entries, err := os.ReadDir(nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("unexpected files created inside nested dir %s: %v", nested, names)
+	}
+}
