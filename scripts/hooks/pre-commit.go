@@ -85,17 +85,15 @@ func checkVet() bool {
 	return true
 }
 
-// checkLint runs golangci-lint run ./... and blocks the commit on failure.
-// golangci-lint must be installed:
-//
-//	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+// checkLint runs golangci-lint run ./... when golangci-lint is installed.
+// If the binary is not found the check is skipped with a warning so that
+// contributors without the linter installed are not hard-blocked.
+// Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 func checkLint() bool {
 	path, err := exec.LookPath("golangci-lint")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "[FAIL] golangci-lint not found on PATH.")
-		fmt.Fprintln(os.Stderr, "Install it with:")
-		fmt.Fprintln(os.Stderr, "  go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest")
-		return false
+		fmt.Fprintln(os.Stderr, "WARNING: golangci-lint not found -- skipping lint (install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)")
+		return true
 	}
 	cmd := exec.Command(path, "run", "./...")
 	cmd.Stdout = os.Stderr
