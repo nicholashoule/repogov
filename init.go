@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -1363,13 +1364,16 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	}
 	b.WriteString("  ],\n")
 
-	// files map.
+	// files map — sorted for deterministic output.
 	b.WriteString("  \"files\": {\n")
-	i := 0
-	for k, v := range cfg.Files {
-		b.WriteString("    \"" + k + "\": " + intStr(v))
-		i++
-		if i < len(cfg.Files) {
+	fileKeys := make([]string, 0, len(cfg.Files))
+	for k := range cfg.Files {
+		fileKeys = append(fileKeys, k)
+	}
+	sort.Strings(fileKeys)
+	for i, k := range fileKeys {
+		b.WriteString("    \"" + k + "\": " + intStr(cfg.Files[k]))
+		if i < len(fileKeys)-1 {
 			b.WriteString(",")
 		}
 		b.WriteString("\n")
