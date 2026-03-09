@@ -135,11 +135,15 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 			return ctx.Err()
 		default:
 		}
-		if d.IsDir() {
-			// Never walk git internals regardless of schema.
-			if d.Name() == ".git" {
+		// Never walk git internals regardless of schema, whether .git is a
+		// directory or a file (e.g., worktree gitdir pointer).
+		if d.Name() == ".git" {
+			if d.IsDir() {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if d.IsDir() {
 			return nil
 		}
 		relPath, err := filepath.Rel(layoutDir, path)
