@@ -2,7 +2,7 @@
 applyTo: "**/*.md"
 ---
 
-# Code Review Instructions
+# Documentation Review Instructions
 
 ## Review Priorities for Documentation
 
@@ -32,10 +32,10 @@ When reviewing documentation changes, prioritize in this order:
 
 ### Formatting and Style
 
-- Follows general.instructions.md conventions
+- Follows `general.md` conventions
 - Code blocks use correct language identifiers
 - Tables are well-formed and readable in plain text
-- No emoji (see emoji-prevention.instructions.md)
+- No emoji (see `emoji-prevention.md`)
 
 ### File Governance
 

@@ -31,7 +31,7 @@ applyTo: "**"
 
 ## File Organization
 
-- Use consistent file naming conventions (see copilot-instructions.md)
+- Use consistent file naming conventions across the project
 - Keep files focused and within configured line limits
 - Place detailed content in `docs/` and link from top-level files
 - Do not duplicate content -- link to the canonical source instead

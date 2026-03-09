@@ -176,6 +176,9 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 
 	// Create subdirectories defined in Dirs.
 	for dirName, rule := range schema.Dirs {
+		if rule.NoCreate {
+			continue
+		}
 		dirPath := filepath.Join(layoutDir, filepath.FromSlash(dirName))
 		isNew := dirIsNew(dirPath)
 		if err := os.MkdirAll(dirPath, 0o755); err != nil {
@@ -684,7 +687,7 @@ func generalInstructionsContent() string {
 	b.WriteString("- Use tables when presenting structured comparisons or reference data\n")
 	b.WriteString("- Keep lines under 120 characters where possible for diff readability\n\n")
 	b.WriteString("## File Organization\n\n")
-	b.WriteString("- Use consistent file naming conventions (see copilot-instructions.md)\n")
+	b.WriteString("- Use consistent file naming conventions across the project\n")
 	b.WriteString("- Keep files focused and within configured line limits\n")
 	b.WriteString("- Place detailed content in `docs/` and link from top-level files\n")
 	b.WriteString("- Do not duplicate content -- link to the canonical source instead\n\n")
@@ -705,7 +708,7 @@ func generalInstructionsContent() string {
 func codereviewInstructionsContent() string {
 	var b strings.Builder
 	b.WriteString("---\napplyTo: \"**/*.md\"\n---\n\n")
-	b.WriteString("# Code Review Instructions\n\n")
+	b.WriteString("# Documentation Review Instructions\n\n")
 	b.WriteString("## Review Priorities for Documentation\n\n")
 	b.WriteString("When reviewing documentation changes, prioritize in this order:\n\n")
 	b.WriteString("1. **Accuracy** -- Does the documentation match the current behavior?\n")
@@ -725,10 +728,10 @@ func codereviewInstructionsContent() string {
 	b.WriteString("- Cross-references use working relative links\n")
 	b.WriteString("- Table of contents is present for long documents\n\n")
 	b.WriteString("### Formatting and Style\n\n")
-	b.WriteString("- Follows general.instructions.md conventions\n")
+	b.WriteString("- Follows `general.md` conventions\n")
 	b.WriteString("- Code blocks use correct language identifiers\n")
 	b.WriteString("- Tables are well-formed and readable in plain text\n")
-	b.WriteString("- No emoji (see emoji-prevention.instructions.md)\n\n")
+	b.WriteString("- No emoji (see `emoji-prevention.md`)\n\n")
 	b.WriteString("### File Governance\n\n")
 	b.WriteString("- File stays within its configured line limit\n")
 	b.WriteString("- Content belongs in this file, not in docs/ or another document\n")
@@ -759,12 +762,12 @@ func governanceInstructionsContent(configName, configRelPath, agent string) stri
 	b.WriteString("## Enforcing Limits\n\n")
 	b.WriteString("### Minimal CLI Example\n\n")
 	b.WriteString("```sh\n")
-	b.WriteString("go run ./cmd/repogov -agent " + agent + "\n")
-	b.WriteString("go run ./cmd/repogov -agent " + agent + " init\n")
+	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest -agent " + agent + "\n")
+	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest -agent " + agent + " init\n")
 	b.WriteString("```\n\n")
 	b.WriteString("Pre-commit hook (`.git/hooks/pre-commit`):\n\n")
 	b.WriteString("```sh\n#!/bin/sh\n")
-	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest -root . limits\n```\n")
+	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest limits\n```\n")
 	return b.String()
 }
 
@@ -848,7 +851,7 @@ func testingInstructionsContent() string {
 	b.WriteString("- Document required environment variables or setup steps\n\n")
 	b.WriteString("## Test Result Formatting\n\n")
 	b.WriteString("- Use plain-text status markers: `[PASS]`, `[FAIL]`, `[SKIP]`\n")
-	b.WriteString("- Do not use emoji in test output (see emoji-prevention.instructions.md)\n")
+	b.WriteString("- Do not use emoji in test output (see `emoji-prevention.md`)\n")
 	b.WriteString("- Present results in tables when summarizing multiple checks\n")
 	b.WriteString("- Include counts: total, passed, failed, skipped\n\n")
 	b.WriteString("## Development Section\n\n")
@@ -921,15 +924,12 @@ func emojiPreventionInstructionsContent() string {
 	b.WriteString("| thumbs down emoji | `[REJECTED]` or `[NAK]` |\n")
 	b.WriteString("| construction emoji | `[WIP]` or `Draft:` |\n\n")
 	b.WriteString("## Enforcement\n\n")
-	b.WriteString("Use the `demojify-sanitize` tool to detect emoji:\n\n")
+	b.WriteString("Install once:\n\n")
 	b.WriteString("```sh\ngo install github.com/nicholashoule/demojify-sanitize/cmd/demojify@latest\n```\n\n")
-	b.WriteString("Run as a command (audit only -- exit 1 if emoji found):\n\n")
-	b.WriteString("```sh\ngo run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md\n```\n\n")
-	b.WriteString("Strip emoji in place (`-fix`):\n\n")
-	b.WriteString("```sh\ngo run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md -fix\n```\n\n")
-	b.WriteString("Pre-commit hook (`.git/hooks/pre-commit`):\n\n")
-	b.WriteString("```sh\n#!/bin/sh\n")
-	b.WriteString("go run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md -quiet || { echo \"ERROR: emoji found -- run: demojify -root . -exts .go,.md -fix\"; exit 1; }\n```\n")
+	b.WriteString("Audit (exits `1` if emoji found):\n\n")
+	b.WriteString("```sh\ndemojify\n```\n\n")
+	b.WriteString("Fix in place:\n\n")
+	b.WriteString("```sh\ndemojify -fix\n```\n")
 	return b.String()
 }
 
@@ -981,7 +981,7 @@ func frontendInstructionsContent() string {
 	b.WriteString("- Keep components focused on a single responsibility\n")
 	b.WriteString("- Separate presentational components from data-fetching logic\n")
 	b.WriteString("- Co-locate styles, tests, and stories with the component file\n")
-	b.WriteString("- Use consistent file naming: `ComponentName.tsx`, `ComponentName.test.tsx`\n\n")
+	b.WriteString("- Use consistent file naming for the framework (e.g., `ComponentName.tsx`, `ComponentName.test.tsx`)\n\n")
 	b.WriteString("## State Management\n\n")
 	b.WriteString("- Prefer local state over global state where possible\n")
 	b.WriteString("- Document the shape of shared state with types or interfaces\n")

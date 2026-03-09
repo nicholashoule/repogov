@@ -73,27 +73,20 @@ These rules apply to all files tracked by git:
 
 ## Enforcement
 
-Use the `demojify-sanitize` tool to detect emoji:
+Install once:
 
 ```sh
 go install github.com/nicholashoule/demojify-sanitize/cmd/demojify@latest
 ```
 
-Run as a command (audit only -- exit 1 if emoji found):
+Audit (exits `1` if emoji found):
 
 ```sh
-go run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md
+demojify
 ```
 
-Strip emoji in place (`-fix`):
+Fix in place:
 
 ```sh
-go run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md -fix
-```
-
-Pre-commit hook (`.git/hooks/pre-commit`):
-
-```sh
-#!/bin/sh
-go run github.com/nicholashoule/demojify-sanitize/cmd/demojify -root . -exts .go,.md -quiet || { echo "ERROR: emoji found -- run: demojify -root . -exts .go,.md -fix"; exit 1; }
+demojify -fix
 ```
