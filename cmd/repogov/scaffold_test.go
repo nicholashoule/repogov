@@ -379,13 +379,15 @@ func TestScaffold_Claude_Init(t *testing.T) {
 	assertDirExists(t, filepath.Join(root, ".claude", "rules"))
 	assertDirExists(t, filepath.Join(root, ".claude", "agents"))
 
-	// CLAUDE.md must exist with context section.
+	// CLAUDE.md must exist with context section and {{.Agent}} rendered.
 	claudePath := filepath.Join(root, ".claude", "CLAUDE.md")
 	assertFileExists(t, claudePath)
 	assertFileContains(t, claudePath, "# CLAUDE.md")
 	assertFileContains(t, claudePath, "## Context")
 	assertFileContains(t, claudePath, ".claude/rules/")
 	assertFileContains(t, claudePath, ".claude/agents/")
+	assertFileContains(t, claudePath, "-agent claude")
+	assertFileNotContains(t, claudePath, "{{.Agent}}")
 
 	// general.md must exist with standard instruction frontmatter and content.
 	mdPath := filepath.Join(root, ".claude", "rules", "general.md")
