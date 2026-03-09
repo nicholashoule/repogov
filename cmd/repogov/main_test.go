@@ -340,7 +340,7 @@ func TestRunLayout_Claude(t *testing.T) {
 }
 
 func TestRunLayout_Root_Pass(t *testing.T) {
-	// A typical repo root containing only recognised optional files and a
+	// A typical repo root containing only recognized optional files and a
 	// managed subdirectory should pass with no unexpected-file warnings.
 	root := writeTempDir(t, map[string]string{
 		"README.md":     "# Project\n",
