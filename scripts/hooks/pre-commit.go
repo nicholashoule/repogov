@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	if !checkFmt() || !checkVet() || !checkLint() {
+	if !checkFmt() || !checkVet() || !checkTest() || !checkLint() {
 		os.Exit(1)
 	}
 }
@@ -82,6 +82,19 @@ func checkVet() bool {
 		return false
 	}
 	fmt.Fprintln(os.Stderr, "[PASS] go vet")
+	return true
+}
+
+// checkTest runs go test ./... and blocks the commit on failure.
+func checkTest() bool {
+	cmd := exec.Command("go", "test", "./...")
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "[FAIL] go test (run: go test ./...)")
+		return false
+	}
+	fmt.Fprintln(os.Stderr, "[PASS] go test")
 	return true
 }
 
