@@ -1,13 +1,44 @@
 package repogov
 
 import (
+	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"text/template"
 )
+
+//go:embed templates
+var templateFS embed.FS
+
+// mustReadTemplate reads and returns the content of an embedded template file
+// by its name within the templates/ directory. Line endings are normalized to
+// LF (\n) so that content is consistent across platforms regardless of how
+// the file was checked out. It panics if the file is missing, since that
+// indicates a broken build rather than a runtime error.
+func mustReadTemplate(name string) string {
+	data, err := templateFS.ReadFile("templates/" + name)
+	if err != nil {
+		panic(fmt.Sprintf("repogov: missing embedded template %q: %v", name, err))
+	}
+	return strings.ReplaceAll(string(data), "\r\n", "\n")
+}
+
+// mustRenderTemplate reads the named embedded template and renders it with
+// text/template using the provided data value (pass nil for static templates).
+// Unlike mustReadTemplate, this ensures that any future {{.Placeholder}}
+// additions to a template are never silently emitted as literal text.
+func mustRenderTemplate(name string, data any) string {
+	tmpl := template.Must(template.New(name).Parse(mustReadTemplate(name)))
+	var b strings.Builder
+	if err := tmpl.Execute(&b, data); err != nil {
+		panic(fmt.Sprintf("repogov: template render error %q: %v", name, err))
+	}
+	return b.String()
+}
 
 // initOptions bundles all options that influence scaffolding behavior so that
 // internal helpers can be updated without cascading signature changes.
@@ -328,97 +359,54 @@ func createCopilotInstructions(root, layoutDir string, schema LayoutSchema, desc
 	return []string{filepath.ToSlash(filepath.Join(schema.Root, "copilot-instructions.md"))}, nil
 }
 
-// copilotInstructionsContent generates the content of copilot-instructions.md.
-// The Scoped Instructions section references whichever of instructions/ or
-// rules/ is present in schema.Dirs (never both). The output is kept under
-// 50 lines to comply with the default copilot-instructions.md line limit.
-// descriptive controls whether the naming-convention hint references
-// *.instructions.md (true) or plain *.md (false).
+// copilotInstructionsContent generates the content of copilot-instructions.md
+// from the embedded template. The Scoped Instructions section references
+// whichever of instructions/ or rules/ is present in schema.Dirs. descriptive
+// controls whether the naming-convention hint references *.instructions.md
+// (true) or plain *.md (false).
 func copilotInstructionsContent(schema LayoutSchema, descriptive bool) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
-	var b strings.Builder
-	b.WriteString("# Copilot Instructions\n\n")
-	b.WriteString("This file provides repository-level context to GitHub Copilot and compatible AI coding agents.\n\n")
-
-	// namingHint reflects the actual file-naming convention in use.
-	namingHint := "Use the `*.md` naming convention and set `applyTo` in the YAML frontmatter (e.g. `applyTo: \"**/*.go\"`) to scope each file.\n"
-	if descriptive {
-		namingHint = "Use the `*.instructions.md` naming convention and set `applyTo` in the YAML header (e.g. `applyTo: \"**/*.go\"`) to scope each file.\n"
-	}
-
-	// Link to the scoped-rule directory (exactly one of instructions/ or rules/).
+	instrDir := ""
 	if _, ok := schema.Dirs["instructions"]; ok {
-		b.WriteString("## Scoped Instructions\n\n")
-		b.WriteString("See modular instruction files in `" + schema.Root + "/instructions/` for scoped rules.\n")
-		b.WriteString(namingHint)
-		b.WriteString("\n")
+		instrDir = "instructions"
 	} else if _, ok := schema.Dirs["rules"]; ok {
-		b.WriteString("## Scoped Instructions\n\n")
-		b.WriteString("See modular instruction files in `" + schema.Root + "/rules/` for scoped rules.\n")
-		b.WriteString(namingHint)
-		b.WriteString("\n")
+		instrDir = "rules"
 	}
 
-	b.WriteString("Long-form project context lives in [README.md](../README.md) and [docs/](../docs/).\n\n")
+	namingHint := "Use the `*.md` naming convention and set `applyTo` in the YAML frontmatter (e.g. `applyTo: \"**/*.go\"`) to scope each file."
+	if descriptive {
+		namingHint = "Use the `*.instructions.md` naming convention and set `applyTo` in the YAML header (e.g. `applyTo: \"**/*.go\"`) to scope each file."
+	}
 
-	// File constraints section.
-	b.WriteString("## File Constraints\n\n")
-	b.WriteString("**`" + schema.Root + "` File Limit**: All files in `" + schema.Root + "/` must not exceed the configured line limit (see `repogov-config.json`). Use `docs/` for detailed explanations.\n\n")
-	b.WriteString("**Handling the line limit (priority order):**\n\n")
-	b.WriteString("1. **Refactor First** - Remove redundancy, condense verbose explanations\n")
-	b.WriteString("2. **Move to `docs/`** - Relocate detailed content to `docs/` directory\n")
-	b.WriteString("3. **Link, Don't Repeat** - Reference external docs instead of duplicating\n")
-	b.WriteString("4. **Split Only When Necessary** - Only when content is a distinct concern; use cohesive files, descriptive names, and cross-references\n\n")
-	b.WriteString("Run checks: `go run ./cmd/repogov -agent copilot`\n")
-	b.WriteString("Re-scaffold missing files: `go run ./cmd/repogov -agent copilot init`\n\n")
-
-	// File naming conventions.
-	b.WriteString("## File Naming Conventions\n\n")
-	b.WriteString("**Prefer lowercase filenames** in `docs/` and `" + schema.Root + "/` directories:\n\n")
-	b.WriteString("- Use `kebab-case` or `snake_case` for multi-word filenames\n")
-	b.WriteString("- Exception: `*_AUDIT.md` files in `docs/` may use uppercase\n")
-	b.WriteString("- Exception: GitHub-mandated filenames remain uppercase (e.g., `CODEOWNERS`)\n\n")
-
-	// Repository conventions.
-	b.WriteString("## Repository Conventions\n\n")
-	b.WriteString("- Follow existing code style and patterns\n")
-	b.WriteString("- Keep files within configured line limits (see repogov-config.json)\n")
-	b.WriteString("- Write tests for new functionality\n")
-
-	return b.String()
+	data := struct {
+		Root            string
+		InstructionsDir string
+		NamingHint      string
+	}{
+		Root:            schema.Root,
+		InstructionsDir: instrDir,
+		NamingHint:      namingHint,
+	}
+	return mustRenderTemplate("agents/copilot-instructions.md.tmpl", data)
 }
 
 // createClaudeMd creates .claude/CLAUDE.md with a default template when it
 // doesn't already exist. Returns the list of created paths.
-func createClaudeMd(layoutDir string, _ LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
+func createClaudeMd(layoutDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
 	filePath := filepath.Join(layoutDir, "CLAUDE.md")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		return nil, nil
 	}
-	content := claudeMdContent()
+	content := claudeMdContent(schemaRootToAgent(schema.Root))
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{".claude/CLAUDE.md"}, nil
 }
 
-// claudeMdContent returns the default content for .claude/CLAUDE.md.
-func claudeMdContent() string {
-	var b strings.Builder
-	b.WriteString("# CLAUDE.md\n\n")
-	b.WriteString("Project-level instructions for Claude Code in this repository.\n\n")
-	b.WriteString("## Context\n\n")
-	b.WriteString("- Project overview: [README.md](../README.md)\n")
-	b.WriteString("- Extended documentation: [docs/](../docs/)\n")
-	b.WriteString("- Scoped rule files: [.claude/rules/](rules/)\n")
-	b.WriteString("- Subagent definitions: [.claude/agents/](agents/)\n\n")
-	b.WriteString("## Repository Conventions\n\n")
-	b.WriteString("- Follow existing code style and patterns\n")
-	b.WriteString("- Keep files within configured line limits\n")
-	b.WriteString("- Write tests for new functionality\n")
-	b.WriteString("\n## Repository Commands\n\n")
-	b.WriteString("Run checks: `go run ./cmd/repogov -agent claude`\n")
-	b.WriteString("Re-scaffold missing files: `go run ./cmd/repogov -agent claude init`\n")
-	return b.String()
+// claudeMdContent returns the default content for .claude/CLAUDE.md rendered
+// from the embedded template. agent is the CLI agent name (e.g. "claude").
+func claudeMdContent(agent string) string {
+	return mustRenderTemplate("agents/CLAUDE.md.tmpl", struct{ Agent string }{agent})
 }
 
 // dirIsNew returns true if the directory does not yet exist.
@@ -593,183 +581,31 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 }
 
 // repoInstructionsContent returns default content for repo.instructions.md.
-// It documents the .github folder layout, pull request / merge request
-// conventions, and commit standards (including the conventional-commits type
-// table) for AI agents.
 func repoInstructionsContent() string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
-	b.WriteString("# Repository Instructions\n\n")
-
-	b.WriteString("## .github Layout\n\n")
-	b.WriteString("Standard files and directories for this repository's `.github/` folder:\n\n")
-	b.WriteString("- `.github/ISSUE_TEMPLATE/`\n")
-	b.WriteString("- `.github/PULL_REQUEST_TEMPLATE/`\n")
-	b.WriteString("- `.github/workflows/`\n")
-	b.WriteString("- `.github/ISSUE_TEMPLATE.md`\n")
-	b.WriteString("- `.github/pull_request_template.md`\n")
-	b.WriteString("- `.github/CONTRIBUTING.md`\n")
-	b.WriteString("- `.github/CODE_OF_CONDUCT.md`\n")
-	b.WriteString("- `.github/SECURITY.md`\n")
-	b.WriteString("- `.github/SUPPORT.md`\n")
-	b.WriteString("- `.github/FUNDING.yml`\n")
-	b.WriteString("- `.github/CODEOWNERS`\n")
-	b.WriteString("- `.github/dependabot.yml`\n\n")
-
-	b.WriteString("## .gitlab Layout\n\n")
-	b.WriteString("Standard files and directories for this repository's `.gitlab/` folder:\n\n")
-	b.WriteString("- `.gitlab/issue_templates/`\n")
-	b.WriteString("- `.gitlab/merge_request_templates/`\n")
-	b.WriteString("- `.gitlab/CODEOWNERS`\n")
-	b.WriteString("- `.gitlab-ci.yml`\n\n")
-
-	b.WriteString("## Shared Root Files\n\n")
-	b.WriteString("Files in the repository root recognized by both GitHub and GitLab:\n\n")
-	b.WriteString("- `README.md`\n")
-	b.WriteString("- `LICENSE`\n")
-	b.WriteString("- `CHANGELOG.md`\n")
-	b.WriteString("- `CONTRIBUTING.md`\n")
-	b.WriteString("- `CODE_OF_CONDUCT.md`\n")
-	b.WriteString("- `SECURITY.md`\n")
-	b.WriteString("- `AGENTS.md`\n")
-	b.WriteString("- `.gitignore`\n")
-	b.WriteString("- `.gitattributes`\n\n")
-
-	b.WriteString("## Pull Requests / Merge Requests\n\n")
-	b.WriteString("- Keep pull requests focused on a single concern\n")
-	b.WriteString("- Use a descriptive title that summarizes the change (imperative mood)\n")
-	b.WriteString("- Reference related issues in the PR description\n")
-	b.WriteString("- Ensure all CI checks pass before requesting review\n")
-	b.WriteString("- Resolve or respond to every review comment before merging\n")
-	b.WriteString("- Update documentation in the same PR that changes behavior\n\n")
-
-	b.WriteString("## Commit Standards\n\n")
-	b.WriteString("Format: `<type>(<scope>): <subject>` -- subject in imperative mood, under 72 characters.\n\n")
-	b.WriteString("- Separate subject from body with a blank line when detail is needed\n")
-	b.WriteString("- Reference issue or PR numbers in the body when relevant\n")
-	b.WriteString("- Do not include generated, vendor, or binary files in commits\n")
-	b.WriteString("- Do not commit secrets, credentials, or environment-specific values\n\n")
-	b.WriteString("| Type | Use |\n")
-	b.WriteString("|------|-----|\n")
-	b.WriteString("| `feat:` | New exported symbol or option |\n")
-	b.WriteString("| `fix:` | Bug fix |\n")
-	b.WriteString("| `docs:` | Documentation only |\n")
-	b.WriteString("| `style:` | Formatting (no logic change) |\n")
-	b.WriteString("| `refactor:` | Code restructuring |\n")
-	b.WriteString("| `test:` | Adding/updating tests |\n")
-	b.WriteString("| `chore:` | Maintenance, dependencies |\n")
-	b.WriteString("| `perf:` | Performance improvement |\n")
-	b.WriteString("| `ci:` | CI/CD changes |\n")
-	return b.String()
+	return mustRenderTemplate("rules/repo.md.tmpl", nil)
 }
 
 // generalInstructionsContent returns default content for general.instructions.md.
 func generalInstructionsContent() string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
-	b.WriteString("# General Instructions\n\n")
-	b.WriteString("## Writing Style\n\n")
-	b.WriteString("- Use clear, concise language\n")
-	b.WriteString("- Prefer active voice over passive voice\n")
-	b.WriteString("- Write in complete sentences\n")
-	b.WriteString("- Keep paragraphs focused on a single idea\n")
-	b.WriteString("- Avoid jargon unless the audience expects it\n")
-	b.WriteString(`- Use US English spelling (e.g., "behavior" not "behaviour", "summarize" not "summarise")` + "\n\n") //nolint:misspell // intentional British-English example
-	b.WriteString("## Document Structure\n\n")
-	b.WriteString("- Start every document with a level-1 heading (`# Title`)\n")
-	b.WriteString("- Use heading levels sequentially -- do not skip levels\n")
-	b.WriteString("- Keep headings descriptive and concise\n")
-	b.WriteString("- Add a blank line before and after headings\n")
-	b.WriteString("- Use lists for three or more related items\n\n")
-	b.WriteString("## Formatting\n\n")
-	b.WriteString("- Wrap inline code, commands, file paths, and symbols in backticks\n")
-	b.WriteString("- Use fenced code blocks with a language identifier for multi-line code\n")
-	b.WriteString("- Use bold for emphasis on key terms, not for entire sentences\n")
-	b.WriteString("- Use tables when presenting structured comparisons or reference data\n")
-	b.WriteString("- Keep lines under 120 characters where possible for diff readability\n\n")
-	b.WriteString("## File Organization\n\n")
-	b.WriteString("- Use consistent file naming conventions across the project\n")
-	b.WriteString("- Keep files focused and within configured line limits\n")
-	b.WriteString("- Place detailed content in `docs/` and link from top-level files\n")
-	b.WriteString("- Do not duplicate content -- link to the canonical source instead\n\n")
-	b.WriteString("## Links and References\n\n")
-	b.WriteString("- Use relative links for in-repo references\n")
-	b.WriteString("- Verify links are valid before committing\n")
-	b.WriteString("- Use descriptive link text -- avoid \"click here\" or bare URLs\n")
-	b.WriteString("- Reference specific sections with anchor links when useful\n\n")
-	b.WriteString("## Maintenance\n\n")
-	b.WriteString("- Keep documentation in sync with the feature it describes\n")
-	b.WriteString("- Remove or update stale content promptly\n")
-	b.WriteString("- Date-stamp time-sensitive information\n")
-	b.WriteString("- Review docs as part of the pull request process\n")
-	return b.String()
+	return mustRenderTemplate("rules/general.md.tmpl", nil)
 }
 
 // codereviewInstructionsContent returns default content for codereview.instructions.md.
 func codereviewInstructionsContent() string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**/*.md\"\n---\n\n")
-	b.WriteString("# Documentation Review Instructions\n\n")
-	b.WriteString("## Review Priorities for Documentation\n\n")
-	b.WriteString("When reviewing documentation changes, prioritize in this order:\n\n")
-	b.WriteString("1. **Accuracy** -- Does the documentation match the current behavior?\n")
-	b.WriteString("2. **Completeness** -- Are all necessary topics covered?\n")
-	b.WriteString("3. **Clarity** -- Can the target audience understand this?\n")
-	b.WriteString("4. **Consistency** -- Does it follow project conventions?\n")
-	b.WriteString("5. **Brevity** -- Is it concise without losing important detail?\n\n")
-	b.WriteString("## What to Look For\n\n")
-	b.WriteString("### Content Quality\n\n")
-	b.WriteString("- Factual accuracy -- verify claims against the implementation\n")
-	b.WriteString("- No stale references to removed features or old APIs\n")
-	b.WriteString("- Examples are runnable and produce the stated output\n")
-	b.WriteString("- Edge cases and limitations are documented\n\n")
-	b.WriteString("### Structure and Navigation\n\n")
-	b.WriteString("- Heading hierarchy is logical and sequential\n")
-	b.WriteString("- Related topics are grouped together\n")
-	b.WriteString("- Cross-references use working relative links\n")
-	b.WriteString("- Table of contents is present for long documents\n\n")
-	b.WriteString("### Formatting and Style\n\n")
-	b.WriteString("- Follows `general.md` conventions\n")
-	b.WriteString("- Code blocks use correct language identifiers\n")
-	b.WriteString("- Tables are well-formed and readable in plain text\n")
-	b.WriteString("- No emoji (see `emoji-prevention.md`)\n\n")
-	b.WriteString("### File Governance\n\n")
-	b.WriteString("- File stays within its configured line limit\n")
-	b.WriteString("- Content belongs in this file, not in docs/ or another document\n")
-	b.WriteString("- No content duplication -- link instead of repeating\n")
-	b.WriteString("- File naming follows project conventions\n\n")
-	b.WriteString("## Review Etiquette\n\n")
-	b.WriteString("- Be specific -- reference lines and suggest concrete alternatives\n")
-	b.WriteString("- Distinguish must-fix items from suggestions and nits\n")
-	b.WriteString("- Acknowledge good improvements, not just problems\n")
-	b.WriteString("- Ask questions rather than making assumptions about intent\n")
-	return b.String()
+	return mustRenderTemplate("rules/codereview.md.tmpl", nil)
 }
 
-// governanceInstructionsContent returns default content for governance.instructions.md.
-// configName is the basename of the config file (e.g. "repogov-config.yaml") and
-// configRelPath is its relative path from .github/instructions/ (e.g. "../repogov-config.yaml").
-// agent is the CLI agent name (e.g. "copilot", "claude", "cursor", "windsurf").
+// governanceInstructionsContent returns default content for governance.instructions.md
+// rendered from the embedded template. configName is the basename of the config
+// file (e.g. "repogov-config.yaml") and configRelPath is its relative path from
+// the target directory. agent is the CLI agent name (e.g. "copilot", "claude").
 func governanceInstructionsContent(configName, configRelPath, agent string) string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
-	b.WriteString("# Governance Instructions\n\n")
-	b.WriteString("## Line Limits\n\n")
-	b.WriteString("All files must stay within their configured line limit.\n")
-	b.WriteString("See [" + configName + "](" + configRelPath + ") for limits and rules.\n\n")
-	b.WriteString("- **Resolution order**: per-file override, first matching glob, default\n")
-	b.WriteString("- A limit of `0` exempts the file (status = SKIP)\n")
-	b.WriteString("- WARN at the configured `warning_threshold` percentage\n\n")
-	b.WriteString("## Enforcing Limits\n\n")
-	b.WriteString("### Minimal CLI Example\n\n")
-	b.WriteString("```sh\n")
-	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest -agent " + agent + "\n")
-	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest -agent " + agent + " init\n")
-	b.WriteString("```\n\n")
-	b.WriteString("Pre-commit hook (`.git/hooks/pre-commit`):\n\n")
-	b.WriteString("```sh\n#!/bin/sh\n")
-	b.WriteString("go run github.com/nicholashoule/repogov/cmd/repogov@latest limits\n```\n")
-	return b.String()
+	data := struct {
+		ConfigName    string
+		ConfigRelPath string
+		Agent         string
+	}{configName, configRelPath, agent}
+	return mustRenderTemplate("rules/governance.md.tmpl", data)
 }
 
 // schemaRootToAgent maps a schema root directory name to its CLI -agent flag value.
@@ -790,225 +626,27 @@ func schemaRootToAgent(root string) string {
 
 // libraryInstructionsContent returns default content for library.instructions.md.
 func libraryInstructionsContent() string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**/*.md\"\n---\n\n")
-	b.WriteString("# Library Documentation Instructions\n\n")
-	b.WriteString("## API Reference Documentation\n\n")
-	b.WriteString("- Document every public symbol in a reference table or section\n")
-	b.WriteString("- Include the function signature, a one-line summary, and the source file\n")
-	b.WriteString("- Group symbols by concern (types, functions, configuration)\n")
-	b.WriteString("- Keep the public API table up to date when symbols are added or removed\n")
-	b.WriteString("- Link to doc comments or pkg.go.dev for full details\n\n")
-	b.WriteString("## README Structure\n\n")
-	b.WriteString("- Start with a one-paragraph summary of what the library does\n")
-	b.WriteString("- Include install and quick-start sections early\n")
-	b.WriteString("- Provide at least one runnable example\n")
-	b.WriteString("- List configuration options with defaults and valid ranges\n")
-	b.WriteString("- Add a public API table linking symbols to source files\n")
-	b.WriteString("- End with status codes, development instructions, and license\n\n")
-	b.WriteString("## Design Documents\n\n")
-	b.WriteString("- Place architecture and design docs in `docs/`\n")
-	b.WriteString("- Start with purpose, then architecture, then details\n")
-	b.WriteString("- Document constraints and trade-offs, not just decisions\n")
-	b.WriteString("- Include diagrams or tables when they clarify structure\n")
-	b.WriteString("- Keep design docs under their configured line limit\n\n")
-	b.WriteString("## Changelog\n\n")
-	b.WriteString("- Maintain a CHANGELOG.md following Keep a Changelog format\n")
-	b.WriteString("- Group entries under Added, Changed, Deprecated, Removed, Fixed, Security\n")
-	b.WriteString("- Reference issue or PR numbers for traceability\n")
-	b.WriteString("- Write entries from the user's perspective, not the developer's\n\n")
-	b.WriteString("## Cross-References\n\n")
-	b.WriteString("- Link between README, docs/, and instruction files -- do not duplicate\n")
-	b.WriteString("- Use relative links for all in-repo references\n")
-	b.WriteString("- Reference specific sections with anchor links\n")
-	b.WriteString("- Keep the link graph shallow: two hops maximum to find any topic\n\n")
-	b.WriteString("## Versioning Documentation\n\n")
-	b.WriteString("- Document breaking changes prominently in CHANGELOG and README\n")
-	b.WriteString("- Mark deprecated features with a timeline for removal\n")
-	b.WriteString("- Update install instructions when the minimum version changes\n")
-	b.WriteString("- Tag documentation updates alongside code releases\n")
-	return b.String()
+	return mustRenderTemplate("rules/library.md.tmpl", nil)
 }
 
 // testingInstructionsContent returns default content for testing.instructions.md.
 func testingInstructionsContent() string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**/*.md\"\n---\n\n")
-	b.WriteString("# Testing Documentation Instructions\n\n")
-	b.WriteString("## Documenting Test Coverage\n\n")
-	b.WriteString("- List what is tested and what is not in a testing section or file\n")
-	b.WriteString("- Group tests by feature or module for easier navigation\n")
-	b.WriteString("- Note any known gaps with a plan or issue reference\n")
-	b.WriteString("- Keep test documentation close to the feature it covers\n\n")
-	b.WriteString("## Test Examples in Documentation\n\n")
-	b.WriteString("- Include runnable examples when documenting public APIs\n")
-	b.WriteString("- Show both input and expected output\n")
-	b.WriteString("- Use fenced code blocks with the correct language identifier\n")
-	b.WriteString("- Verify examples still work when updating documentation\n\n")
-	b.WriteString("## CI and Automation Docs\n\n")
-	b.WriteString("- Document how to run tests locally (e.g., `make test`)\n")
-	b.WriteString("- List available test-related Makefile or script targets\n")
-	b.WriteString("- Explain CI workflow steps in workflow YAML or a docs/ file\n")
-	b.WriteString("- Document required environment variables or setup steps\n\n")
-	b.WriteString("## Test Result Formatting\n\n")
-	b.WriteString("- Use plain-text status markers: `[PASS]`, `[FAIL]`, `[SKIP]`\n")
-	b.WriteString("- Do not use emoji in test output (see `emoji-prevention.md`)\n")
-	b.WriteString("- Present results in tables when summarizing multiple checks\n")
-	b.WriteString("- Include counts: total, passed, failed, skipped\n\n")
-	b.WriteString("## Development Section\n\n")
-	b.WriteString("- Include a Development section in README.md with test commands\n")
-	b.WriteString("- List commands in a code block for easy copy-paste\n")
-	b.WriteString("- Cover: unit tests, race detection, coverage, formatting, linting\n")
-	b.WriteString("- Keep the section concise -- link to docs/ for details\n")
-	return b.String()
+	return mustRenderTemplate("rules/testing.md.tmpl", nil)
 }
 
 // emojiPreventionInstructionsContent returns default content for emoji-prevention.instructions.md.
 func emojiPreventionInstructionsContent() string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
-	b.WriteString("# Emoji Prevention Instructions\n\n")
-	b.WriteString("## Rule\n\n")
-	b.WriteString("Do **not** introduce emoji or Unicode pictographic characters into\n")
-	b.WriteString("source code, documentation, comments, commit messages, or CI output.\n")
-	b.WriteString("Use plain-text equivalents instead.\n\n")
-	b.WriteString("## Why\n\n")
-	b.WriteString("- Emoji render inconsistently across terminals, editors, and fonts\n")
-	b.WriteString("- They can complicate grep, diff, and other line-oriented tools\n")
-	b.WriteString("- Screen readers may announce them unexpectedly or skip them entirely\n")
-	b.WriteString("- They inflate token counts in LLM-assisted workflows\n")
-	b.WriteString("- They add no semantic value that plain text cannot convey\n\n")
-	b.WriteString("## Scope\n\n")
-	b.WriteString("These rules apply to all files tracked by git:\n\n")
-	b.WriteString("- Source files like (`.go`, `.py`, `.js`, etc.)\n")
-	b.WriteString("- Markdown documentation (`.md`, `.markdown`, etc.)\n")
-	b.WriteString("- YAML and JSON configuration (`.yml`, `.yaml`, `.json`)\n")
-	b.WriteString("- Shell scripts and Makefiles (`.sh`, `Makefile`, etc.)\n")
-	b.WriteString("- Commit messages and PR descriptions\n\n")
-	b.WriteString("## Exceptions\n\n")
-	b.WriteString("- Test fixtures that explicitly exercise emoji handling\n")
-	b.WriteString("- Docs that describe or reference emoji (e.g., unicode-coverage.md)\n")
-	b.WriteString("- Third-party files vendored as-is\n\n")
-	b.WriteString("## Text alternatives\n\n")
-	b.WriteString("| Instead of | Write |\n")
-	b.WriteString("|------------|-------|\n")
-	b.WriteString("| checkmark emoji | `[PASS]` or `[OK]` |\n")
-	b.WriteString("| cross/X emoji | `[FAIL]` or `[ERROR]` |\n")
-	b.WriteString("| warning emoji | `WARNING:` |\n")
-	b.WriteString("| info/note emoji | `[INFO]` or `NOTE:` |\n")
-	b.WriteString("| lightbulb emoji | `TIP:` |\n")
-	b.WriteString("| rocket emoji | `Deployment` or `Released` |\n")
-	b.WriteString("| chart emoji | `Report` or `Metrics` |\n")
-	b.WriteString("| star emoji | `[FEATURED]` |\n")
-	b.WriteString("| lock emoji | `Security` |\n")
-	b.WriteString("| fire emoji | `HOT:` or `[BREAKING]` |\n")
-	b.WriteString("| bug emoji | `BUG:` or `[BUG]` |\n")
-	b.WriteString("| wrench/gear emoji | `Config:` or `Setup:` |\n")
-	b.WriteString("| package emoji | `Package:` or `Build:` |\n")
-	b.WriteString("| magnifying glass emoji | `Search:` or `[AUDIT]` |\n")
-	b.WriteString("| clipboard emoji | `TODO:` or `[TASK]` |\n")
-	b.WriteString("| calendar emoji | `Date:` or `Schedule:` |\n")
-	b.WriteString("| clock emoji | `Time:` or `Timeout:` |\n")
-	b.WriteString("| folder emoji | `Dir:` or `Path:` |\n")
-	b.WriteString("| link emoji | `URL:` or `Ref:` |\n")
-	b.WriteString("| pencil/pen emoji | `Edit:` or `Draft:` |\n")
-	b.WriteString("| trash emoji | `Removed:` or `[DEPRECATED]` |\n")
-	b.WriteString("| recycle emoji | `Refactor:` or `Reuse:` |\n")
-	b.WriteString("| shield emoji | `Security:` or `[PROTECTED]` |\n")
-	b.WriteString("| key emoji | `Auth:` or `Credentials:` |\n")
-	b.WriteString("| electrical plug emoji | `Plugin:` or `Integration:` |\n")
-	b.WriteString("| books emoji | `Docs:` or `Reference:` |\n")
-	b.WriteString("| test tube emoji | `Test:` or `[EXPERIMENTAL]` |\n")
-	b.WriteString("| seedling/tree emoji | `[NEW]` or `[GROWING]` |\n")
-	b.WriteString("| arrow emoji (right) | `->` or `=>` |\n")
-	b.WriteString("| thumbs up emoji | `[APPROVED]` or `[ACK]` |\n")
-	b.WriteString("| thumbs down emoji | `[REJECTED]` or `[NAK]` |\n")
-	b.WriteString("| construction emoji | `[WIP]` or `Draft:` |\n\n")
-	b.WriteString("## Enforcement\n\n")
-	b.WriteString("Install once:\n\n")
-	b.WriteString("```sh\ngo install github.com/nicholashoule/demojify-sanitize/cmd/demojify@latest\n```\n\n")
-	b.WriteString("Audit (exits `1` if emoji found):\n\n")
-	b.WriteString("```sh\ndemojify\n```\n\n")
-	b.WriteString("Fix in place:\n\n")
-	b.WriteString("```sh\ndemojify -fix\n```\n")
-	return b.String()
+	return mustRenderTemplate("rules/emoji-prevention.md.tmpl", nil)
 }
 
 // backendInstructionsContent returns default content for backend.instructions.md.
 func backendInstructionsContent() string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
-	b.WriteString("# Backend Instructions\n\n")
-	b.WriteString("## API Design\n\n")
-	b.WriteString("- Follow RESTful conventions: use nouns for resources, HTTP verbs for actions\n")
-	b.WriteString("- Version APIs from the start (e.g., `/api/v1/`)\n")
-	b.WriteString("- Return consistent JSON response shapes: `{ data, error, meta }`\n")
-	b.WriteString("- Use standard HTTP status codes accurately (200, 201, 400, 401, 403, 404, 500)\n")
-	b.WriteString("- Document all endpoints in an OpenAPI/Swagger spec or equivalent\n\n")
-	b.WriteString("## Error Handling\n\n")
-	b.WriteString("- Never expose internal stack traces or system paths in API responses\n")
-	b.WriteString("- Return structured error objects with a code, message, and optional detail field\n")
-	b.WriteString("- Log errors server-side with context (request ID, user ID where applicable)\n")
-	b.WriteString("- Distinguish between client errors (4xx) and server errors (5xx)\n\n")
-	b.WriteString("## Authentication and Authorization\n\n")
-	b.WriteString("- Validate and sanitize all input at the API boundary\n")
-	b.WriteString("- Use bearer tokens or session cookies consistently -- do not mix approaches\n")
-	b.WriteString("- Check authorization before loading data, not after\n")
-	b.WriteString("- Document required permissions for each endpoint\n\n")
-	b.WriteString("## Data and Storage\n\n")
-	b.WriteString("- Use parameterized queries or ORM methods -- never string-interpolate SQL\n")
-	b.WriteString("- Keep business logic out of SQL; prefer service-layer transforms\n")
-	b.WriteString("- Handle connection errors gracefully with appropriate retries or fallback\n")
-	b.WriteString("- Document schema migrations and keep them reversible\n\n")
-	b.WriteString("## Testing\n\n")
-	b.WriteString("- Write unit tests for service and business logic in isolation\n")
-	b.WriteString("- Write integration tests for database-touching code against a test database\n")
-	b.WriteString("- Test error paths and boundary conditions, not just happy paths\n")
-	b.WriteString("- Use table-driven or data-driven tests for multiple input/output combinations\n\n")
-	b.WriteString("## Documentation\n\n")
-	b.WriteString("- Document request and response shapes with examples\n")
-	b.WriteString("- Note rate limits, authentication requirements, and pagination behavior\n")
-	b.WriteString("- Keep API docs co-located with implementation or in `docs/api/`\n")
-	b.WriteString("- Update docs in the same PR that changes the API\n")
-	return b.String()
+	return mustRenderTemplate("rules/backend.md.tmpl", nil)
 }
 
 // frontendInstructionsContent returns default content for frontend.instructions.md.
 func frontendInstructionsContent() string {
-	var b strings.Builder
-	b.WriteString("---\napplyTo: \"**\"\n---\n\n")
-	b.WriteString("# Frontend Instructions\n\n")
-	b.WriteString("## Component Structure\n\n")
-	b.WriteString("- Keep components focused on a single responsibility\n")
-	b.WriteString("- Separate presentational components from data-fetching logic\n")
-	b.WriteString("- Co-locate styles, tests, and stories with the component file\n")
-	b.WriteString("- Use consistent file naming for the framework (e.g., `ComponentName.tsx`, `ComponentName.test.tsx`)\n\n")
-	b.WriteString("## State Management\n\n")
-	b.WriteString("- Prefer local state over global state where possible\n")
-	b.WriteString("- Document the shape of shared state with types or interfaces\n")
-	b.WriteString("- Avoid prop-drilling beyond two levels -- use context or a state store\n")
-	b.WriteString("- Keep side effects isolated and clearly labeled\n\n")
-	b.WriteString("## API Integration\n\n")
-	b.WriteString("- Centralize API calls in a dedicated service or hook layer\n")
-	b.WriteString("- Handle loading, error, and empty states explicitly in UI components\n")
-	b.WriteString("- Do not hard-code base URLs -- use environment variables\n")
-	b.WriteString("- Type API responses at the boundary to catch shape mismatches early\n\n")
-	b.WriteString("## Accessibility\n\n")
-	b.WriteString("- All interactive elements must be keyboard-navigable\n")
-	b.WriteString("- Use semantic HTML elements before reaching for ARIA attributes\n")
-	b.WriteString("- Provide alt text for all images and icons\n")
-	b.WriteString("- Test with a screen reader before shipping new interactive components\n\n")
-	b.WriteString("## Testing\n\n")
-	b.WriteString("- Write unit tests for utility functions and hooks\n")
-	b.WriteString("- Write component tests for rendering and interaction logic\n")
-	b.WriteString("- Prefer testing user-visible behavior over implementation details\n")
-	b.WriteString("- Use end-to-end tests sparingly for critical user journeys\n\n")
-	b.WriteString("## Documentation\n\n")
-	b.WriteString("- Document component props with types and descriptions\n")
-	b.WriteString("- Note any setup requirements (environment variables, feature flags)\n")
-	b.WriteString("- Keep a Storybook or equivalent for shared UI components\n")
-	b.WriteString("- Link to design specs or Figma files for visual reference\n")
-	return b.String()
+	return mustRenderTemplate("rules/frontend.md.tmpl", nil)
 }
 
 // createAgentsMd creates AGENTS.md at the repository root when it does not
@@ -1225,24 +863,35 @@ func agentsMdContextSection(schema LayoutSchema) string { //nolint:gocritic // h
 	return b.String()
 }
 
-// agentsMdContent generates the content for AGENTS.md. It links to the
-// project's docs/ directory and to platform-specific instruction directories
-// present in the schema. The output must stay within the 200-line limit.
+// agentsMdTemplateData is the template data passed to agents/AGENTS.md.tmpl.
+type agentsMdTemplateData struct {
+	Root            string
+	HasInstructions bool
+	HasRules        bool
+	RulesLabel      string
+	HasAgents       bool
+	IsCopilot       bool
+	IsClaude        bool
+}
+
+// agentsMdContent generates the content for AGENTS.md from the embedded
+// agents/AGENTS.md.tmpl template. It links to the project's docs/ directory
+// and to platform-specific instruction directories present in the schema.
+// The output must stay within the 200-line limit.
 func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
-	var b strings.Builder
-	b.WriteString("# AGENTS.md\n\n")
-	b.WriteString("Agent instructions for AI coding assistants working in this repository.\n")
-	b.WriteString("See [agents.md](https://agents.md) for the open format specification.\n\n")
-
-	b.WriteString(agentsMdContextSection(schema))
-	b.WriteString("\n")
-
-	b.WriteString("## Nested Instructions\n\n")
-	b.WriteString("Place an `AGENTS.md` in any subdirectory to provide directory-scoped instructions.\n")
-	b.WriteString("Agents load the nearest `AGENTS.md` walking up to the repo root; more specific\n")
-	b.WriteString("files take precedence over less specific ones.\n\n")
-
-	return b.String()
+	_, hasInstructions := schema.Dirs["instructions"]
+	_, hasRules := schema.Dirs["rules"]
+	_, hasAgents := schema.Dirs["agents"]
+	data := agentsMdTemplateData{
+		Root:            schema.Root,
+		HasInstructions: hasInstructions,
+		HasRules:        hasRules,
+		RulesLabel:      rulesLabel(schema.Root),
+		HasAgents:       hasAgents,
+		IsCopilot:       schema.Root == ".github",
+		IsClaude:        schema.Root == ".claude",
+	}
+	return mustRenderTemplate("agents/AGENTS.md.tmpl", data)
 }
 
 // createDefaultConfigAll creates repogov-config.json at root with the full
