@@ -1014,16 +1014,19 @@ func TestResolveRoot_AutoDetect(t *testing.T) {
 	}
 
 	got := resolveRoot(".")
-	// On macOS, t.TempDir() may return a path under a symlink (e.g.
-	// /var/folders/…) while os.Getwd() returns the real path
-	// (/private/var/folders/…). Canonicalize the expected value so the
-	// comparison is symlink-agnostic.
-	wantRoot := repoRoot
-	if real, err := filepath.EvalSymlinks(repoRoot); err == nil {
-		wantRoot = real
+	// On macOS, t.TempDir() returns a symlinked path (/var/folders/…) while
+	// os.Getwd() returns the real path (/private/var/folders/…). Use
+	// os.SameFile for an inode-level comparison that is symlink-agnostic.
+	gotInfo, err1 := os.Stat(got)
+	wantInfo, err2 := os.Stat(repoRoot)
+	if err1 != nil {
+		t.Fatalf("resolveRoot returned unstat-able path %q: %v", got, err1)
 	}
-	if got != wantRoot {
-		t.Errorf("resolveRoot(\".\") = %q, want %q", got, wantRoot)
+	if err2 != nil {
+		t.Fatalf("stat repoRoot %q: %v", repoRoot, err2)
+	}
+	if !os.SameFile(gotInfo, wantInfo) {
+		t.Errorf("resolveRoot(\".\") = %q, want same directory as %q", got, repoRoot)
 	}
 }
 
