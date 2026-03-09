@@ -1,0 +1,21 @@
+# CLAUDE.md
+
+Project-level instructions for Claude Code in this repository.
+
+## Context
+
+- Project overview: [README.md](../README.md)
+- Extended documentation: [docs/](../docs/)
+- Scoped rule files: [.claude/rules/](rules/)
+- Subagent definitions: [.claude/agents/](agents/)
+
+## Repository Conventions
+
+- Follow existing code style and patterns
+- Keep files within configured line limits
+- Write tests for new functionality
+
+## Repository Commands
+
+Run checks: `go run ./cmd/repogov -agent claude`
+Re-scaffold missing files: `go run ./cmd/repogov -agent claude init`

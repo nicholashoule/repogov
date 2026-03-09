@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-03-08
+
+### Added
+
+- Fix LICENSE, APPENDIX: How to apply the Apache License to your work.
+- Embedded template system: `mustReadTemplate` + `embed.FS` in `init.go` replace all inline string-concatenation content builders. Template files live under `templates/` and are embedded at compile time, keeping generated file content fully auditable and diff-friendly.
+- `templates/agents/` subdirectory for agent root files: `AGENTS.md.tmpl`, `CLAUDE.md.tmpl`, `copilot-instructions.md.tmpl`.
+- `templates/rules/` subdirectory for scoped rule templates: `backend.md.tmpl`, `codereview.md.tmpl`, `emoji-prevention.md.tmpl`, `frontend.md.tmpl`, `general.md.tmpl`, `governance.md.tmpl`, `library.md.tmpl`, `repo.md.tmpl`, `testing.md.tmpl`.
+- `agentsMdTemplateData` struct — typed data passed to `agents/AGENTS.md.tmpl`, enabling conditional sections (`HasRules`, `HasInstructions`, `IsCopilot`, `IsClaude`, etc.) without Go code changes.
+- All template files use the `.md.tmpl` extension consistently, including previously static `.md` files, so any file is ready for `{{...}}` directives without a rename.
+
+### Changed
+
+- All `*Content()` helper functions in `init.go` (`agentsMdContent`, `claudeMdContent`, `copilotInstructionsContent`, `governanceInstructionsContent`, and all rule-file helpers) now delegate to `mustReadTemplate` rather than building output with `strings.Builder`.
+- Template files organized into `templates/agents/` (one-per-agent root files) and `templates/rules/` (granular rule files seeded into platform `rules/` directories). Adding a new agent or rule requires only a new template file, not a Go code change.
+
+### Fixed
+
+- `*.tmpl` added to `.gitattributes` text/LF normalization rules so template line endings are consistent across platforms.
+- Removed duplicate `temp*` entry from `.gitignore`.
+
 ## [v0.2.0] - 2026-03-08
 
 ### Added
@@ -50,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/nicholashoule/repogov/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/nicholashoule/repogov/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/nicholashoule/repogov/releases/tag/v0.1.0

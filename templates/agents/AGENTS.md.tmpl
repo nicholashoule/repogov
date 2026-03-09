@@ -1,0 +1,30 @@
+# AGENTS.md
+
+Agent instructions for AI coding assistants working in this repository.
+See [agents.md](https://agents.md) for the open format specification.
+
+## Context
+
+- Project overview: [README.md](README.md)
+- Extended documentation: [docs/](docs/)
+{{- if .HasInstructions}}
+- Scoped instruction files: [{{.Root}}/instructions/]({{.Root}}/instructions/) (`applyTo` frontmatter)
+{{- end}}
+{{- if .HasRules}}
+- {{.RulesLabel}}: [{{.Root}}/rules/]({{.Root}}/rules/)
+{{- end}}
+{{- if .HasAgents}}
+- Agent definitions: [{{.Root}}/agents/]({{.Root}}/agents/)
+{{- end}}
+{{- if .IsCopilot}}
+- Copilot repo-wide context: [{{.Root}}/copilot-instructions.md]({{.Root}}/copilot-instructions.md)
+{{- end}}
+{{- if .IsClaude}}
+- Claude repo-wide context: [{{.Root}}/CLAUDE.md]({{.Root}}/CLAUDE.md)
+{{- end}}
+
+## Nested Instructions
+
+Place an `AGENTS.md` in any subdirectory to provide directory-scoped instructions.
+Agents load the nearest `AGENTS.md` walking up to the repo root; more specific
+files take precedence over less specific ones.
