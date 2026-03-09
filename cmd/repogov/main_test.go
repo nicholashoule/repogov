@@ -299,10 +299,15 @@ func TestRunLayout_JSON_Fail(t *testing.T) {
 }
 
 func TestRunLayout_GitLab(t *testing.T) {
-	// "gitlab" is not a supported agent in this build; expect exit 2.
+	// .gitlab/ exists with optional CODEOWNERS and template dirs.
+	root := writeTempDir(t, map[string]string{
+		".gitlab/issue_templates/.gitkeep":         "",
+		".gitlab/merge_request_templates/.gitkeep": "",
+		".gitlab/CODEOWNERS":                       "* @team\n",
+	})
 	stdout, stderr := bufs()
-	if code := runLayout(t.TempDir(), "gitlab", true, false, stdout, stderr); code != 2 {
-		t.Fatalf("expected 2 for unknown agent, got %d (stderr: %s)", code, stderr.String())
+	if code := runLayout(root, "gitlab", true, false, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
 }
 
@@ -484,10 +489,13 @@ func TestRunInit_CreatesLayout(t *testing.T) {
 }
 
 func TestRunInit_GitLab(t *testing.T) {
-	// "gitlab" is not a supported agent; expect exit 2.
+	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "", "gitlab", true, false, false, stdout, stderr); code != 2 {
-		t.Fatalf("expected 2 for unknown agent, got %d (stderr: %s)", code, stderr.String())
+	if code := runInit(root, "", "gitlab", true, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, ".gitlab")); err != nil {
+		t.Fatalf(".gitlab not created: %v", err)
 	}
 }
 

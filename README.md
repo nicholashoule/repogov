@@ -1,14 +1,14 @@
 # repogov
 
-A dependency-free Go library and CLI for repository governance: enforce file-length limits and validate or scaffold AI-agent-ready directory layouts for Copilot, Cursor, Windsurf, and Claude.
+A dependency-free Go library and CLI for repository governance: enforce file-length limits and validate or scaffold AI-agent-ready directory layouts for Copilot, Cursor, Windsurf, Claude, GitLab, and common repository root conventions.
 
 ## Features
 
 - **Line-count limits** -- configurable per-file, per-glob, and default
   limits with PASS/WARN/FAIL/SKIP classification
 - **Layout governance** -- schema-based validation of `.github/`, `.cursor/`,
-  `.windsurf/`, and `.claude/` directory structure
-- **Platform presets** -- built-in rules for Copilot, Cursor, Windsurf, and Claude conventions
+  `.windsurf/`, `.claude/`, `.gitlab/`, and repository root directory structure
+- **Platform presets** -- built-in rules for Copilot, Cursor, Windsurf, Claude, GitLab, and root conventions
 - **Zero dependencies** -- pure stdlib, no external imports
 - **Cross-platform** -- works on Windows, Linux, and macOS
 
@@ -135,7 +135,12 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `InitLayoutAllWithConfig(root, schemas, cfg)` | init.go | Multi-schema scaffold with config options |
 | `CheckLayout(root, schema)` | layout.go | Validate directory structure |
 | `CheckLayoutContext(ctx, root, schema)` | layout.go | Context-aware layout check |
-| `DefaultCopilotLayout()` | presets.go | GitHub Copilot .github/ preset |
+| `DefaultCopilotLayout()` | presets.go | GitHub Copilot `.github/` preset |
+| `DefaultCursorLayout()` | presets.go | Cursor AI `.cursor/` preset |
+| `DefaultWindsurfLayout()` | presets.go | Windsurf `.windsurf/` preset |
+| `DefaultClaudeLayout()` | presets.go | Claude Code `.claude/` preset |
+| `DefaultGitLabLayout()` | presets.go | GitLab `.gitlab/` preset |
+| `DefaultRootLayout()` | presets.go | Repository root layout preset |
 | `Passed(results)` | format.go | Check if all results pass |
 | `Summary(results)` | format.go | Human-readable limit summary |
 | `LayoutPassed(results)` | format.go | Check if all layout results pass |
@@ -159,7 +164,7 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `-config` | auto-discovered | Path to JSON or YAML config file (searched in repo root then `.github/`) |
 | `-root` | `.` | Repository root directory |
 | `-exts` | from config | Comma-separated extension filter override; use `all` to scan every file type (default read from `include_exts` in config) |
-| `-agent` | | Agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `all`, or comma-separated list |
+| `-agent` | | Agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `gitlab`, `root`, `all`, or comma-separated list |
 | `-quiet` | `false` | Suppress output; exit code only |
 | `-json` | `false` | Output results as JSON |
 

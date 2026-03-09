@@ -4,7 +4,8 @@
 
 repogov is a dependency-free Go library and CLI for auditing repository
 file lengths and directory layout conventions. It helps teams enforce
-consistent structure across Copilot, Cursor, Windsurf, and Claude repositories.
+consistent structure across Copilot, Cursor, Windsurf, Claude, GitLab,
+and standard repository root conventions.
 
 ## Architecture
 
@@ -14,7 +15,9 @@ The library is split into two orthogonal concerns:
    limits that classify files as PASS, WARN, FAIL, or SKIP.
 
 2. **Layout governance** -- schema-based validation of directory structure
-   using preset rules for GitHub (.github/), Cursor (.cursor/), Windsurf (.windsurf/), and Claude (.claude/).
+   using preset rules for GitHub (`.github/`), Cursor (`.cursor/`), Windsurf
+   (`.windsurf/`), Claude (`.claude/`), GitLab (`.gitlab/`), and the repository
+   root (`.`).
 
 Both concerns produce structured results that can be consumed
 programmatically or formatted for human-readable output.
@@ -25,7 +28,7 @@ programmatically or formatted for human-readable output.
 repogov.go      -- Core types: Status, Config, Rule, Result
 check.go        -- CountLines, CheckFile, CheckDir, CheckDirContext
 layout.go       -- LayoutSchema, CheckLayout, CheckLayoutContext
-presets.go       -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout, DefaultClaudeLayout
+presets.go       -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout, DefaultClaudeLayout, DefaultGitLabLayout, DefaultRootLayout
 config.go        -- LoadConfig, SaveConfig (JSON)
 format.go        -- Summary, Passed, LayoutSummary, LayoutPassed
 cmd/repogov/     -- CLI with limits/layout/all/version subcommands
@@ -66,8 +69,12 @@ A `LayoutSchema` defines:
 - Directory rules (glob patterns and minimum file counts)
 - Naming conventions (case rules with exceptions)
 
-Presets are provided for Copilot, Cursor, Windsurf, and Claude; custom schemas can be
-constructed programmatically.
+Presets are provided for Copilot, Cursor, Windsurf, Claude, GitLab, and the
+repository root; custom schemas can be constructed programmatically.
+
+`root` is intentionally excluded from the `all` expansion — root layout
+is project-structure-specific and would generate unexpected-file noise for
+projects with non-standard top-level directories.
 
 ## Status Classification
 
@@ -88,7 +95,7 @@ Flags:
   -config    Path to JSON/YAML config (default: auto-discovered)
   -root      Repository root (default: .)
   -exts      Extension filter (e.g., .go,.md)
-  -agent     Agent preset: copilot, cursor, windsurf, claude, or all
+  -agent     Agent preset: copilot, cursor, windsurf, claude, gitlab, root, or all
   -quiet     Exit code only
   -json      JSON output
 ```

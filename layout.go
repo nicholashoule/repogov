@@ -42,6 +42,10 @@ type DirRule struct {
 
 	// Description is a human-readable purpose for the directory.
 	Description string `json:"description"`
+
+	// NoCreate prevents this directory from being created by 'repogov init'.
+	// The directory is still recognised and checked by layout commands.
+	NoCreate bool `json:"no_create,omitempty"`
 }
 
 // NamingRule enforces filename conventions within a [LayoutSchema].
@@ -132,6 +136,10 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		default:
 		}
 		if d.IsDir() {
+			// Never walk git internals regardless of schema.
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		relPath, err := filepath.Rel(layoutDir, path)
