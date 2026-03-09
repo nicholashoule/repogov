@@ -1014,8 +1014,16 @@ func TestResolveRoot_AutoDetect(t *testing.T) {
 	}
 
 	got := resolveRoot(".")
-	if got != repoRoot {
-		t.Errorf("resolveRoot(\".\") = %q, want %q", got, repoRoot)
+	// On macOS, t.TempDir() may return a path under a symlink (e.g.
+	// /var/folders/…) while os.Getwd() returns the real path
+	// (/private/var/folders/…). Canonicalize the expected value so the
+	// comparison is symlink-agnostic.
+	wantRoot := repoRoot
+	if real, err := filepath.EvalSymlinks(repoRoot); err == nil {
+		wantRoot = real
+	}
+	if got != wantRoot {
+		t.Errorf("resolveRoot(\".\") = %q, want %q", got, wantRoot)
 	}
 }
 
