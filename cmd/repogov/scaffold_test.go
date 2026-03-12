@@ -160,17 +160,17 @@ func TestScaffold_Copilot_Init(t *testing.T) {
 	ciPath := filepath.Join(root, ".github", "copilot-instructions.md")
 	assertFileExists(t, ciPath)
 	assertFileContains(t, ciPath, "# Copilot Instructions")
-	assertFileContains(t, ciPath, "Scoped Instructions")
+	assertFileContains(t, ciPath, "## Context")
 	assertFileContains(t, ciPath, "File Constraints")
-	assertFileContains(t, ciPath, "File Naming Conventions")
-	assertFileContains(t, ciPath, "Repository Conventions")
+	assertFileContains(t, ciPath, "Repository Commands")
+	assertFileContains(t, ciPath, "-agent copilot")
 
 	// Default naming convention (DescriptiveNames=false): all templates seeded
 	// as plain <name>.md files into rules/.
 	for _, name := range []string{
 		"general.md", "codereview.md", "governance.md",
 		"library.md", "testing.md", "emoji-prevention.md",
-		"backend.md", "frontend.md", "repo.md",
+		"backend.md", "frontend.md", "security.md", "repo.md",
 	} {
 		p := filepath.Join(root, ".github", "rules", name)
 		assertFileExists(t, p)
@@ -418,6 +418,178 @@ func TestScaffold_Claude_Init(t *testing.T) {
 }
 
 // -------------------------------------------------------------------
+// Kiro
+// -------------------------------------------------------------------
+
+func TestScaffold_Kiro_Init(t *testing.T) {
+	root := scaffoldDir(t, "kiro")
+	stdout, stderr := bufs()
+
+	if code := runInit(root, "", "kiro", false, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runInit kiro: exit %d\nstderr: %s", code, stderr.String())
+	}
+
+	assertDirExists(t, filepath.Join(root, ".kiro"))
+	assertDirExists(t, filepath.Join(root, ".kiro", "steering"))
+
+	// general.md must be seeded into steering/.
+	mdPath := filepath.Join(root, ".kiro", "steering", "general.md")
+	assertFileExists(t, mdPath)
+	assertFileContains(t, mdPath, "# General Instructions")
+
+	agPath := filepath.Join(root, "AGENTS.md")
+	assertFileExists(t, agPath)
+	assertFileContains(t, agPath, ".kiro/steering/")
+	assertFileNotContains(t, agPath, "copilot-instructions.md")
+	assertFileNotContains(t, agPath, ".cursor/")
+
+	if code := runLayout(root, "kiro", false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runLayout kiro after init: exit %d\nstdout: %s", code, stdout.String())
+	}
+}
+
+// -------------------------------------------------------------------
+// Gemini
+// -------------------------------------------------------------------
+
+func TestScaffold_Gemini_Init(t *testing.T) {
+	root := scaffoldDir(t, "gemini")
+	stdout, stderr := bufs()
+
+	if code := runInit(root, "", "gemini", false, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runInit gemini: exit %d\nstderr: %s", code, stderr.String())
+	}
+
+	// GEMINI.md must be created at root with {{.Agent}} rendered.
+	geminiPath := filepath.Join(root, "GEMINI.md")
+	assertFileExists(t, geminiPath)
+	assertFileContains(t, geminiPath, "# GEMINI.md")
+	assertFileContains(t, geminiPath, "## Context")
+	assertFileContains(t, geminiPath, "-agent gemini")
+	assertFileNotContains(t, geminiPath, "{{.Agent}}")
+
+	agPath := filepath.Join(root, "AGENTS.md")
+	assertFileExists(t, agPath)
+	assertFileContains(t, agPath, "GEMINI.md")
+	assertFileNotContains(t, agPath, "copilot-instructions.md")
+
+	if code := runLayout(root, "gemini", false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runLayout gemini after init: exit %d\nstdout: %s", code, stdout.String())
+	}
+}
+
+// -------------------------------------------------------------------
+// Continue
+// -------------------------------------------------------------------
+
+func TestScaffold_Continue_Init(t *testing.T) {
+	root := scaffoldDir(t, "continue")
+	stdout, stderr := bufs()
+
+	if code := runInit(root, "", "continue", false, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runInit continue: exit %d\nstderr: %s", code, stderr.String())
+	}
+
+	assertDirExists(t, filepath.Join(root, ".continue"))
+	assertDirExists(t, filepath.Join(root, ".continue", "rules"))
+
+	mdPath := filepath.Join(root, ".continue", "rules", "general.md")
+	assertFileExists(t, mdPath)
+	assertFileContains(t, mdPath, "# General Instructions")
+
+	agPath := filepath.Join(root, "AGENTS.md")
+	assertFileExists(t, agPath)
+	assertFileContains(t, agPath, ".continue/rules/")
+	assertFileNotContains(t, agPath, "copilot-instructions.md")
+
+	if code := runLayout(root, "continue", false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runLayout continue after init: exit %d\nstdout: %s", code, stdout.String())
+	}
+}
+
+// -------------------------------------------------------------------
+// Cline
+// -------------------------------------------------------------------
+
+func TestScaffold_Cline_Init(t *testing.T) {
+	root := scaffoldDir(t, "cline")
+	stdout, stderr := bufs()
+
+	if code := runInit(root, "", "cline", false, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runInit cline: exit %d\nstderr: %s", code, stderr.String())
+	}
+
+	assertDirExists(t, filepath.Join(root, ".clinerules"))
+
+	agPath := filepath.Join(root, "AGENTS.md")
+	assertFileExists(t, agPath)
+	assertFileContains(t, agPath, ".clinerules/")
+	assertFileNotContains(t, agPath, "copilot-instructions.md")
+
+	if code := runLayout(root, "cline", false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runLayout cline after init: exit %d\nstdout: %s", code, stdout.String())
+	}
+}
+
+// -------------------------------------------------------------------
+// Roo Code
+// -------------------------------------------------------------------
+
+func TestScaffold_RooCode_Init(t *testing.T) {
+	root := scaffoldDir(t, "roocode")
+	stdout, stderr := bufs()
+
+	if code := runInit(root, "", "roocode", false, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runInit roocode: exit %d\nstderr: %s", code, stderr.String())
+	}
+
+	assertDirExists(t, filepath.Join(root, ".roo"))
+	assertDirExists(t, filepath.Join(root, ".roo", "rules"))
+
+	mdPath := filepath.Join(root, ".roo", "rules", "general.md")
+	assertFileExists(t, mdPath)
+	assertFileContains(t, mdPath, "# General Instructions")
+
+	agPath := filepath.Join(root, "AGENTS.md")
+	assertFileExists(t, agPath)
+	assertFileContains(t, agPath, ".roo/rules/")
+	assertFileNotContains(t, agPath, "copilot-instructions.md")
+
+	if code := runLayout(root, "roocode", false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runLayout roocode after init: exit %d\nstdout: %s", code, stdout.String())
+	}
+}
+
+// -------------------------------------------------------------------
+// JetBrains
+// -------------------------------------------------------------------
+
+func TestScaffold_JetBrains_Init(t *testing.T) {
+	root := scaffoldDir(t, "jetbrains")
+	stdout, stderr := bufs()
+
+	if code := runInit(root, "", "jetbrains", false, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runInit jetbrains: exit %d\nstderr: %s", code, stderr.String())
+	}
+
+	assertDirExists(t, filepath.Join(root, ".aiassistant"))
+	assertDirExists(t, filepath.Join(root, ".aiassistant", "rules"))
+
+	mdPath := filepath.Join(root, ".aiassistant", "rules", "general.md")
+	assertFileExists(t, mdPath)
+	assertFileContains(t, mdPath, "# General Instructions")
+
+	agPath := filepath.Join(root, "AGENTS.md")
+	assertFileExists(t, agPath)
+	assertFileContains(t, agPath, ".aiassistant/rules/")
+	assertFileNotContains(t, agPath, "copilot-instructions.md")
+
+	if code := runLayout(root, "jetbrains", false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runLayout jetbrains after init: exit %d\nstdout: %s", code, stdout.String())
+	}
+}
+
+// -------------------------------------------------------------------
 // All platforms
 // -------------------------------------------------------------------
 
@@ -435,6 +607,11 @@ func TestScaffold_All_Init(t *testing.T) {
 		".cursor", ".cursor/rules",
 		".windsurf", ".windsurf/rules",
 		".claude", ".claude/rules", ".claude/agents",
+		".kiro", ".kiro/steering",
+		".continue", ".continue/rules",
+		".clinerules",
+		".roo", ".roo/rules",
+		".aiassistant", ".aiassistant/rules",
 	} {
 		assertDirExists(t, filepath.Join(root, filepath.FromSlash(dir)))
 	}
@@ -451,6 +628,11 @@ func TestScaffold_All_Init(t *testing.T) {
 	assertFileExists(t, filepath.Join(root, ".windsurf", "rules", "general.md"))
 	assertFileExists(t, filepath.Join(root, ".claude", "CLAUDE.md"))
 	assertFileExists(t, filepath.Join(root, ".claude", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".kiro", "steering", "general.md"))
+	assertFileExists(t, filepath.Join(root, "GEMINI.md"))
+	assertFileExists(t, filepath.Join(root, ".continue", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".roo", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".aiassistant", "rules", "general.md"))
 
 	// AGENTS.md must contain context links for every platform.
 	agPath := filepath.Join(root, "AGENTS.md")
@@ -464,6 +646,12 @@ func TestScaffold_All_Init(t *testing.T) {
 		".claude/rules/",
 		".claude/agents/",
 		".claude/CLAUDE.md",
+		".kiro/steering/",
+		"GEMINI.md",
+		".continue/rules/",
+		".clinerules/",
+		".roo/rules/",
+		".aiassistant/rules/",
 	}
 	for _, link := range wantLinks {
 		assertFileContains(t, agPath, link)
@@ -478,6 +666,12 @@ func TestScaffold_All_Init(t *testing.T) {
 		"- Claude rule files: [.claude/rules/](.claude/rules/)",
 		"- Agent definitions: [.claude/agents/](.claude/agents/)",
 		"- Claude repo-wide context: [.claude/CLAUDE.md](.claude/CLAUDE.md)",
+		"- Kiro steering files: [.kiro/steering/](.kiro/steering/)",
+		"- Gemini repo-wide context: [GEMINI.md](GEMINI.md)",
+		"- Continue rule files: [.continue/rules/](.continue/rules/)",
+		"- Cline rule files: [.clinerules/](.clinerules/)",
+		"- Roo Code rule files: [.roo/rules/](.roo/rules/)",
+		"- JetBrains rule files: [.aiassistant/rules/](.aiassistant/rules/)",
 	}
 	data, _ := os.ReadFile(agPath)
 	content := string(data)
@@ -491,7 +685,7 @@ func TestScaffold_All_Init(t *testing.T) {
 	assertFileContains(t, agPath, "## Nested Instructions")
 
 	// Layout must pass for every platform.
-	for _, platform := range []string{"copilot", "cursor", "windsurf", "claude"} {
+	for _, platform := range []string{"copilot", "cursor", "windsurf", "claude", "kiro", "gemini", "continue", "cline", "roocode", "jetbrains"} {
 		stdout.Reset()
 		if code := runLayout(root, platform, false, false, stdout, stderr); code != 0 {
 			t.Errorf("runLayout %s after all-init: exit %d\nstdout: %s", platform, code, stdout.String())
@@ -517,6 +711,12 @@ func TestScaffold_Idempotent(t *testing.T) {
 		{"cursor"},
 		{"windsurf"},
 		{"claude"},
+		{"kiro"},
+		{"gemini"},
+		{"continue"},
+		{"cline"},
+		{"roocode"},
+		{"jetbrains"},
 		{"all"},
 	}
 	for _, tc := range tests {
@@ -1078,6 +1278,48 @@ func TestScaffold_AgentsMd_ContextLinks(t *testing.T) {
 			agent:       "claude",
 			mustHave:    []string{"README.md", "docs/", ".claude/rules/", ".claude/agents/"},
 			mustNotHave: []string{"copilot-instructions.md", ".github/instructions/", ".cursor/", ".windsurf/"},
+		},
+		{
+			agent:    "kiro",
+			mustHave: []string{"README.md", "docs/", ".kiro/steering/"},
+			mustNotHave: []string{
+				"copilot-instructions.md", ".cursor/", ".claude/",
+			},
+		},
+		{
+			agent:    "gemini",
+			mustHave: []string{"README.md", "docs/", "GEMINI.md"},
+			mustNotHave: []string{
+				"copilot-instructions.md", ".cursor/", ".claude/",
+			},
+		},
+		{
+			agent:    "continue",
+			mustHave: []string{"README.md", "docs/", ".continue/rules/"},
+			mustNotHave: []string{
+				"copilot-instructions.md", ".cursor/", ".claude/",
+			},
+		},
+		{
+			agent:    "cline",
+			mustHave: []string{"README.md", "docs/", ".clinerules/"},
+			mustNotHave: []string{
+				"copilot-instructions.md", ".cursor/", ".claude/",
+			},
+		},
+		{
+			agent:    "roocode",
+			mustHave: []string{"README.md", "docs/", ".roo/rules/"},
+			mustNotHave: []string{
+				"copilot-instructions.md", ".cursor/", ".claude/",
+			},
+		},
+		{
+			agent:    "jetbrains",
+			mustHave: []string{"README.md", "docs/", ".aiassistant/rules/"},
+			mustNotHave: []string{
+				"copilot-instructions.md", ".cursor/", ".claude/",
+			},
 		},
 	}
 	for _, tc := range tests {

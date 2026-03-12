@@ -108,7 +108,7 @@ Examples:
 	fs.StringVar(&configPath, "config", "", "path to config file (JSON or YAML; auto-discovered if omitted)")
 	fs.StringVar(&root, "root", ".", "repository root directory")
 	fs.StringVar(&exts, "exts", "", "comma-separated extension filter override (default: from config include_exts; use \"all\" to scan every file type)")
-	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, root, all, or comma-separated list (required for init)")
+	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, kiro, gemini, continue, cline, roocode, jetbrains, root, all, or comma-separated list (required for init)")
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
@@ -339,6 +339,18 @@ func filterConfigInfos(root string, results []repogov.LayoutResult) []repogov.La
 	return filtered
 }
 
+// anyRequiredFileExists reports whether at least one of the given required
+// files exists under root. Used to decide whether a file-only schema
+// (Root == ".") should be included in an "all" layout run.
+func anyRequiredFileExists(root string, required []string) bool {
+	for _, f := range required {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(f))); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // platformEntry pairs a platform name with its layout schema.
 type platformEntry struct {
 	name   string
@@ -350,7 +362,7 @@ type platformEntry struct {
 // keyword; it is handled separately in run.
 func isKnownAgentName(s string) bool {
 	switch strings.ToLower(s) {
-	case "copilot", "cursor", "windsurf", "claude", "gitlab", "root":
+	case "copilot", "cursor", "windsurf", "claude", "gitlab", "kiro", "gemini", "continue", "cline", "roocode", "jetbrains", "root":
 		return true
 	}
 	return false
@@ -364,6 +376,12 @@ func allPlatformSchemas() []platformEntry {
 		{"windsurf", repogov.DefaultWindsurfLayout()},
 		{"claude", repogov.DefaultClaudeLayout()},
 		{"gitlab", repogov.DefaultGitLabLayout()},
+		{"kiro", repogov.DefaultKiroLayout()},
+		{"gemini", repogov.DefaultGeminiLayout()},
+		{"continue", repogov.DefaultContinueLayout()},
+		{"cline", repogov.DefaultClineLayout()},
+		{"roocode", repogov.DefaultRooCodeLayout()},
+		{"jetbrains", repogov.DefaultJetBrainsLayout()},
 	}
 }
 
@@ -381,12 +399,24 @@ func resolvePlatform(platform string) (repogov.LayoutSchema, string) {
 		return repogov.DefaultClaudeLayout(), ""
 	case "gitlab":
 		return repogov.DefaultGitLabLayout(), ""
+	case "kiro":
+		return repogov.DefaultKiroLayout(), ""
+	case "gemini":
+		return repogov.DefaultGeminiLayout(), ""
+	case "continue":
+		return repogov.DefaultContinueLayout(), ""
+	case "cline":
+		return repogov.DefaultClineLayout(), ""
+	case "roocode":
+		return repogov.DefaultRooCodeLayout(), ""
+	case "jetbrains":
+		return repogov.DefaultJetBrainsLayout(), ""
 	case "root":
 		return repogov.DefaultRootLayout(), ""
 	case "all":
 		return repogov.LayoutSchema{}, ""
 	}
-	return repogov.LayoutSchema{}, "unknown agent: " + platform + " (use copilot, cursor, windsurf, claude, gitlab, root, or all)"
+	return repogov.LayoutSchema{}, "unknown agent: " + platform + " (use copilot, cursor, windsurf, claude, gitlab, kiro, gemini, continue, cline, roocode, jetbrains, root, or all)"
 }
 
 func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
@@ -399,7 +429,12 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 				p := &platforms[i]
 				// Skip platforms whose root directory is absent (same as text path).
 				platformRoot := filepath.Join(root, filepath.FromSlash(p.schema.Root))
-				if _, statErr := os.Stat(platformRoot); os.IsNotExist(statErr) {
+				if p.schema.Root == "." {
+					// File-only schemas (e.g. Gemini): skip when no required file exists.
+					if !anyRequiredFileExists(root, p.schema.Required) {
+						continue
+					}
+				} else if _, statErr := os.Stat(platformRoot); os.IsNotExist(statErr) {
 					continue
 				}
 				results, err := repogov.CheckLayout(root, p.schema)
@@ -424,7 +459,12 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 			// Repos that only implement a subset of platforms should not fail
 			// for platforms they haven't adopted.
 			platformRoot := filepath.Join(root, filepath.FromSlash(p.schema.Root))
-			if _, statErr := os.Stat(platformRoot); os.IsNotExist(statErr) {
+			if p.schema.Root == "." {
+				// File-only schemas (e.g. Gemini): skip when no required file exists.
+				if !anyRequiredFileExists(root, p.schema.Required) {
+					continue
+				}
+			} else if _, statErr := os.Stat(platformRoot); os.IsNotExist(statErr) {
 				continue
 			}
 			results, err := repogov.CheckLayout(root, p.schema)

@@ -22,6 +22,15 @@ See [agents.md](https://agents.md) for the open format specification.
 {{- if .IsClaude}}
 - Claude repo-wide context: [{{.Root}}/CLAUDE.md]({{.Root}}/CLAUDE.md)
 {{- end}}
+{{- if .HasSteering}}
+- {{.RulesLabel}}: [{{.Root}}/steering/]({{.Root}}/steering/)
+{{- end}}
+{{- if .HasRootRules}}
+- {{.RulesLabel}}: [{{.Root}}/]({{.Root}}/)
+{{- end}}
+{{- if .IsGemini}}
+- Gemini repo-wide context: [GEMINI.md](GEMINI.md)
+{{- end}}
 
 ## Nested Instructions
 

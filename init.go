@@ -247,6 +247,11 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		if schema.Root == ".claude" && req == "CLAUDE.md" {
 			continue
 		}
+		// GEMINI.md is handled by createGeminiMd below with purpose-built
+		// content; skip it here.
+		if schema.Root == "." && req == "GEMINI.md" {
+			continue
+		}
 		filePath := filepath.Join(layoutDir, filepath.FromSlash(req))
 
 		// Ensure parent directory exists.
@@ -281,6 +286,20 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 			return created, err
 		}
 		created = append(created, paths...)
+	}
+
+	// Create GEMINI.md for Gemini schemas when it doesn't already exist.
+	if schema.Root == "." {
+		for _, req := range schema.Required {
+			if req == "GEMINI.md" {
+				paths, err := createGeminiMd(root)
+				if err != nil {
+					return created, err
+				}
+				created = append(created, paths...)
+				break
+			}
+		}
 	}
 
 	// Create repogov-config.json with sensible defaults when it doesn't
@@ -321,12 +340,14 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 			}
 		}
 	} else {
-		if _, ok := schema.Dirs["rules"]; ok {
-			paths, err := createDefaultInstructions(root, layoutDir, schema, opts, "rules")
-			if err != nil {
-				return created, err
+		for _, seedDir := range []string{"rules", "steering"} {
+			if _, ok := schema.Dirs[seedDir]; ok {
+				paths, err := createDefaultInstructions(root, layoutDir, schema, opts, seedDir)
+				if err != nil {
+					return created, err
+				}
+				created = append(created, paths...)
 			}
-			created = append(created, paths...)
 		}
 	}
 
@@ -381,10 +402,12 @@ func copilotInstructionsContent(schema LayoutSchema, descriptive bool) string { 
 		Root            string
 		InstructionsDir string
 		NamingHint      string
+		Agent           string
 	}{
 		Root:            schema.Root,
 		InstructionsDir: instrDir,
 		NamingHint:      namingHint,
+		Agent:           schemaRootToAgent(schema.Root),
 	}
 	return mustRenderTemplate("agents/copilot-instructions.md.tmpl", data)
 }
@@ -396,7 +419,7 @@ func createClaudeMd(layoutDir string, schema LayoutSchema) ([]string, error) { /
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		return nil, nil
 	}
-	content := claudeMdContent(schemaRootToAgent(schema.Root))
+	content := claudeMdContent(schemaRootToAgent(schema.Root), schema.Root)
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
@@ -405,8 +428,34 @@ func createClaudeMd(layoutDir string, schema LayoutSchema) ([]string, error) { /
 
 // claudeMdContent returns the default content for .claude/CLAUDE.md rendered
 // from the embedded template. agent is the CLI agent name (e.g. "claude").
-func claudeMdContent(agent string) string {
-	return mustRenderTemplate("agents/CLAUDE.md.tmpl", struct{ Agent string }{agent})
+// root is the schema root directory (e.g. ".claude").
+func claudeMdContent(agent, root string) string {
+	return mustRenderTemplate("agents/CLAUDE.md.tmpl", struct {
+		Agent string
+		Root  string
+	}{agent, root})
+}
+
+// createGeminiMd creates GEMINI.md at the repository root with a default
+// template when it doesn't already exist. Returns the list of created paths.
+func createGeminiMd(root string) ([]string, error) {
+	filePath := filepath.Join(root, "GEMINI.md")
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		return nil, nil
+	}
+	content := geminiMdContent()
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+		return nil, err
+	}
+	return []string{"GEMINI.md"}, nil
+}
+
+// geminiMdContent returns the default content for GEMINI.md rendered from
+// the embedded template.
+func geminiMdContent() string {
+	return mustRenderTemplate("agents/GEMINI.md.tmpl", struct {
+		Agent string
+	}{"gemini"})
 }
 
 // dirIsNew returns true if the directory does not yet exist.
@@ -498,15 +547,21 @@ func detectConfigRelFrom(root, fromDir string) (name, relPath string) {
 // within the 300-line limit for .github/instructions/*.md.
 // governance.instructions.md is handled separately in createDefaultInstructions
 // because its content depends on which config file exists at init time.
-var defaultInstructionFiles = map[string]func() string{
-	"general.instructions.md":          generalInstructionsContent,
-	"codereview.instructions.md":       codereviewInstructionsContent,
-	"library.instructions.md":          libraryInstructionsContent,
-	"testing.instructions.md":          testingInstructionsContent,
-	"emoji-prevention.instructions.md": emojiPreventionInstructionsContent,
-	"backend.instructions.md":          backendInstructionsContent,
-	"frontend.instructions.md":         frontendInstructionsContent,
-	"repo.instructions.md":             repoInstructionsContent,
+// defaultInstructionFilesFor returns the map of template names to content
+// functions for the given schema root (e.g. ".github", ".claude"). root is
+// passed to templates that need it (e.g. general.md.tmpl).
+func defaultInstructionFilesFor(root string) map[string]func() string {
+	return map[string]func() string{
+		"general.instructions.md":          func() string { return generalInstructionsContent(root) },
+		"codereview.instructions.md":       codereviewInstructionsContent,
+		"library.instructions.md":          libraryInstructionsContent,
+		"testing.instructions.md":          testingInstructionsContent,
+		"emoji-prevention.instructions.md": emojiPreventionInstructionsContent,
+		"backend.instructions.md":          backendInstructionsContent,
+		"frontend.instructions.md":         frontendInstructionsContent,
+		"security.instructions.md":         securityInstructionsContent,
+		"repo.instructions.md":             repoInstructionsContent,
+	}
 }
 
 // instructionFileName returns the on-disk filename for a default template.
@@ -538,7 +593,7 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 	}
 
 	var created []string
-	for templateName, contentFn := range defaultInstructionFiles {
+	for templateName, contentFn := range defaultInstructionFilesFor(schema.Root) {
 		stem := templateStem(templateName)
 		if !shouldSeedFile(stem, opts.include, opts.exclude) {
 			continue
@@ -586,8 +641,9 @@ func repoInstructionsContent() string {
 }
 
 // generalInstructionsContent returns default content for general.instructions.md.
-func generalInstructionsContent() string {
-	return mustRenderTemplate("rules/general.md.tmpl", nil)
+// root is the schema root directory (e.g. ".github") rendered into the template.
+func generalInstructionsContent(root string) string {
+	return mustRenderTemplate("rules/general.md.tmpl", struct{ Root string }{root})
 }
 
 // codereviewInstructionsContent returns default content for codereview.instructions.md.
@@ -619,6 +675,18 @@ func schemaRootToAgent(root string) string {
 		return "cursor"
 	case ".windsurf":
 		return "windsurf"
+	case ".kiro":
+		return "kiro"
+	case ".":
+		return "gemini"
+	case ".continue":
+		return "continue"
+	case ".clinerules":
+		return "cline"
+	case ".roo":
+		return "roocode"
+	case ".aiassistant":
+		return "jetbrains"
 	default:
 		return root
 	}
@@ -637,6 +705,11 @@ func testingInstructionsContent() string {
 // emojiPreventionInstructionsContent returns default content for emoji-prevention.instructions.md.
 func emojiPreventionInstructionsContent() string {
 	return mustRenderTemplate("rules/emoji-prevention.md.tmpl", nil)
+}
+
+// securityInstructionsContent returns default content for security.instructions.md.
+func securityInstructionsContent() string {
+	return mustRenderTemplate("rules/security.md.tmpl", nil)
 }
 
 // backendInstructionsContent returns default content for backend.instructions.md.
@@ -782,6 +855,16 @@ func rulesLabel(root string) string {
 		return "Windsurf rule files"
 	case ".claude":
 		return "Claude rule files"
+	case ".kiro":
+		return "Kiro steering files"
+	case ".continue":
+		return "Continue rule files"
+	case ".clinerules":
+		return "Cline rule files"
+	case ".roo":
+		return "Roo Code rule files"
+	case ".aiassistant":
+		return "JetBrains rule files"
 	default:
 		return "Agent rule files"
 	}
@@ -834,6 +917,32 @@ func agentsMdMergedContextSection(schemas []LayoutSchema) string { //nolint:gocr
 				b.WriteString(line)
 			}
 		}
+		if _, ok := schema.Dirs["steering"]; ok {
+			line := "- " + rulesLabel(schema.Root) + ": [" + schema.Root + "/steering/](" + schema.Root + "/steering/)\n"
+			if !seen[line] {
+				seen[line] = true
+				b.WriteString(line)
+			}
+		}
+		if schema.Root == ".clinerules" {
+			line := "- " + rulesLabel(schema.Root) + ": [" + schema.Root + "/](" + schema.Root + "/)\n"
+			if !seen[line] {
+				seen[line] = true
+				b.WriteString(line)
+			}
+		}
+		if schema.Root == "." {
+			for _, req := range schema.Required {
+				if req == "GEMINI.md" {
+					line := "- Gemini repo-wide context: [GEMINI.md](GEMINI.md)\n"
+					if !seen[line] {
+						seen[line] = true
+						b.WriteString(line)
+					}
+					break
+				}
+			}
+		}
 	}
 	return b.String()
 }
@@ -860,6 +969,20 @@ func agentsMdContextSection(schema LayoutSchema) string { //nolint:gocritic // h
 	if schema.Root == ".claude" {
 		b.WriteString("- Claude repo-wide context: [.claude/CLAUDE.md](.claude/CLAUDE.md)\n")
 	}
+	if _, ok := schema.Dirs["steering"]; ok {
+		b.WriteString("- " + rulesLabel(schema.Root) + ": [" + schema.Root + "/steering/](" + schema.Root + "/steering/)\n")
+	}
+	if schema.Root == ".clinerules" {
+		b.WriteString("- " + rulesLabel(schema.Root) + ": [" + schema.Root + "/](" + schema.Root + "/)\n")
+	}
+	if schema.Root == "." {
+		for _, req := range schema.Required {
+			if req == "GEMINI.md" {
+				b.WriteString("- Gemini repo-wide context: [GEMINI.md](GEMINI.md)\n")
+				break
+			}
+		}
+	}
 	return b.String()
 }
 
@@ -872,6 +995,9 @@ type agentsMdTemplateData struct {
 	HasAgents       bool
 	IsCopilot       bool
 	IsClaude        bool
+	HasSteering     bool
+	HasRootRules    bool
+	IsGemini        bool
 }
 
 // agentsMdContent generates the content for AGENTS.md from the embedded
@@ -882,6 +1008,16 @@ func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugePara
 	_, hasInstructions := schema.Dirs["instructions"]
 	_, hasRules := schema.Dirs["rules"]
 	_, hasAgents := schema.Dirs["agents"]
+	_, hasSteering := schema.Dirs["steering"]
+	isGemini := false
+	if schema.Root == "." {
+		for _, req := range schema.Required {
+			if req == "GEMINI.md" {
+				isGemini = true
+				break
+			}
+		}
+	}
 	data := agentsMdTemplateData{
 		Root:            schema.Root,
 		HasInstructions: hasInstructions,
@@ -890,6 +1026,9 @@ func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugePara
 		HasAgents:       hasAgents,
 		IsCopilot:       schema.Root == ".github",
 		IsClaude:        schema.Root == ".claude",
+		HasSteering:     hasSteering,
+		HasRootRules:    schema.Root == ".clinerules",
+		IsGemini:        isGemini,
 	}
 	return mustRenderTemplate("agents/AGENTS.md.tmpl", data)
 }
@@ -936,8 +1075,9 @@ func createDefaultConfig(root, configDir string, schema LayoutSchema) ([]string,
 
 // schemaConfig returns a copy of cfg with rules and files filtered to only
 // those whose glob or path begins with the given root prefix (e.g. ".github/").
-// Root-level file entries (no "/" in key) are always preserved because they
-// are cross-platform (e.g. AGENTS.md).
+// Genuinely cross-agent root-level files (e.g. AGENTS.md) are always preserved.
+// Agent-specific root-level files (e.g. GEMINI.md) are only included when the
+// schema root matches their agent (root == ".").
 // The base scalars (Default, WarningThreshold, SkipDirs) are kept as-is.
 func schemaConfig(cfg Config, root string) Config { //nolint:gocritic // hugeParam: intentional value semantics
 	prefix := root + "/"
@@ -953,8 +1093,19 @@ func schemaConfig(cfg Config, root string) Config { //nolint:gocritic // hugePar
 		}
 	}
 	for k, v := range cfg.Files {
-		// Include files inside this schema's root OR bare root-level filenames.
-		if strings.HasPrefix(k, prefix) || !strings.Contains(k, "/") {
+		include := false
+		switch {
+		case strings.HasPrefix(k, prefix):
+			// File is inside this schema's root directory.
+			include = true
+		case !strings.Contains(k, "/") && crossAgentRootFile(k):
+			// Root-level file that is genuinely cross-agent (e.g. AGENTS.md).
+			include = true
+		case root == "." && !strings.Contains(k, "/"):
+			// Gemini schema (Root==".") governs all root-level files it owns.
+			include = true
+		}
+		if include {
 			if out.Files == nil {
 				out.Files = make(map[string]int)
 			}
@@ -962,6 +1113,15 @@ func schemaConfig(cfg Config, root string) Config { //nolint:gocritic // hugePar
 		}
 	}
 	return out
+}
+
+// crossAgentRootFile reports whether a root-level filename (no path separator)
+// is a cross-agent standard that should appear in every agent's generated config.
+// AGENTS.md is read by Copilot, Cursor, Claude, Kiro, Cline, Roo Code, and others.
+// Agent-specific files like GEMINI.md are excluded here and only appear when their
+// owning schema is active.
+func crossAgentRootFile(name string) bool {
+	return name == "AGENTS.md"
 }
 
 // defaultConfigJSON returns a compact JSON representation of a Config

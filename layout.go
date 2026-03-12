@@ -103,6 +103,38 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		return nil, err
 	}
 
+	// File-only schemas (Root == "." with no subdirs) only validate specific
+	// required/optional files. Walking the repo root would report all other
+	// platform directories as unexpected, so we short-circuit here.
+	if schema.Root == "." && len(schema.Dirs) == 0 {
+		for _, req := range schema.Required {
+			filePath := filepath.Join(root, filepath.FromSlash(req))
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				results = append(results, LayoutResult{
+					Path:    req,
+					Status:  Fail,
+					Message: "missing required file -- FIX: create " + req + " or run 'repogov init'",
+				})
+			} else {
+				results = append(results, LayoutResult{
+					Path:    req,
+					Status:  Pass,
+					Message: "required file present",
+				})
+			}
+		}
+		for _, opt := range schema.Optional {
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(opt))); err == nil {
+				results = append(results, LayoutResult{
+					Path:    opt,
+					Status:  Info,
+					Message: "optional file present",
+				})
+			}
+		}
+		return results, nil
+	}
+
 	// Build exception set for naming checks.
 	exceptionSet := make(map[string]bool, len(schema.Naming.Exceptions))
 	for _, e := range schema.Naming.Exceptions {

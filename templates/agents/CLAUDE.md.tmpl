@@ -6,14 +6,19 @@ Project-level instructions for Claude Code in this repository.
 
 - Project overview: [README.md](../README.md)
 - Extended documentation: [docs/](../docs/)
-- Scoped rule files: [.claude/rules/](rules/)
-- Subagent definitions: [.claude/agents/](agents/)
+- Scoped rule files: [{{.Root}}/rules/](rules/)
+- Subagent definitions: [{{.Root}}/agents/](agents/)
 
-## Repository Conventions
+## File Constraints
 
-- Follow existing code style and patterns
-- Keep files within configured line limits
-- Write tests for new functionality
+**`{{.Root}}` File Limit**: All files in `{{.Root}}/` must not exceed the configured line limit (see `repogov-config.json`). Use `docs/` for detailed explanations.
+
+**Handling the line limit (priority order):**
+1. **Refactor First** - Remove redundancy, condense verbose explanations
+2. **Move to `docs/`** - Relocate detailed content to `docs/` directory
+3. **Link, Don't Repeat** - Reference external docs instead of duplicating
+4. **Split Only When Necessary** - Only when content is a distinct concern; use cohesive files, descriptive names, and cross-references
+5. **Governance** - Keep files within configured line limits (see repogov-config.json)
 
 ## Repository Commands
 

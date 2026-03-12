@@ -1,5 +1,5 @@
 {
-  "default": 300,
+  "default": 500,
   "descriptive_names": false,
   "warning_threshold": "85%",
   "skip_dirs": [".git", "vendor", "workflows"],
@@ -8,7 +8,7 @@
     {"glob": ".github/rules/*.md", "limit": 300}
   ],
   "files": {
-    "AGENTS.md": 200,
-    ".github/copilot-instructions.md": 50
+    ".github/copilot-instructions.md": 50,
+    "AGENTS.md": 200
   }
 }

@@ -6,46 +6,47 @@ applyTo: "**"
 
 ## Writing Style
 
-- Use clear, concise language
-- Prefer active voice over passive voice
-- Write in complete sentences
-- Keep paragraphs focused on a single idea
+- Do **not** introduce emoji or Unicode pictographic characters
+- Keep language concise and direct; prefer active voice
+- Use US English spelling (e.g., "behavior", "summarize")
 - Avoid jargon unless the audience expects it
-- Use US English spelling (e.g., "behavior" not "behaviour", "summarize" not "summarise")
+
+Emoji prevention rules are detailed in .github/rules/emoji-prevention.md.
 
 ## Document Structure
 
 - Start every document with a level-1 heading (`# Title`)
 - Use heading levels sequentially -- do not skip levels
-- Keep headings descriptive and concise
-- Add a blank line before and after headings
 - Use lists for three or more related items
 
 ## Formatting
 
 - Wrap inline code, commands, file paths, and symbols in backticks
 - Use fenced code blocks with a language identifier for multi-line code
-- Use bold for emphasis on key terms, not for entire sentences
 - Use tables when presenting structured comparisons or reference data
 - Keep lines under 120 characters where possible for diff readability
 
 ## File Organization
 
-- Use consistent file naming conventions across the project
 - Keep files focused and within configured line limits
 - Place detailed content in `docs/` and link from top-level files
 - Do not duplicate content -- link to the canonical source instead
 
+## File Naming Conventions
+
+**Prefer lowercase filenames** in `docs/` and `.github/` directories:
+
+- Use `kebab-case` or `snake_case` for multi-word filenames
+- Exception: `*_AUDIT.md` files in `docs/` may use uppercase
+- Exception: GitHub-mandated filenames remain uppercase (e.g., `CODEOWNERS`)
+
 ## Links and References
 
 - Use relative links for in-repo references
-- Verify links are valid before committing
 - Use descriptive link text -- avoid "click here" or bare URLs
-- Reference specific sections with anchor links when useful
 
-## Maintenance
+## Repository Conventions
 
-- Keep documentation in sync with the feature it describes
-- Remove or update stale content promptly
-- Date-stamp time-sensitive information
-- Review docs as part of the pull request process
+- Follow existing code style and patterns
+- Keep files within configured line limits
+- Write tests for new functionality

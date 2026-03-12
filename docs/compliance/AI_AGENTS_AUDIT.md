@@ -70,20 +70,25 @@ Legend: Pass / Warn (partial) / Fail
 | OpenAI Codex CLI | Pass | Pass | Pass | Pass | **Yes** | Pending — not yet built |
 | Aider | Pass | Pass | Warn | Fail | **No** | No (correct) |
 | Amazon Q Developer CLI | Pass | Fail | Pass | Warn | **No** | No — deprecated; Kiro CLI supersedes |
-| Kiro CLI | Pass | Pass | Pass | Pass | **Yes** | Pending — Tier 1; not yet built |
+| Kiro CLI | Pass | Pass | Pass | Pass | **Yes** | Yes |
+| Gemini CLI | Pass | Pass | Pass | Pass | **Yes** | Yes |
+| Continue.dev | Pass | Pass | Pass | Pass | **Yes** | Yes |
+| Cline | Pass | Pass | Pass | Pass | **Yes** | Yes |
+| Roo Code | Pass | Pass | Pass | Pass | **Yes** | Yes |
+| JetBrains AI Assistant | Pass | Pass | Pass | Pass | **Yes** | Yes |
 
-### Finding: OpenAI Codex CLI and Kiro CLI have no presets despite qualifying
+### Finding: OpenAI Codex CLI has no preset despite qualifying
 
 Codex CLI passes all four criteria — `AGENTS.md` directory walkup and `.agents/skills/`
 are both file-based, officially documented, Markdown-native, and glob-scannable. A
 `DefaultCodexLayout()` preset should be created. See [CODEX_AUDIT.md](CODEX_AUDIT.md)
 action items.
 
-Kiro CLI (AWS's successor to the deprecated Amazon Q Developer CLI) also passes all
-four criteria — `.kiro/steering/*.md` is file-based, officially documented at
-`kiro.dev/docs/cli/steering/`, Markdown-native, and glob-scannable. It is ranked
-Tier 1 in the Implementation Priority Tiers and should be the next preset built.
-See [KIRO_AUDIT.md](KIRO_AUDIT.md) action items.
+### Finding: Kiro CLI, Gemini CLI, Continue.dev, Cline, Roo Code, JetBrains AI Assistant — presets built (Tier 1)
+
+All six Tier 1 agents pass all four criteria and now have `Default<Agent>Layout()` presets,
+glob rules in `DefaultConfig()`, and full `init` support. See the Per-Agent Files section
+and individual audit files for details.
 
 ### Finding: Amazon Q Developer CLI is deprecated — superseded by Kiro CLI
 
@@ -123,6 +128,12 @@ Agents with a `Default<Agent>Layout()` preset and full `init` support:
 | Windsurf (Codeium) | [WINDSURF_AUDIT.md](WINDSURF_AUDIT.md) |
 | Claude Code (Anthropic) | [CLAUDE_AUDIT.md](CLAUDE_AUDIT.md) |
 | AGENTS.md (cross-agent standard) | [AGENTS_MD_AUDIT.md](AGENTS_MD_AUDIT.md) |
+| Kiro CLI | [KIRO_AUDIT.md](KIRO_AUDIT.md) |
+| Gemini CLI | [GEMINI_AUDIT.md](GEMINI_AUDIT.md) |
+| Continue.dev | [CONTINUE_AUDIT.md](CONTINUE_AUDIT.md) |
+| Cline | [CLINE_AUDIT.md](CLINE_AUDIT.md) |
+| Roo Code | [ROOCODE_AUDIT.md](ROOCODE_AUDIT.md) |
+| JetBrains AI Assistant | [JETBRAINS_AUDIT.md](JETBRAINS_AUDIT.md) |
 
 ### Tracked (no preset — criteria not met or preset not yet built)
 
@@ -133,7 +144,6 @@ Agents documented for awareness but not implemented in repogov:
 | Aider | [AIDER_AUDIT.md](AIDER_AUDIT.md) | Does not qualify — fails C3 and C4; no preset planned |
 | OpenAI Codex CLI | [CODEX_AUDIT.md](CODEX_AUDIT.md) | Qualifies (Tier 2) — preset not yet built; see action items in audit file |
 | Amazon Q Developer CLI | [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) | Deprecated — superseded by Kiro CLI; no preset planned |
-| Kiro CLI | [KIRO_AUDIT.md](KIRO_AUDIT.md) | Qualifies (Tier 1) — preset not yet built; see KIRO_AUDIT.md action items |
 
 ## Planned Support Backlog
 
@@ -143,17 +153,11 @@ row to the Per-Agent Files table above.
 
 | # | Agent | Audit File | Verified Config Path(s) | Notes |
 |---|-------|-----------|-------------------------|-------|
-| 1 | Cline (Claude Dev) | [CLINE_AUDIT.md](CLINE_AUDIT.md) | `.clinerules/*.md` (dir); also auto-detects `.cursorrules`, `.windsurfrules`, `AGENTS.md` | Global: `~/Documents/Cline/Rules/`; `paths:` YAML frontmatter for conditional rules |
-| 2 | Roo Code | [ROOCODE_AUDIT.md](ROOCODE_AUDIT.md) | `.roo/rules/*.md`; `.roo/rules-{modeSlug}/*.md`; fallback `.roorules` | Global: `~/.roo/rules/`; also loads `AGENTS.md` / `AGENT.md` at root |
-| 3 | Amazon Q Developer CLI | [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) | **Deprecated** — superseded by Kiro CLI (see row 11). `.amazonq/rules/*.md` was unverified and is now moot. | CLI is maintenance-only (critical security fixes only); no preset planned; see AMAZONQ_AUDIT.md |
-| 4 | Gemini CLI | [GEMINI_AUDIT.md](GEMINI_AUDIT.md) | `GEMINI.md` (hierarchical walkup); `~/.gemini/GEMINI.md` global | JIT loading per-directory; configurable filename via `settings.json` |
-| 5 | Continue.dev | [CONTINUE_AUDIT.md](CONTINUE_AUDIT.md) | `.continue/rules/*.md`; global `~/.continue/rules/*.md` | YAML frontmatter: `globs`, `alwaysApply`, `description` |
-| 6 | Sourcegraph Cody | [SOURCEGRAPH_AUDIT.md](SOURCEGRAPH_AUDIT.md) | Unverified — no file-based instructions found in official docs | Rules docs pages return 404; see audit file for action items |
-| 7 | Devin | [DEVIN_AUDIT.md](DEVIN_AUDIT.md) | None (web-platform managed) | Instructions via Knowledge/Repo Setup in app.devin.ai; not file-based |
-| 8 | Plandex | [PLANDEX_AUDIT.md](PLANDEX_AUDIT.md) | `.plandex/` (state dir, not instructions); explicit `plandex load` for context | No auto-loaded instruction file confirmed; docs unavailable |
-| 9 | Zed AI | [ZED_AUDIT.md](ZED_AUDIT.md) | `.rules` (single file, first match); also detects `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, etc. | Only first matching filename is loaded; Rules Library for in-IDE management |
-| 10 | JetBrains AI Assistant | [JETBRAINS_AUDIT.md](JETBRAINS_AUDIT.md) | `.aiassistant/rules/*.md` | Rule types: Always / Manually / By model decision / By file patterns |
-| 11 | Kiro CLI | [KIRO_AUDIT.md](KIRO_AUDIT.md) | `.kiro/steering/*.md`; `~/.kiro/steering/` global; also detects `AGENTS.md` at workspace root | `.kiro/agents/*.json` custom agents; `.kiro/skills/` for skills; AWS successor to Amazon Q Developer CLI; verified 2026-03-07 |
+| 1 | Amazon Q Developer CLI | [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) | **Deprecated** — superseded by Kiro CLI. `.amazonq/rules/*.md` was unverified and is now moot. | CLI is maintenance-only; no preset planned; see AMAZONQ_AUDIT.md |
+| 2 | Sourcegraph Cody | [SOURCEGRAPH_AUDIT.md](SOURCEGRAPH_AUDIT.md) | Unverified — no file-based instructions found in official docs | Rules docs pages return 404; see audit file for action items |
+| 3 | Devin | [DEVIN_AUDIT.md](DEVIN_AUDIT.md) | None (web-platform managed) | Instructions via Knowledge/Repo Setup in app.devin.ai; not file-based |
+| 4 | Plandex | [PLANDEX_AUDIT.md](PLANDEX_AUDIT.md) | `.plandex/` (state dir, not instructions); explicit `plandex load` for context | No auto-loaded instruction file confirmed; docs unavailable |
+| 5 | Zed AI | [ZED_AUDIT.md](ZED_AUDIT.md) | `.rules` (single file, first match); also detects `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, etc. | Only first matching filename is loaded; Rules Library for in-IDE management |
 
 ## Implementation Priority Tiers
 
@@ -163,14 +167,16 @@ Priority ranking for agents in the Planned Support Backlog above. Tiers are base
 
 All four C1–C4 criteria are met; docs verified; patterns are stable and widely adopted.
 
-| Agent | Root / Single File | Multi-file Dir | Effort |
+**All Tier 1 agents have been implemented.** See the Supported section above.
+
+| Agent | Root / Single File | Multi-file Dir | Status |
 |-------|-------------------|----------------|--------|
-| Kiro CLI | — | `.kiro/steering/*.md` | Low — same pattern as Windsurf/Cursor |
-| Gemini CLI | `GEMINI.md` | — | Low — single named file |
-| Continue.dev | — | `.continue/rules/*.md` | Low — same pattern as Windsurf/Cursor |
-| Cline | — | `.clinerules/*.md` | Low — same pattern |
-| Roo Code | — | `.roo/rules/*.md` + `.roo/rules-{mode}/*.md` | Low — same pattern; optional mode-specific dirs |
-| JetBrains AI Assistant | — | `.aiassistant/rules/*.md` | Low — same pattern |
+| Kiro CLI | — | `.kiro/steering/*.md` | **Built** — `DefaultKiroLayout()` |
+| Gemini CLI | `GEMINI.md` | — | **Built** — `DefaultGeminiLayout()` |
+| Continue.dev | — | `.continue/rules/*.md` | **Built** — `DefaultContinueLayout()` |
+| Cline | — | `.clinerules/*.md` | **Built** — `DefaultClineLayout()` |
+| Roo Code | — | `.roo/rules/*.md` + `.roo/rules-{mode}/*.md` | **Built** — `DefaultRooCodeLayout()` |
+| JetBrains AI Assistant | — | `.aiassistant/rules/*.md` | **Built** — `DefaultJetBrainsLayout()` |
 
 ### Tier 2 — Viable with minor caveats
 
@@ -205,10 +211,16 @@ Agents with a `repogov Preset` value of `none` are tracked for reference only an
 | Aider | `.aider.conf.yml` (tool config); `CONVENTIONS.md` via `--read` (instructions) | no directory pattern; multi-file via `read:` list in `.aider.conf.yml` | none | n/a |
 | OpenAI Codex CLI | `AGENTS.md` (directory walkup + `AGENTS.override.md`) | `.agents/skills/` (per-skill `SKILL.md`); nested `AGENTS.md` tree | none | Yes |
 | Amazon Q Developer CLI | `.amazonq/rules/*.md` (unverified; CLI now deprecated) | `.amazonq/rules/*.md` | none — deprecated | No |
-| Kiro CLI | `AGENTS.md` at workspace root (also detected) | `.kiro/steering/*.md`; `~/.kiro/steering/` global | none — pending Tier 1 | Yes |
+| Kiro CLI | `AGENTS.md` at workspace root (also detected) | `.kiro/steering/*.md`; `~/.kiro/steering/` global | `DefaultKiroLayout()` | Yes |
+| Gemini CLI | `GEMINI.md` (hierarchical walkup); `~/.gemini/GEMINI.md` global | — | `DefaultGeminiLayout()` | Yes |
+| Continue.dev | — | `.continue/rules/*.md`; `~/.continue/rules/*.md` global | `DefaultContinueLayout()` | Yes |
+| Cline | — | `.clinerules/*.md`; `~/Documents/Cline/Rules/` global | `DefaultClineLayout()` | Yes |
+| Roo Code | — | `.roo/rules/*.md`; `~/.roo/rules/` global | `DefaultRooCodeLayout()` | Yes |
+| JetBrains AI Assistant | — | `.aiassistant/rules/*.md` | `DefaultJetBrainsLayout()` | Yes |
 
-All four preset agents enforce a 300-line limit on scoped instruction files.
+All preset agents enforce a 300-line limit on scoped instruction files.
 `AGENTS.md` is governed at 200 lines (root) and the default (300) for nested files.
+`GEMINI.md` is governed at 200 lines (enforced via `DefaultConfig().Files`).
 `.claude/CLAUDE.md` is governed at 200 lines (enforced via `DefaultConfig().Files`).
 `.github/copilot-instructions.md` is governed at 50 lines (enforced via `DefaultConfig().Files`).
 
@@ -223,6 +235,12 @@ Extensions recognized by each agent for instruction/config files in a git repo.
 | Windsurf | `.md` | `.windsurf/rules/*.md` (trigger frontmatter: `always_on`, `model_decision`, `glob`, `manual`); global `global_rules.md`; legacy `.windsurfrules` (no extension, not in current docs) |
 | Claude Code | `.md`, `.json` | `CLAUDE.md`, `rules/*.md`, `agents/*.md`; `settings.json` / `settings.local.json` for permissions and hooks |
 | AGENTS.md (cross-agent) | `.md` | Plain Markdown; no frontmatter required |
+| Kiro CLI | `.md` | `.kiro/steering/*.md`; YAML frontmatter supported for metadata |
+| Gemini CLI | `.md` | `GEMINI.md`; hierarchical walkup from CWD to `$HOME` |
+| Continue.dev | `.md` | `.continue/rules/*.md`; YAML frontmatter: `globs`, `alwaysApply`, `description` |
+| Cline | `.md` | `.clinerules/*.md`; also accepts `.cursorrules`, `.windsurfrules`; YAML `paths:` frontmatter for conditional rules |
+| Roo Code | `.md` | `.roo/rules/*.md`; fallback `.roorules`; YAML frontmatter supported |
+| JetBrains AI Assistant | `.md` | `.aiassistant/rules/*.md`; rule types: Always / Manually / By model decision / By file patterns |
 | Aider | `.yml`, `.md` (any) | `.aider.conf.yml` (tool config); `--read` / `read:` accepts any file as instruction context |
 | OpenAI Codex CLI | `.md`, `.toml`, `.yaml` | `AGENTS.md` (directory walkup); `.agents/skills/<name>/SKILL.md`; `~/.codex/config.toml` (global config); `agents/openai.yaml` (skill UI metadata) |
 
@@ -247,4 +265,4 @@ When an existing agent deprecates or changes its config format:
 3. Add `Naming.Exceptions` for any mandated uppercase filenames.
 4. Update the support matrix above.
 
-The CLI agent names map to presets as follows: `copilot` -> `DefaultCopilotLayout()`, `cursor` -> `DefaultCursorLayout()`, `windsurf` -> `DefaultWindsurfLayout()`, `claude` -> `DefaultClaudeLayout()`.
+The CLI agent names map to presets as follows: `copilot` -> `DefaultCopilotLayout()`, `cursor` -> `DefaultCursorLayout()`, `windsurf` -> `DefaultWindsurfLayout()`, `claude` -> `DefaultClaudeLayout()`, `kiro` -> `DefaultKiroLayout()`, `gemini` -> `DefaultGeminiLayout()`, `continue` -> `DefaultContinueLayout()`, `cline` -> `DefaultClineLayout()`, `roocode` -> `DefaultRooCodeLayout()`, `jetbrains` -> `DefaultJetBrainsLayout()`.

@@ -1,22 +1,15 @@
-# Copilot Instructions
+# GEMINI.md
 
-This file provides repository-level context to GitHub Copilot and compatible AI coding agents.
+Project-level instructions for Gemini CLI in this repository.
 
 ## Context
-{{- if .InstructionsDir}}
-- Project overview: [README.md](../README.md)
-- Extended documentation: [docs/](../docs/)
-- Scoped rule files: [{{.Root}}/{{.InstructionsDir}}/]({{.InstructionsDir}}/)
-- {{.NamingHint}}
-{{- else}}
-- Project overview: [README.md](../README.md)
-- Extended documentation: [docs/](../docs/)
-- Scoped rule files: [{{.Root}}/rules/](rules/)
-{{- end}}
+
+- Project overview: [README.md](README.md)
+- Extended documentation: [docs/](docs/)
 
 ## File Constraints
 
-**`{{.Root}}` File Limit**: All files in `{{.Root}}/` must not exceed the configured line limit (see `repogov-config.json`). Use `docs/` for detailed explanations.
+**`GEMINI.md` File Limit**: This file must not exceed the configured line limit (see `repogov-config.json`). Use `docs/` for detailed explanations.
 
 **Handling the line limit (priority order):**
 1. **Refactor First** - Remove redundancy, condense verbose explanations

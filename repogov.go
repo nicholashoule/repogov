@@ -198,13 +198,13 @@ type Result struct {
 }
 
 // defaultLimit is the built-in fallback when Config.Default is zero.
-const defaultLimit = 300
+const defaultLimit = 500
 
 // defaultWarningThreshold is the built-in warning threshold percentage.
 const defaultWarningThreshold PercentInt = 85
 
 // DefaultConfig returns a Config with sensible defaults:
-// Default=300, WarningThreshold=85, standard SkipDirs,
+// Default=500, WarningThreshold=85, standard SkipDirs,
 // .github/rules/*.md at 300, and .github/copilot-instructions.md
 // at 50 lines.
 func DefaultConfig() Config {
@@ -220,11 +220,17 @@ func DefaultConfig() Config {
 			{Glob: ".windsurf/rules/*.md", Limit: RuleLimit(300)},
 			{Glob: ".claude/rules/*.md", Limit: RuleLimit(300)},
 			{Glob: ".claude/agents/*.md", Limit: RuleLimit(300)},
+			{Glob: ".kiro/steering/*.md", Limit: RuleLimit(300)},
+			{Glob: ".continue/rules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".clinerules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".roo/rules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".aiassistant/rules/*.md", Limit: RuleLimit(300)},
 		},
 		Files: map[string]int{
 			".github/copilot-instructions.md": 50,
 			".claude/CLAUDE.md":               200,
 			"AGENTS.md":                       200,
+			"GEMINI.md":                       200,
 		},
 	}
 }
