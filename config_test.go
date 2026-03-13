@@ -16,8 +16,8 @@ func TestLoadConfig_FileNotExist(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Should return defaults.
-	if cfg.Default != 300 {
-		t.Errorf("Default = %d, want 300", cfg.Default)
+	if cfg.Default != 500 {
+		t.Errorf("Default = %d, want 500", cfg.Default)
 	}
 }
 
@@ -136,8 +136,8 @@ func TestSaveConfig(t *testing.T) {
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Default != 300 {
-		t.Errorf("round-trip Default = %d, want 300", loaded.Default)
+	if loaded.Default != 500 {
+		t.Errorf("round-trip Default = %d, want 500", loaded.Default)
 	}
 	if loaded.Files["test.md"] != 100 {
 		t.Errorf("round-trip Files[test.md] = %d, want 100", loaded.Files["test.md"])
@@ -190,8 +190,8 @@ func TestLoadConfig_DownstreamFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Underscore fields silently ignored; core fields populated.
-	if cfg.Default != 300 {
-		t.Errorf("Default = %d, want 300 (underscore keys ignored, falls back to default)", cfg.Default)
+	if cfg.Default != 500 {
+		t.Errorf("Default = %d, want 500 (underscore keys ignored, falls back to default)", cfg.Default)
 	}
 	if cfg.Files["README.md"] != 1200 {
 		t.Errorf("Files[README.md] = %d, want 1200", cfg.Files["README.md"])
@@ -433,8 +433,8 @@ func TestSaveConfig_YAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Default != 300 {
-		t.Errorf("round-trip Default = %d, want 300", loaded.Default)
+	if loaded.Default != 500 {
+		t.Errorf("round-trip Default = %d, want 500", loaded.Default)
 	}
 	if loaded.Files["test.md"] != 100 {
 		t.Errorf("round-trip Files[test.md] = %d, want 100", loaded.Files["test.md"])

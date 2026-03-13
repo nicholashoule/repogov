@@ -6,9 +6,12 @@ applyTo: "**"
 
 ## Writing Style
 
+- Do **not** introduce emoji or Unicode pictographic characters
 - Keep language concise and direct; prefer active voice
 - Use US English spelling (e.g., "behavior", "summarize")
 - Avoid jargon unless the audience expects it
+
+Emoji prevention rules are detailed in {{.RulesPath}}/emoji-prevention.md.
 
 ## Document Structure
 
@@ -29,7 +32,21 @@ applyTo: "**"
 - Place detailed content in `docs/` and link from top-level files
 - Do not duplicate content -- link to the canonical source instead
 
+## File Naming Conventions
+
+**Prefer lowercase filenames** in `docs/` and `{{.Root}}/` directories:
+
+- Use `kebab-case` or `snake_case` for multi-word filenames
+- Exception: `*_AUDIT.md` files in `docs/` may use uppercase
+- Exception: GitHub-mandated filenames remain uppercase (e.g., `CODEOWNERS`)
+
 ## Links and References
 
 - Use relative links for in-repo references
 - Use descriptive link text -- avoid "click here" or bare URLs
+
+## Repository Conventions
+
+- Follow existing code style and patterns
+- Keep files within configured line limits
+- Write tests for new functionality

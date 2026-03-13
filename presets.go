@@ -29,11 +29,16 @@ func DefaultRootLayout() LayoutSchema {
 		},
 		Dirs: map[string]DirRule{
 			// AI-agent platform dirs — managed by their own layout schemas.
-			".claude":   {Description: "Claude Code configuration", NoCreate: true},
-			".cursor":   {Description: "Cursor AI configuration", NoCreate: true},
-			".github":   {Description: "GitHub configuration", NoCreate: true},
-			".gitlab":   {Description: "GitLab configuration", NoCreate: true},
-			".windsurf": {Description: "Windsurf AI configuration", NoCreate: true},
+			".aiassistant": {Description: "JetBrains AI Assistant configuration", NoCreate: true},
+			".claude":      {Description: "Claude Code configuration", NoCreate: true},
+			".clinerules":  {Description: "Cline rule files", NoCreate: true},
+			".continue":    {Description: "Continue.dev configuration", NoCreate: true},
+			".cursor":      {Description: "Cursor AI configuration", NoCreate: true},
+			".github":      {Description: "GitHub configuration", NoCreate: true},
+			".gitlab":      {Description: "GitLab configuration", NoCreate: true},
+			".kiro":        {Description: "Kiro CLI configuration", NoCreate: true},
+			".roo":         {Description: "Roo Code configuration", NoCreate: true},
+			".windsurf":    {Description: "Windsurf AI configuration", NoCreate: true},
 			// Common project subdirectories.
 			"bin":          {Description: "Compiled binaries", NoCreate: true},
 			"build":        {Description: "Build output", NoCreate: true},
@@ -60,6 +65,7 @@ func DefaultRootLayout() LayoutSchema {
 				"CHANGELOG.md",
 				"CODE_OF_CONDUCT.md",
 				"CONTRIBUTING.md",
+				"GEMINI.md",
 				"LICENSE",
 				"Makefile",
 				"README.md",
@@ -249,6 +255,133 @@ func DefaultClaudeLayout() LayoutSchema {
 			Exceptions: []string{
 				"CLAUDE.md",
 			},
+		},
+	}
+}
+
+// DefaultKiroLayout returns a [LayoutSchema] matching Kiro CLI repository
+// conventions. It expects a .kiro/ directory with a steering/ subdirectory
+// containing project context files (*.md). Kiro uses steering files to
+// provide persistent context to the AI agent across sessions.
+func DefaultKiroLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".kiro",
+		Required: []string{},
+		Optional: []string{},
+		Dirs: map[string]DirRule{
+			"steering": {
+				Glob:        "*.md",
+				Min:         0,
+				Description: "Kiro steering files (project context)",
+			},
+		},
+		Naming: NamingRule{
+			Case: "lowercase",
+		},
+	}
+}
+
+// DefaultGeminiLayout returns a [LayoutSchema] matching Gemini CLI repository
+// conventions. Gemini CLI reads a single GEMINI.md file at the repository root
+// as its primary instruction file. No platform-specific subdirectory is used.
+func DefaultGeminiLayout() LayoutSchema {
+	return LayoutSchema{
+		Root: ".",
+		Required: []string{
+			"GEMINI.md",
+		},
+		Optional: []string{},
+		Dirs:     map[string]DirRule{},
+		Naming: NamingRule{
+			Case: "lowercase",
+			Exceptions: []string{
+				"GEMINI.md",
+			},
+		},
+	}
+}
+
+// DefaultContinueLayout returns a [LayoutSchema] matching Continue.dev repository
+// conventions. It expects a .continue/ directory with a rules/ subdirectory
+// containing scoped rule files (*.md).
+func DefaultContinueLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".continue",
+		Required: []string{},
+		Optional: []string{},
+		Dirs: map[string]DirRule{
+			"rules": {
+				Glob:        "*.md",
+				Min:         0,
+				Description: "Continue.dev scoped rule files",
+			},
+		},
+		Naming: NamingRule{
+			Case: "lowercase",
+		},
+	}
+}
+
+// DefaultClineLayout returns a [LayoutSchema] matching Cline repository
+// conventions. Cline reads rule files directly from the .clinerules/ directory
+// at the repository root; no subdirectory structure is used. The "." DirRule
+// matches all *.md files placed directly under .clinerules/.
+func DefaultClineLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".clinerules",
+		Required: []string{},
+		Optional: []string{},
+		Dirs: map[string]DirRule{
+			".": {
+				Glob:        "*.md",
+				Min:         0,
+				Description: "Cline rule files",
+			},
+		},
+		Naming: NamingRule{
+			Case: "lowercase",
+		},
+	}
+}
+
+// DefaultRooCodeLayout returns a [LayoutSchema] matching Roo Code repository
+// conventions. It expects a .roo/ directory with a rules/ subdirectory
+// containing scoped rule files (*.md).
+func DefaultRooCodeLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".roo",
+		Required: []string{},
+		Optional: []string{},
+		Dirs: map[string]DirRule{
+			"rules": {
+				Glob:        "*.md",
+				Min:         0,
+				Description: "Roo Code scoped rule files",
+			},
+		},
+		Naming: NamingRule{
+			Case: "lowercase",
+		},
+	}
+}
+
+// DefaultJetBrainsLayout returns a [LayoutSchema] matching JetBrains AI
+// Assistant repository conventions. It expects a .aiassistant/ directory with
+// a rules/ subdirectory containing scoped rule files (*.md).
+func DefaultJetBrainsLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".aiassistant",
+		Required: []string{},
+		Optional: []string{},
+		Dirs: map[string]DirRule{
+			"rules": {
+				Glob:        "*.md",
+				Min:         0,
+				Description: "JetBrains AI Assistant scoped rule files",
+			},
+		},
+		Naming: NamingRule{
+			Case: "lowercase",
 		},
 	}
 }

@@ -4,8 +4,9 @@
 
 repogov is a dependency-free Go library and CLI for auditing repository
 file lengths and directory layout conventions. It helps teams enforce
-consistent structure across Copilot, Cursor, Windsurf, Claude, GitLab,
-and standard repository root conventions.
+consistent structure across GitHub Copilot, Cursor, Windsurf, Claude,
+Kiro, Gemini CLI, Continue, Cline, Roo Code, JetBrains AI Assistant,
+GitLab, and standard repository root conventions.
 
 ## Architecture
 
@@ -16,8 +17,10 @@ The library is split into two orthogonal concerns:
 
 2. **Layout governance** -- schema-based validation of directory structure
    using preset rules for GitHub (`.github/`), Cursor (`.cursor/`), Windsurf
-   (`.windsurf/`), Claude (`.claude/`), GitLab (`.gitlab/`), and the repository
-   root (`.`).
+   (`.windsurf/`), Claude (`.claude/`), Kiro (`.kiro/`), Gemini CLI (`GEMINI.md`
+   at root), Continue (`.continue/`), Cline (`.clinerules/`), Roo Code (`.roo/`),
+   JetBrains AI Assistant (`.aiassistant/`), GitLab (`.gitlab/`), and the
+   repository root (`.`).
 
 Both concerns produce structured results that can be consumed
 programmatically or formatted for human-readable output.
@@ -28,7 +31,10 @@ programmatically or formatted for human-readable output.
 repogov.go      -- Core types: Status, Config, Rule, Result
 check.go        -- CountLines, CheckFile, CheckDir, CheckDirContext
 layout.go       -- LayoutSchema, CheckLayout, CheckLayoutContext
-presets.go       -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout, DefaultClaudeLayout, DefaultGitLabLayout, DefaultRootLayout
+presets.go       -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout,
+                   DefaultClaudeLayout, DefaultKiroLayout, DefaultGeminiLayout,
+                   DefaultContinueLayout, DefaultClineLayout, DefaultRooCodeLayout,
+                   DefaultJetBrainsLayout, DefaultGitLabLayout, DefaultRootLayout
 config.go        -- LoadConfig, SaveConfig (JSON)
 format.go        -- Summary, Passed, LayoutSummary, LayoutPassed
 cmd/repogov/     -- CLI with limits/layout/all/version subcommands
@@ -69,8 +75,14 @@ A `LayoutSchema` defines:
 - Directory rules (glob patterns and minimum file counts)
 - Naming conventions (case rules with exceptions)
 
-Presets are provided for Copilot, Cursor, Windsurf, Claude, GitLab, and the
-repository root; custom schemas can be constructed programmatically.
+Presets are provided for Copilot, Cursor, Windsurf, Claude, Kiro, Gemini CLI,
+Continue, Cline, Roo Code, JetBrains AI Assistant, GitLab, and the repository
+root; custom schemas can be constructed programmatically.
+
+File-only schemas (e.g., Gemini, where `Root == "."` and `Dirs` is empty)
+use a short-circuit path in `CheckLayoutContext`: only Required/Optional file
+existence is checked; directory walking is skipped entirely to avoid false
+unexpected-file results at the repository root.
 
 `root` is intentionally excluded from the `all` expansion — root layout
 is project-structure-specific and would generate unexpected-file noise for
@@ -95,7 +107,8 @@ Flags:
   -config    Path to JSON/YAML config (default: auto-discovered)
   -root      Repository root (default: .)
   -exts      Extension filter (e.g., .go,.md)
-  -agent     Agent preset: copilot, cursor, windsurf, claude, gitlab, root, or all
+  -agent     Agent preset: copilot, cursor, windsurf, claude, kiro, gemini,
+             continue, cline, roocode, jetbrains, gitlab, root, or all
   -quiet     Exit code only
   -json      JSON output
 ```

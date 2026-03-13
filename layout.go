@@ -103,6 +103,38 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		return nil, err
 	}
 
+	// File-only schemas (Root == "." with no subdirs) only validate specific
+	// required/optional files. Walking the repo root would report all other
+	// platform directories as unexpected, so we short-circuit here.
+	if schema.Root == "." && len(schema.Dirs) == 0 {
+		for _, req := range schema.Required {
+			filePath := filepath.Join(root, filepath.FromSlash(req))
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				results = append(results, LayoutResult{
+					Path:    req,
+					Status:  Fail,
+					Message: "missing required file -- FIX: create " + req + " or run 'repogov init'",
+				})
+			} else {
+				results = append(results, LayoutResult{
+					Path:    req,
+					Status:  Pass,
+					Message: "required file present",
+				})
+			}
+		}
+		for _, opt := range schema.Optional {
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(opt))); err == nil {
+				results = append(results, LayoutResult{
+					Path:    opt,
+					Status:  Info,
+					Message: "optional file present",
+				})
+			}
+		}
+		return results, nil
+	}
+
 	// Build exception set for naming checks.
 	exceptionSet := make(map[string]bool, len(schema.Naming.Exceptions))
 	for _, e := range schema.Naming.Exceptions {
@@ -164,6 +196,12 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		if dir == "." {
 			dir = ""
 		}
+		// dirKey is the schema.Dirs lookup key: ".", for files sitting directly
+		// under schema.Root (dir == ""), or the subdirectory name otherwise.
+		dirKey := dir
+		if dirKey == "" {
+			dirKey = "."
+		}
 		name := filepath.Base(relPath)
 
 		// Silently skip .gitkeep files in managed directories; they are
@@ -174,11 +212,9 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		}
 
 		// Count toward managed directory regardless of required/optional status.
-		if dir != "" {
-			if rule, ok := schema.Dirs[dir]; ok {
-				if rule.Glob == "" || matchGlob(rule.Glob, name) {
-					dirFileCounts[dir]++
-				}
+		if rule, ok := schema.Dirs[dirKey]; ok {
+			if rule.Glob == "" || matchGlob(rule.Glob, name) {
+				dirFileCounts[dirKey]++
 			}
 		}
 
@@ -205,11 +241,9 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 
 		// Check if it belongs to a managed directory.
 		matched := false
-		if dir != "" {
-			if rule, ok := schema.Dirs[dir]; ok {
-				if rule.Glob == "" || matchGlob(rule.Glob, name) {
-					matched = true
-				}
+		if rule, ok := schema.Dirs[dirKey]; ok {
+			if rule.Glob == "" || matchGlob(rule.Glob, name) {
+				matched = true
 			}
 		}
 

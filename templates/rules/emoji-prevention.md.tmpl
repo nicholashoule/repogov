@@ -55,15 +55,10 @@ Install once:
 go install github.com/nicholashoule/demojify-sanitize/cmd/demojify@latest
 ```
 
-Audit (exits `1` if emoji found):
-
-```sh
-demojify
-```
-
 Fix in place:
 
 ```sh
+demojify      # Audit and report affected files
 demojify -fix # Rewrite stripped affected files in place after reporting
 demojify -sub # Substitute emoji with text tokens instead of stripping; implies -fix
 ```

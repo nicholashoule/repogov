@@ -61,7 +61,7 @@ func ExampleDefaultConfig() {
 	fmt.Println(cfg.Default)
 	fmt.Println(cfg.WarningThreshold)
 	// Output:
-	// 300
+	// 500
 	// 85
 }
 

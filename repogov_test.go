@@ -34,8 +34,8 @@ func TestStatusString(t *testing.T) {
 func TestDefaultConfig(t *testing.T) {
 	cfg := repogov.DefaultConfig()
 
-	if cfg.Default != 300 {
-		t.Errorf("Default = %d, want 300", cfg.Default)
+	if cfg.Default != 500 {
+		t.Errorf("Default = %d, want 500", cfg.Default)
 	}
 	if cfg.WarningThreshold != 85 {
 		t.Errorf("WarningThreshold = %d, want 85", cfg.WarningThreshold)
@@ -122,8 +122,8 @@ func TestResolveLimit_NilLimitFallsThrough(t *testing.T) {
 func TestResolveLimit_ZeroDefault(t *testing.T) {
 	cfg := repogov.Config{Default: 0}
 	got := repogov.ResolveLimit("anything.txt", cfg)
-	if got != 300 {
-		t.Errorf("ResolveLimit with zero default = %d, want builtin 300", got)
+	if got != 500 {
+		t.Errorf("ResolveLimit with zero default = %d, want builtin 500", got)
 	}
 }
 

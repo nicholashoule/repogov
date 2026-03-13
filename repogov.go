@@ -198,15 +198,27 @@ type Result struct {
 }
 
 // defaultLimit is the built-in fallback when Config.Default is zero.
-const defaultLimit = 300
+const defaultLimit = 500
 
 // defaultWarningThreshold is the built-in warning threshold percentage.
 const defaultWarningThreshold PercentInt = 85
 
 // DefaultConfig returns a Config with sensible defaults:
-// Default=300, WarningThreshold=85, standard SkipDirs,
-// .github/rules/*.md at 300, and .github/copilot-instructions.md
-// at 50 lines.
+// Default=500, WarningThreshold=85, standard SkipDirs, and .md/.mdc includes.
+// It applies 300-line limits to AI rule files for:
+//   - GitHub Copilot: .github/rules/*.md
+//   - Cursor: .cursor/rules/*.md, .cursor/rules/*.mdc
+//   - Windsurf: .windsurf/rules/*.md
+//   - Claude: .claude/rules/*.md, .claude/agents/*.md
+//   - Kiro: .kiro/steering/*.md
+//   - Continue: .continue/rules/*.md
+//   - Cline: .clinerules/*.md
+//   - Roo Code: .roo/rules/*.md
+//   - JetBrains AI Assistant: .aiassistant/rules/*.md
+//
+// and sets specific file limits:
+//   - .github/copilot-instructions.md at 50 lines
+//   - .claude/CLAUDE.md, AGENTS.md, GEMINI.md at 200 lines each
 func DefaultConfig() Config {
 	return Config{
 		Default:          defaultLimit,
@@ -220,11 +232,17 @@ func DefaultConfig() Config {
 			{Glob: ".windsurf/rules/*.md", Limit: RuleLimit(300)},
 			{Glob: ".claude/rules/*.md", Limit: RuleLimit(300)},
 			{Glob: ".claude/agents/*.md", Limit: RuleLimit(300)},
+			{Glob: ".kiro/steering/*.md", Limit: RuleLimit(300)},
+			{Glob: ".continue/rules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".clinerules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".roo/rules/*.md", Limit: RuleLimit(300)},
+			{Glob: ".aiassistant/rules/*.md", Limit: RuleLimit(300)},
 		},
 		Files: map[string]int{
 			".github/copilot-instructions.md": 50,
 			".claude/CLAUDE.md":               200,
 			"AGENTS.md":                       200,
+			"GEMINI.md":                       200,
 		},
 	}
 }

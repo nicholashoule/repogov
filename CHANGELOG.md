@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-03-12
+
+### Added
+
+- `DefaultKiroLayout()`, `DefaultGeminiLayout()`, `DefaultContinueLayout()`, `DefaultClineLayout()`, `DefaultRooCodeLayout()`, `DefaultJetBrainsLayout()` layout presets in `presets.go`.
+- `-agent kiro`, `-agent gemini`, `-agent continue`, `-agent cline`, `-agent roocode`, `-agent jetbrains` CLI presets for `layout`, `init`, and `all` subcommands.
+- `templates/agents/GEMINI.md.tmpl` — template for Gemini CLI's root-level `GEMINI.md` instruction file.
+- `crossAgentRootFile()` helper in `init.go` — explicit allowlist for root-level files that belong in every agent's generated `repogov-config.json`; currently only `AGENTS.md` qualifies. Prevents agent-specific files from being injected into unrelated platform configs.
+- `anyRequiredFileExists()` helper in `cmd/repogov/main.go` — enables `runLayout all` to correctly skip file-only schemas (e.g., Gemini) whose required files are absent, matching existing absent-directory skip behavior for all other platforms.
+- Glob rules for `.kiro/steering/*.md`, `.continue/rules/*.md`, `.clinerules/*.md`, `.roo/rules/*.md`, and `.aiassistant/rules/*.md` added to `DefaultConfig()` (`repogov.go`) and `.github/repogov-config.json`.
+- `docs/compliance/AI_AGENTS_AUDIT.md` — Kiro, Gemini CLI, Continue, Cline, Roo Code, and JetBrains AI Assistant moved from backlog to Supported.
+
+### Changed
+
+- `defaultLimit` constant changed from `300` to `500` (`repogov.go`); raises the built-in fallback limit for all unconfigured files.
+- `schemaConfig()` in `init.go` replaced the blanket "no-slash key = include everywhere" rule with an explicit `crossAgentRootFile()` allowlist check; agent-specific root files (e.g., `GEMINI.md`) no longer appear in unrelated agents' generated `repogov-config.json`.
+- `CheckLayoutContext()` in `layout.go` short-circuits for file-only schemas (`Root == "."`, empty `Dirs`): validates only Required/Optional file existence without walking the directory, preventing false unexpected-file failures on Gemini layout checks.
+- `DefaultRootLayout()` updated with `NoCreate: true` entries for `.kiro/`, `.continue/`, `.clinerules/`, `.roo/`, `.aiassistant/`, and `GEMINI.md` added to the naming exception list.
+- `DefaultConfig()` extended: `GEMINI.md: 200` and corrected `.claude/CLAUDE.md: 200` (was `50`).
+
+### Fixed
+
+- `.claude/CLAUDE.md` default limit corrected from `50` to `200` in `DefaultConfig()` (`repogov.go`).
+
 ## [v0.4.0] - 2026-03-09
 
 ### Added
@@ -91,7 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.5.0...HEAD
+[v0.5.0]: https://github.com/nicholashoule/repogov/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/nicholashoule/repogov/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/nicholashoule/repogov/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/nicholashoule/repogov/compare/v0.1.0...v0.2.0

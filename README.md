@@ -32,6 +32,10 @@ go get github.com/nicholashoule/repogov
 go install github.com/nicholashoule/repogov/cmd/repogov@latest
 ```
 
+```bash
+go run github.com/nicholashoule/repogov/cmd/repogov@latest -agent copilot init
+```
+
 ## Quick Start
 
 ### As a library
@@ -64,6 +68,9 @@ func main() {
 ### As a CLI
 
 ```bash
+# Go run (Copilot - init)
+go run github.com/nicholashoule/repogov/cmd/repogov@latest -agent copilot init
+
 # Check line limits (defaults to .md and .mdc files)
 repogov -root . limits
 
@@ -75,9 +82,6 @@ repogov -root . layout
 
 # Scaffold platform directory structure (agent flag must precede subcommand)
 repogov -root . -agent copilot init
-
-# Run both checks
-repogov -root . all
 
 # Quiet mode (exit code only)
 repogov -root . -quiet all

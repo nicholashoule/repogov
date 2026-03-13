@@ -185,6 +185,145 @@ func TestInitLayout_ClaudeSchema(t *testing.T) {
 	}
 }
 
+func TestInitLayout_KiroSchema(t *testing.T) {
+	root := t.TempDir()
+	schema := repogov.DefaultKiroLayout()
+
+	created, err := repogov.InitLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected Kiro directories to be created")
+	}
+	kiroDir := filepath.Join(root, ".kiro")
+	if _, err := os.Stat(kiroDir); os.IsNotExist(err) {
+		t.Error(".kiro directory was not created")
+	}
+	steeringDir := filepath.Join(kiroDir, "steering")
+	if _, err := os.Stat(steeringDir); os.IsNotExist(err) {
+		t.Error(".kiro/steering directory was not created")
+	}
+}
+
+func TestInitLayout_GeminiSchema(t *testing.T) {
+	root := t.TempDir()
+	schema := repogov.DefaultGeminiLayout()
+
+	created, err := repogov.InitLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected Gemini files to be created")
+	}
+
+	// GEMINI.md must be created at root with {{.Agent}} rendered.
+	geminiMd := filepath.Join(root, "GEMINI.md")
+	if _, err := os.Stat(geminiMd); os.IsNotExist(err) {
+		t.Error("GEMINI.md was not created at repository root")
+	}
+	if data, err := os.ReadFile(geminiMd); err == nil {
+		if strings.Contains(string(data), "{{.Agent}}") {
+			t.Error("GEMINI.md contains literal {{.Agent}} — template was not rendered")
+		}
+		if !strings.Contains(string(data), "-agent gemini") {
+			t.Error("GEMINI.md missing '-agent gemini'; {{.Agent}} was not substituted")
+		}
+	}
+}
+
+func TestInitLayout_ContinueSchema(t *testing.T) {
+	root := t.TempDir()
+	schema := repogov.DefaultContinueLayout()
+
+	created, err := repogov.InitLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected Continue directories to be created")
+	}
+	continueDir := filepath.Join(root, ".continue")
+	if _, err := os.Stat(continueDir); os.IsNotExist(err) {
+		t.Error(".continue directory was not created")
+	}
+	rulesDir := filepath.Join(continueDir, "rules")
+	if _, err := os.Stat(rulesDir); os.IsNotExist(err) {
+		t.Error(".continue/rules directory was not created")
+	}
+}
+
+func TestInitLayout_ClineSchema(t *testing.T) {
+	root := t.TempDir()
+	schema := repogov.DefaultClineLayout()
+
+	created, err := repogov.InitLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected Cline directories to be created")
+	}
+	clinerDir := filepath.Join(root, ".clinerules")
+	if _, err := os.Stat(clinerDir); os.IsNotExist(err) {
+		t.Error(".clinerules directory was not created")
+	}
+
+	// Rule files go directly into .clinerules/ (the "." DirRule).
+	generalPath := filepath.Join(clinerDir, "general.md")
+	if _, err := os.Stat(generalPath); os.IsNotExist(err) {
+		t.Error(".clinerules/general.md was not seeded")
+	}
+	// Verify the emoji-prevention link points to .clinerules/ (not .clinerules/rules/).
+	data, _ := os.ReadFile(generalPath)
+	if content := string(data); !strings.Contains(content, ".clinerules/emoji-prevention.md") {
+		t.Errorf("general.md emoji link should be .clinerules/emoji-prevention.md, got:\n%s", content)
+	}
+}
+
+func TestInitLayout_RooCodeSchema(t *testing.T) {
+	root := t.TempDir()
+	schema := repogov.DefaultRooCodeLayout()
+
+	created, err := repogov.InitLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected Roo Code directories to be created")
+	}
+	rooDir := filepath.Join(root, ".roo")
+	if _, err := os.Stat(rooDir); os.IsNotExist(err) {
+		t.Error(".roo directory was not created")
+	}
+	rulesDir := filepath.Join(rooDir, "rules")
+	if _, err := os.Stat(rulesDir); os.IsNotExist(err) {
+		t.Error(".roo/rules directory was not created")
+	}
+}
+
+func TestInitLayout_JetBrainsSchema(t *testing.T) {
+	root := t.TempDir()
+	schema := repogov.DefaultJetBrainsLayout()
+
+	created, err := repogov.InitLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected JetBrains directories to be created")
+	}
+	jbDir := filepath.Join(root, ".aiassistant")
+	if _, err := os.Stat(jbDir); os.IsNotExist(err) {
+		t.Error(".aiassistant directory was not created")
+	}
+	rulesDir := filepath.Join(jbDir, "rules")
+	if _, err := os.Stat(rulesDir); os.IsNotExist(err) {
+		t.Error(".aiassistant/rules directory was not created")
+	}
+}
+
 // TestInitLayoutWithConfig_AlwaysCreate verifies that when
 // Config.InitAlwaysCreate is true, missing template files are seeded into
 // a pre-existing non-empty directory.
@@ -721,12 +860,12 @@ func TestInitLayout_CreatesCopilotInstructions(t *testing.T) {
 	if !strings.Contains(content, "Refactor First") {
 		t.Error("copilot-instructions.md should document remediation priority")
 	}
-	// Should include file naming conventions.
-	if !strings.Contains(content, "## File Naming Conventions") {
-		t.Error("copilot-instructions.md should include File Naming Conventions section")
+	// Should include repository commands section.
+	if !strings.Contains(content, "## Repository Commands") {
+		t.Error("copilot-instructions.md should include Repository Commands section")
 	}
-	if !strings.Contains(content, "kebab-case") {
-		t.Error("copilot-instructions.md should reference kebab-case convention")
+	if !strings.Contains(content, "-agent copilot") {
+		t.Error("copilot-instructions.md should reference the agent name")
 	}
 	// Should be in the created list.
 	found := false
@@ -1507,6 +1646,84 @@ func TestAgentsMdContent_PerPlatformContextLinks(t *testing.T) {
 				".cursor/", ".windsurf/",
 			},
 		},
+		{
+			name:   "kiro",
+			schema: repogov.DefaultKiroLayout(),
+			wantLinks: []string{
+				"README.md",
+				"docs/",
+				".kiro/steering/",
+			},
+			noLinks: []string{
+				"copilot-instructions.md",
+				".cursor/", ".claude/",
+			},
+		},
+		{
+			name:   "gemini",
+			schema: repogov.DefaultGeminiLayout(),
+			wantLinks: []string{
+				"README.md",
+				"docs/",
+				"GEMINI.md",
+			},
+			noLinks: []string{
+				"copilot-instructions.md",
+				".cursor/", ".claude/",
+			},
+		},
+		{
+			name:   "continue",
+			schema: repogov.DefaultContinueLayout(),
+			wantLinks: []string{
+				"README.md",
+				"docs/",
+				".continue/rules/",
+			},
+			noLinks: []string{
+				"copilot-instructions.md",
+				".cursor/", ".claude/",
+			},
+		},
+		{
+			name:   "cline",
+			schema: repogov.DefaultClineLayout(),
+			wantLinks: []string{
+				"README.md",
+				"docs/",
+				".clinerules/",
+			},
+			noLinks: []string{
+				"copilot-instructions.md",
+				".cursor/", ".claude/",
+			},
+		},
+		{
+			name:   "roocode",
+			schema: repogov.DefaultRooCodeLayout(),
+			wantLinks: []string{
+				"README.md",
+				"docs/",
+				".roo/rules/",
+			},
+			noLinks: []string{
+				"copilot-instructions.md",
+				".cursor/", ".claude/",
+			},
+		},
+		{
+			name:   "jetbrains",
+			schema: repogov.DefaultJetBrainsLayout(),
+			wantLinks: []string{
+				"README.md",
+				"docs/",
+				".aiassistant/rules/",
+			},
+			noLinks: []string{
+				"copilot-instructions.md",
+				".cursor/", ".claude/",
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -1547,6 +1764,12 @@ func TestInitAllPlatforms_TempDir(t *testing.T) {
 		{"cursor", repogov.DefaultCursorLayout()},
 		{"windsurf", repogov.DefaultWindsurfLayout()},
 		{"claude", repogov.DefaultClaudeLayout()},
+		{"kiro", repogov.DefaultKiroLayout()},
+		{"gemini", repogov.DefaultGeminiLayout()},
+		{"continue", repogov.DefaultContinueLayout()},
+		{"cline", repogov.DefaultClineLayout()},
+		{"roocode", repogov.DefaultRooCodeLayout()},
+		{"jetbrains", repogov.DefaultJetBrainsLayout()},
 	}
 
 	for _, p := range platforms {

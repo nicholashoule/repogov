@@ -6,8 +6,6 @@ applyTo: "**"
 
 ## .github Layout
 
-Standard files and directories for this repository's `.github/` folder:
-
 - `.github/ISSUE_TEMPLATE/`
 - `.github/PULL_REQUEST_TEMPLATE/`
 - `.github/workflows/`
@@ -21,28 +19,9 @@ Standard files and directories for this repository's `.github/` folder:
 - `.github/CODEOWNERS`
 - `.github/dependabot.yml`
 
-## .gitlab Layout
+Standard `.gitlab/` files: `issue_templates/`, `merge_request_templates/`, `CODEOWNERS`, `.gitlab-ci.yml`.
 
-Standard files and directories for this repository's `.gitlab/` folder:
-
-- `.gitlab/issue_templates/`
-- `.gitlab/merge_request_templates/`
-- `.gitlab/CODEOWNERS`
-- `.gitlab-ci.yml`
-
-## Shared Root Files
-
-Files in the repository root recognized by both GitHub and GitLab:
-
-- `README.md`
-- `LICENSE`
-- `CHANGELOG.md`
-- `CONTRIBUTING.md`
-- `CODE_OF_CONDUCT.md`
-- `SECURITY.md`
-- `AGENTS.md`
-- `.gitignore`
-- `.gitattributes`
+Shared root files: `README.md`, `LICENSE`, `CHANGELOG.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `AGENTS.md`, `.gitignore`, `.gitattributes`.
 
 ## Pull Requests / Merge Requests
 
