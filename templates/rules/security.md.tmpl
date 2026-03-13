@@ -40,6 +40,6 @@ applyTo: "**"
 
 ## Vulnerability Disclosure
 
-- Follow the process in `SECURITY.md` for reporting vulnerabilities
+- Report vulnerabilities using the process documented in the project's README or official website
 - Do not discuss unpatched vulnerabilities in public issues or PRs
 - Update `CHANGELOG.md` under a `Security` section when a fix ships

@@ -269,6 +269,17 @@ func TestInitLayout_ClineSchema(t *testing.T) {
 	if _, err := os.Stat(clinerDir); os.IsNotExist(err) {
 		t.Error(".clinerules directory was not created")
 	}
+
+	// Rule files go directly into .clinerules/ (the "." DirRule).
+	generalPath := filepath.Join(clinerDir, "general.md")
+	if _, err := os.Stat(generalPath); os.IsNotExist(err) {
+		t.Error(".clinerules/general.md was not seeded")
+	}
+	// Verify the emoji-prevention link points to .clinerules/ (not .clinerules/rules/).
+	data, _ := os.ReadFile(generalPath)
+	if content := string(data); !strings.Contains(content, ".clinerules/emoji-prevention.md") {
+		t.Errorf("general.md emoji link should be .clinerules/emoji-prevention.md, got:\n%s", content)
+	}
 }
 
 func TestInitLayout_RooCodeSchema(t *testing.T) {

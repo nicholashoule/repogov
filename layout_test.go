@@ -345,3 +345,28 @@ func TestCheckLayout_DirMinimum_EmptyDescription(t *testing.T) {
 		t.Error("expected FAIL for dir below minimum")
 	}
 }
+
+// TestCheckLayout_RootDirRule verifies that a DirRule keyed by "." matches
+// files placed directly under schema.Root (no subdirectory), suppressing the
+// "unexpected file" warning. This is the pattern used by DefaultClineLayout.
+func TestCheckLayout_RootDirRule(t *testing.T) {
+	root := writeTempDir(t, map[string]string{
+		".clinerules/general.md": "# General\n",
+		".clinerules/extra.txt":  "not a md file\n",
+	})
+
+	schema := repogov.DefaultClineLayout()
+	results, err := repogov.CheckLayout(root, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, r := range results {
+		if strings.HasSuffix(r.Path, "general.md") && r.Status == repogov.Warn {
+			t.Errorf("general.md matched by '.' DirRule should not be unexpected, got Warn")
+		}
+		if strings.HasSuffix(r.Path, "extra.txt") && r.Status != repogov.Warn {
+			t.Errorf("extra.txt not matched by '.' Glob (*.md) should be Warn, got %v", r.Status)
+		}
+	}
+}

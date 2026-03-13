@@ -324,13 +324,20 @@ func DefaultContinueLayout() LayoutSchema {
 
 // DefaultClineLayout returns a [LayoutSchema] matching Cline repository
 // conventions. Cline reads rule files directly from the .clinerules/ directory
-// at the repository root; no subdirectory structure is used.
+// at the repository root; no subdirectory structure is used. The "." DirRule
+// matches all *.md files placed directly under .clinerules/.
 func DefaultClineLayout() LayoutSchema {
 	return LayoutSchema{
 		Root:     ".clinerules",
 		Required: []string{},
 		Optional: []string{},
-		Dirs:     map[string]DirRule{},
+		Dirs: map[string]DirRule{
+			".": {
+				Glob:        "*.md",
+				Min:         0,
+				Description: "Cline rule files",
+			},
+		},
 		Naming: NamingRule{
 			Case: "lowercase",
 		},

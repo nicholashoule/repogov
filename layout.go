@@ -196,6 +196,12 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		if dir == "." {
 			dir = ""
 		}
+		// dirKey is the schema.Dirs lookup key: ".", for files sitting directly
+		// under schema.Root (dir == ""), or the subdirectory name otherwise.
+		dirKey := dir
+		if dirKey == "" {
+			dirKey = "."
+		}
 		name := filepath.Base(relPath)
 
 		// Silently skip .gitkeep files in managed directories; they are
@@ -206,11 +212,9 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		}
 
 		// Count toward managed directory regardless of required/optional status.
-		if dir != "" {
-			if rule, ok := schema.Dirs[dir]; ok {
-				if rule.Glob == "" || matchGlob(rule.Glob, name) {
-					dirFileCounts[dir]++
-				}
+		if rule, ok := schema.Dirs[dirKey]; ok {
+			if rule.Glob == "" || matchGlob(rule.Glob, name) {
+				dirFileCounts[dirKey]++
 			}
 		}
 
@@ -237,11 +241,9 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 
 		// Check if it belongs to a managed directory.
 		matched := false
-		if dir != "" {
-			if rule, ok := schema.Dirs[dir]; ok {
-				if rule.Glob == "" || matchGlob(rule.Glob, name) {
-					matched = true
-				}
+		if rule, ok := schema.Dirs[dirKey]; ok {
+			if rule.Glob == "" || matchGlob(rule.Glob, name) {
+				matched = true
 			}
 		}
 

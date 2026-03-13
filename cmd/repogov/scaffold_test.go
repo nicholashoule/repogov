@@ -521,6 +521,20 @@ func TestScaffold_Cline_Init(t *testing.T) {
 
 	assertDirExists(t, filepath.Join(root, ".clinerules"))
 
+	// Rule files are seeded directly into .clinerules/.
+	for _, name := range []string{
+		"general.md", "codereview.md", "governance.md",
+		"library.md", "testing.md", "emoji-prevention.md",
+		"backend.md", "frontend.md", "security.md", "repo.md",
+	} {
+		p := filepath.Join(root, ".clinerules", name)
+		assertFileExists(t, p)
+		assertFileContains(t, p, "---") // YAML frontmatter delimiter
+	}
+
+	// The emoji-prevention link in general.md must point to .clinerules/ directly.
+	assertFileContains(t, filepath.Join(root, ".clinerules", "general.md"), ".clinerules/emoji-prevention.md")
+
 	agPath := filepath.Join(root, "AGENTS.md")
 	assertFileExists(t, agPath)
 	assertFileContains(t, agPath, ".clinerules/")

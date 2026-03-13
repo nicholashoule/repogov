@@ -340,7 +340,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 			}
 		}
 	} else {
-		for _, seedDir := range []string{"rules", "steering"} {
+		for _, seedDir := range []string{".", "rules", "steering"} {
 			if _, ok := schema.Dirs[seedDir]; ok {
 				paths, err := createDefaultInstructions(root, layoutDir, schema, opts, seedDir)
 				if err != nil {
@@ -480,6 +480,24 @@ func isDirEmpty(path string) bool {
 	return true
 }
 
+// dirHasGlobFiles reports whether dir contains at least one non-directory
+// entry whose name matches the given glob pattern (filepath.Match syntax).
+func dirHasGlobFiles(dir, glob string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if ok, _ := filepath.Match(glob, e.Name()); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // detectCopilotTargetDir returns the subdirectory name that should be used for
 // Copilot scoped rule files during init: "instructions" when .github/instructions/
 // already has content; otherwise "rules" (the default, consistent with all other
@@ -549,10 +567,11 @@ func detectConfigRelFrom(root, fromDir string) (name, relPath string) {
 // because its content depends on which config file exists at init time.
 // defaultInstructionFilesFor returns the map of template names to content
 // functions for the given schema root (e.g. ".github", ".claude"). root is
-// passed to templates that need it (e.g. general.md.tmpl).
-func defaultInstructionFilesFor(root string) map[string]func() string {
+// passed to templates that need it (e.g. general.md.tmpl). subdir is the
+// target subdirectory being seeded ("rules", "instructions", or "steering").
+func defaultInstructionFilesFor(root, subdir string) map[string]func() string {
 	return map[string]func() string{
-		"general.instructions.md":          func() string { return generalInstructionsContent(root) },
+		"general.instructions.md":          func() string { return generalInstructionsContent(root, subdir) },
 		"codereview.instructions.md":       codereviewInstructionsContent,
 		"library.instructions.md":          libraryInstructionsContent,
 		"testing.instructions.md":          testingInstructionsContent,
@@ -588,12 +607,22 @@ func instructionFileName(name string, descriptive bool) string {
 // so that the governance file can link to it accurately.
 func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts initOptions, subdir string) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	targetDir := filepath.Join(layoutDir, subdir)
-	if !opts.alwaysCreate && !isDirEmpty(targetDir) {
+	// For the root-dir case (subdir=="."), infrastructure files like
+	// repogov-config.json live alongside templates, so we must only block
+	// seeding when *.md template files already exist. For named subdirs the
+	// existing "non-empty dir" check is correct.
+	var targetPopulated bool
+	if subdir == "." {
+		targetPopulated = dirHasGlobFiles(targetDir, "*.md")
+	} else {
+		targetPopulated = !isDirEmpty(targetDir)
+	}
+	if !opts.alwaysCreate && targetPopulated {
 		return nil, nil
 	}
 
 	var created []string
-	for templateName, contentFn := range defaultInstructionFilesFor(schema.Root) {
+	for templateName, contentFn := range defaultInstructionFilesFor(schema.Root, subdir) {
 		stem := templateStem(templateName)
 		if !shouldSeedFile(stem, opts.include, opts.exclude) {
 			continue
@@ -641,9 +670,14 @@ func repoInstructionsContent() string {
 }
 
 // generalInstructionsContent returns default content for general.instructions.md.
-// root is the schema root directory (e.g. ".github") rendered into the template.
-func generalInstructionsContent(root string) string {
-	return mustRenderTemplate("rules/general.md.tmpl", struct{ Root string }{root})
+// root is the schema root directory (e.g. ".github") and rulesDir is the
+// subdirectory being seeded (e.g. "rules", "instructions", "steering", or "." for
+// layouts that place files directly under schema.Root).
+func generalInstructionsContent(root, rulesDir string) string {
+	return mustRenderTemplate("rules/general.md.tmpl", struct {
+		Root      string
+		RulesPath string
+	}{root, filepath.ToSlash(filepath.Join(root, rulesDir))})
 }
 
 // codereviewInstructionsContent returns default content for codereview.instructions.md.

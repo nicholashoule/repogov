@@ -204,9 +204,21 @@ const defaultLimit = 500
 const defaultWarningThreshold PercentInt = 85
 
 // DefaultConfig returns a Config with sensible defaults:
-// Default=500, WarningThreshold=85, standard SkipDirs,
-// .github/rules/*.md at 300, and .github/copilot-instructions.md
-// at 50 lines.
+// Default=500, WarningThreshold=85, standard SkipDirs, and .md/.mdc includes.
+// It applies 300-line limits to AI rule files for:
+//   - GitHub Copilot: .github/rules/*.md
+//   - Cursor: .cursor/rules/*.md, .cursor/rules/*.mdc
+//   - Windsurf: .windsurf/rules/*.md
+//   - Claude: .claude/rules/*.md, .claude/agents/*.md
+//   - Kiro: .kiro/steering/*.md
+//   - Continue: .continue/rules/*.md
+//   - Cline: .clinerules/*.md
+//   - Roo Code: .roo/rules/*.md
+//   - JetBrains AI Assistant: .aiassistant/rules/*.md
+//
+// and sets specific file limits:
+//   - .github/copilot-instructions.md at 50 lines
+//   - .claude/CLAUDE.md, AGENTS.md, GEMINI.md at 200 lines each
 func DefaultConfig() Config {
 	return Config{
 		Default:          defaultLimit,
