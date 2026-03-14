@@ -28,16 +28,19 @@ programmatically or formatted for human-readable output.
 ## Package Structure
 
 ```
-repogov.go      -- Core types: Status, Config, Rule, Result
+repogov.go      -- Core types: Status, Config, Rule, Result, ResolveLimit, DefaultConfig
 check.go        -- CountLines, CheckFile, CheckDir, CheckDirContext
-layout.go       -- LayoutSchema, CheckLayout, CheckLayoutContext
+config.go       -- LoadConfig, FindConfig, SaveConfig, ValidateConfig
+format.go       -- Summary, Passed, LayoutSummary, LayoutPassed
+init.go         -- InitLayout, InitLayoutAll, InitLayoutWithConfig, InitLayoutAllWithConfig
+layout.go       -- LayoutSchema, LayoutResult, CheckLayout, CheckLayoutContext
 presets.go      -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout,
                    DefaultClaudeLayout, DefaultKiroLayout, DefaultGeminiLayout,
                    DefaultContinueLayout, DefaultClineLayout, DefaultRooCodeLayout,
                    DefaultJetBrainsLayout, DefaultZedLayout, DefaultGitLabLayout, DefaultRootLayout
-config.go       -- LoadConfig, SaveConfig (JSON)
-format.go       -- Summary, Passed, LayoutSummary, LayoutPassed
-init.go         -- InitLayout, InitLayoutAll, createDefaultConfig, schemaConfig, seeded rule templates
+scaffold.go     -- File creators, AGENTS.md management, config scaffolding, instruction seeding
+template.go     -- Embedded template FS, mustReadTemplate, mustRenderTemplate
+yaml.go         -- Minimal YAML parser and serializer (stdlib only)
 cmd/repogov/    -- CLI with limits/layout/init/validate/all/version subcommands
 ```
 
