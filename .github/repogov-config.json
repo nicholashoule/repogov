@@ -9,7 +9,6 @@
   ],
   "files": {
     ".github/copilot-instructions.md": 50,
-    ".github/rules/memory.instructions.md": 200,
     ".github/rules/memory.md": 200,
     "AGENTS.md": 200
   }

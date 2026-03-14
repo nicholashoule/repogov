@@ -197,8 +197,8 @@ func copilotNarrowSchema(ghDir string, schema LayoutSchema) LayoutSchema { //nol
 // detectConfigRelFrom returns the basename and the relative path (from fromDir)
 // of the first repogov config file found at root or inside root/.github/.
 // If no config file exists yet, it returns the default JSON name so that
-// governance links are always valid after a fresh init (which always creates
-// repogov-config.json in .github/).
+// governance links are always valid after a fresh init (which will create
+// repogov-config.json at the repository root).
 func detectConfigRelFrom(root, fromDir string) (name, relPath string) {
 	candidates := []string{
 		filepath.Join(root, ".github"),
@@ -216,8 +216,8 @@ func detectConfigRelFrom(root, fromDir string) (name, relPath string) {
 			}
 		}
 	}
-	// Default: init will create repogov-config.json in .github/.
-	defaultPath := filepath.Join(root, ".github", "repogov-config.json")
+	// Default: init will create repogov-config.json at the repository root.
+	defaultPath := filepath.Join(root, "repogov-config.json")
 	rel, err := filepath.Rel(fromDir, defaultPath)
 	if err != nil {
 		rel = defaultPath
