@@ -1,7 +1,7 @@
 # GitHub Copilot Audit
 
 Source: https://docs.github.com/en/copilot/customizing-copilot/adding-repository-custom-instructions-for-github-copilot
-Verified: 2026-03-07
+Verified: 2026-03-13
 
 ## Configuration Files
 
@@ -21,6 +21,23 @@ Verified: 2026-03-07
 |-----------|-------|
 | `.md` | `copilot-instructions.md`, `rules/*.md`, `instructions/*.instructions.md`, `prompts/*.prompt.md` |
 
+## Frontmatter Keys
+
+Instruction files in `.github/instructions/` and `.github/rules/` support YAML frontmatter:
+
+| Key | Values | Effect |
+|-----|--------|--------|
+| `applyTo` | glob string (e.g. `"**"`, `"**/*.go"`) | Scopes the rule to matching file paths |
+| `excludeAgent` | `"code-review"` or `"coding-agent"` | Excludes this rule from the specified Copilot feature |
+
+Example — a rule that applies everywhere but is excluded from code-review runs:
+```yaml
+---
+applyTo: "**"
+excludeAgent: "code-review"
+---
+```
+
 ## Seeded Files
 
 `init -agent copilot` seeds `copilot-instructions.md` and the following default files
@@ -36,6 +53,21 @@ Verified: 2026-03-07
 | `library.instructions.md` | `"**/*.md"` | Library authoring conventions |
 | `testing.instructions.md` | `"**/*.md"` | Test structure and coverage |
 | `emoji-prevention.instructions.md` | `"**"` | No emoji in docs |
+
+## Memory Configuration
+
+GitHub Copilot has no dedicated memory file or runtime memory system. All persistent
+context is provided through instruction files checked into the repository. There is no
+equivalent to a `memory.md` that Copilot writes to or reads from at runtime.
+
+| Scope | File | Auto-loaded |
+|-------|------|-------------|
+| Repo-wide | `.github/copilot-instructions.md` | Yes — always injected |
+| Path-scoped | `.github/instructions/*.instructions.md` or `.github/rules/*.md` | Yes — matched by `applyTo` glob |
+| Global | None (VS Code user settings for model/UI prefs only) | — |
+
+To persist rules across sessions, add them to `.github/copilot-instructions.md` or a scoped
+rules file. There is no session-level or agent-runtime memory mechanism.
 
 ## Limits
 

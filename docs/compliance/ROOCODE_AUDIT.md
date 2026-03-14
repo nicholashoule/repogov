@@ -34,15 +34,37 @@ and global scopes.
 
 ## Limits
 
-No documented line/character limits. Files are loaded recursively and
-concatenated, so keep individual rule files focused.
+Roo Code imposes no documented per-file line/character limit. repogov enforces:
 
-## repogov Support Status
+- `.roo/rules/*.md`: 300 lines (enforced via `DefaultConfig().Rules` glob).
 
-Not yet supported. To add support:
+**Note:** Mode-specific directories (`.roo/rules-code/`, `.roo/rules-architect/`, etc.)
+are not included in the default glob rule. Teams using mode-specific dirs should
+add additional glob rules to `repogov-config.json`.
 
-1. Create `DefaultRooCodeLayout()` in `presets.go`.
-2. Add `.roo/rules/*.md` glob rules to `DefaultConfig()`.
-3. Consider mode-specific dirs (`.roo/rules-code/`, etc.) as optional extras.
-4. Add `TestInitLayout_RooCodeSchema` to `init_test.go`.
-5. Move this file to the Per-Agent Files table in `AI_AGENTS_AUDIT.md`.
+## Memory Configuration
+
+Roo Code has no built-in project-level `memory.md` file. The community "Memory Bank"
+pattern instructs the agent (via `.roo/rules/` files) to maintain structured Markdown
+files (e.g. `memory-bank/projectbrief.md`, `memory-bank/activeContext.md`) that
+track project state across sessions. Roo Code does not load these files automatically;
+they are referenced from rule files.
+
+repogov does not govern `memory-bank/` files by default. Teams using the Memory Bank
+pattern should add explicit glob rules to `repogov-config.json` if they want
+line-limit enforcement on those files.
+
+## Seeded Files
+
+`init -agent roocode` creates the `.roo/rules/` directory and seeds:
+
+| File | Frontmatter | Purpose |
+|------|-------------|----------|
+| `general.md` | `applyTo: "**"` | General project conventions |
+
+## Preset
+
+`DefaultRooCodeLayout()` in `presets.go`. Validates `.roo/rules/` with `*.md` glob.
+Mode-specific directories (`.roo/rules-{modeSlug}/`) are recognized in `DefaultRootLayout()`
+as part of the `.roo/` managed directory but are not enforced by the Roo Code preset.
+CLI agent name: `roocode`.

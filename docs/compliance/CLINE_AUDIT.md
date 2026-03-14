@@ -43,14 +43,42 @@ when a `.clinerules/` directory is not present:
 
 ## Limits
 
-No documented line/character limits. Individual rule files should be kept
-focused; Cline loads all matching files and concatenates them.
+Cline imposes no documented per-file line/character limit. repogov enforces:
 
-## repogov Support Status
+- `.clinerules/*.md`: 300 lines (enforced via `DefaultConfig().Rules` glob).
 
-Not yet supported. To add support:
+## Memory Configuration
 
-1. Create `DefaultClineLayout()` in `presets.go`.
-2. Add `.clinerules/*.md` glob rules to `DefaultConfig()`.
-3. Add `TestInitLayout_ClineSchema` to `init_test.go`.
-4. Move this file to the Per-Agent Files table in `AI_AGENTS_AUDIT.md`.
+Cline has no built-in project-level `memory.md` file. A community convention known
+as "Memory Bank" instructs the agent (via `.clinerules/` rule files) to maintain
+a set of Markdown files (e.g. `memory-bank/projectbrief.md`, `memory-bank/activeContext.md`)
+that track project state across sessions. These files are user-managed content;
+Cline does not load them automatically — they are referenced from rule files.
+
+repogov does not govern `memory-bank/` files by default. Teams using the Memory Bank
+pattern should add explicit glob rules to `repogov-config.json` if they want
+line-limit enforcement on those files.
+
+## Seeded Files
+
+`init -agent cline` creates the `.clinerules/` directory and seeds the full
+default instruction set directly into `.clinerules/` (no `rules/` subdirectory):
+
+| File | `applyTo` | Purpose |
+|------|-----------|----------|
+| `general.md` | `"**"` | General coding conventions |
+| `backend.md` | `"**"` | API design, error handling, auth, data, testing |
+| `frontend.md` | `"**"` | Component structure, state, API integration, a11y |
+| `codereview.md` | `"**/*.md"` | Code review guidelines |
+| `governance.md` | `"**"` | Line limits, layout, zero dependencies |
+| `library.md` | `"**/*.md"` | Library authoring conventions |
+| `testing.md` | `"**/*.md"` | Test structure and coverage |
+| `emoji-prevention.md` | `"**"` | No emoji in docs |
+| `security.md` | `"**"` | Security guidelines |
+| `repo.md` | `"**"` | Repository conventions |
+
+## Preset
+
+`DefaultClineLayout()` in `presets.go`. Cline loads rule files directly from `.clinerules/`;
+the schema uses `Root: ".clinerules"` with a `"."` DirRule (matches all `*.md` files in the root
+of `.clinerules/` directly). CLI agent name: `cline`.

@@ -31,17 +31,32 @@ Source: https://www.jetbrains.com/help/ai-assistant/configure-project-rules.html
 
 ## Limits
 
-No documented line/character limits per rule file.
+JetBrains AI Assistant imposes no documented per-file line/character limit.
+repogov enforces:
 
-## repogov Support Status
+- `.aiassistant/rules/*.md`: 300 lines (enforced via `DefaultConfig().Rules` glob).
 
-Not yet supported. To add support:
+## Memory Configuration
 
-1. Create `DefaultJetBrainsLayout()` in `presets.go`.
-2. Add `.aiassistant/rules/*.md` glob rules to `DefaultConfig()`.
-3. Add `TestInitLayout_JetBrainsSchema` to `init_test.go`.
-4. Move this file to the Per-Agent Files table in `AI_AGENTS_AUDIT.md`.
+JetBrains AI Assistant has no project-level `memory.md` file. Rule type metadata
+(Always / Manually / By model decision / By file patterns) is stored in the IDE's
+local settings, not in the Markdown rule files themselves. Persistent context is
+provided by rules with type `Always`. There is no runtime memory file that the
+agent writes to within the repository.
 
-Note: Rule type (Always / Manually / etc.) is IDE-managed metadata, not stored
-in the `.md` file itself. repogov can only govern the Markdown content and file
-placement; rule-type settings remain with the developer's IDE configuration.
+## Seeded Files
+
+`init -agent jetbrains` creates the `.aiassistant/rules/` directory and seeds:
+
+| File | Purpose |
+|------|----------|
+| `general.md` | General project conventions |
+
+**Note:** Rule type (Always / Manually / etc.) is IDE-managed metadata, not stored
+in the `.md` file itself. repogov governs Markdown content and file placement;
+rule-type settings remain with each developer's IDE configuration.
+
+## Preset
+
+`DefaultJetBrainsLayout()` in `presets.go`. Validates `.aiassistant/rules/` with `*.md` glob.
+CLI agent name: `jetbrains`.

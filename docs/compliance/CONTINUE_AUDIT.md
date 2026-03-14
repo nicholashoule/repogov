@@ -50,13 +50,26 @@ Source: https://docs.continue.dev/customize/deep-dives/rules — verified 2026-0
 
 ## Limits
 
-No documented line/character limits. Applies to both local and global rules.
+Continue.dev imposes no documented per-file line/character limit. repogov enforces:
 
-## repogov Support Status
+- `.continue/rules/*.md`: 300 lines (enforced via `DefaultConfig().Rules` glob).
 
-Not yet supported. To add support:
+## Memory Configuration
 
-1. Create `DefaultContinueLayout()` in `presets.go`.
-2. Add `.continue/rules/*.md` glob rules to `DefaultConfig()`.
-3. Add `TestInitLayout_ContinueSchema` to `init_test.go`.
-4. Move this file to the Per-Agent Files table in `AI_AGENTS_AUDIT.md`.
+Continue.dev has no dedicated `memory.md` or project-level memory file. Persistent
+context is provided by rules files in `.continue/rules/` that are always-included
+(set `alwaysApply: true` in frontmatter). Global rules in `~/.continue/rules/` apply
+to all projects but are not file-based within the repository.
+
+## Seeded Files
+
+`init -agent continue` creates the `.continue/rules/` directory and seeds:
+
+| File | Frontmatter | Purpose |
+|------|-------------|---------|
+| `general.md` | `applyTo: "**"` | General project conventions |
+
+## Preset
+
+`DefaultContinueLayout()` in `presets.go`. Validates `.continue/rules/` with `*.md` glob.
+CLI agent name: `continue`.

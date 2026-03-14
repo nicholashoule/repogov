@@ -76,6 +76,7 @@ Legend: Pass / Warn (partial) / Fail
 | Cline | Pass | Pass | Pass | Pass | **Yes** | Yes |
 | Roo Code | Pass | Pass | Pass | Pass | **Yes** | Yes |
 | JetBrains AI Assistant | Pass | Pass | Pass | Pass | **Yes** | Yes |
+| Zed AI | Pass | Pass | Pass | Pass | **Yes** | Yes |
 
 ### Finding: OpenAI Codex CLI has no preset despite qualifying
 
@@ -134,6 +135,7 @@ Agents with a `Default<Agent>Layout()` preset and full `init` support:
 | Cline | [CLINE_AUDIT.md](CLINE_AUDIT.md) |
 | Roo Code | [ROOCODE_AUDIT.md](ROOCODE_AUDIT.md) |
 | JetBrains AI Assistant | [JETBRAINS_AUDIT.md](JETBRAINS_AUDIT.md) |
+| Zed AI | [ZED_AUDIT.md](ZED_AUDIT.md) |
 
 ### Tracked (no preset — criteria not met or preset not yet built)
 
@@ -157,7 +159,7 @@ row to the Per-Agent Files table above.
 | 2 | Sourcegraph Cody | [SOURCEGRAPH_AUDIT.md](SOURCEGRAPH_AUDIT.md) | Unverified — no file-based instructions found in official docs | Rules docs pages return 404; see audit file for action items |
 | 3 | Devin | [DEVIN_AUDIT.md](DEVIN_AUDIT.md) | None (web-platform managed) | Instructions via Knowledge/Repo Setup in app.devin.ai; not file-based |
 | 4 | Plandex | [PLANDEX_AUDIT.md](PLANDEX_AUDIT.md) | `.plandex/` (state dir, not instructions); explicit `plandex load` for context | No auto-loaded instruction file confirmed; docs unavailable |
-| 5 | Zed AI | [ZED_AUDIT.md](ZED_AUDIT.md) | `.rules` (single file, first match); also detects `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, etc. | Only first matching filename is loaded; Rules Library for in-IDE management |
+
 
 ## Implementation Priority Tiers
 
@@ -177,6 +179,7 @@ All four C1–C4 criteria are met; docs verified; patterns are stable and widely
 | Cline | — | `.clinerules/*.md` | **Built** — `DefaultClineLayout()` |
 | Roo Code | — | `.roo/rules/*.md` + `.roo/rules-{mode}/*.md` | **Built** — `DefaultRooCodeLayout()` |
 | JetBrains AI Assistant | — | `.aiassistant/rules/*.md` | **Built** — `DefaultJetBrainsLayout()` |
+| Zed AI | `.rules` | — | **Built** — `DefaultZedLayout()` |
 
 ### Tier 2 — Viable with minor caveats
 
@@ -185,7 +188,6 @@ Criteria met but implementation is more complex or docs have minor gaps.
 | Agent | Root / Single File | Multi-file Dir | Caveat |
 |-------|-------------------|----------------|--------|
 | OpenAI Codex CLI | `AGENTS.md` (directory walkup) | `.agents/skills/` (per-skill `SKILL.md`) | Skills sub-dir structure is more complex than a flat glob |
-| Zed AI | `.rules` | — | Single file only; minimal governance value |
 
 ### Tier 3 — Tracked only, no preset planned
 
@@ -211,12 +213,13 @@ Agents with a `repogov Preset` value of `none` are tracked for reference only an
 | Aider | `.aider.conf.yml` (tool config); `CONVENTIONS.md` via `--read` (instructions) | no directory pattern; multi-file via `read:` list in `.aider.conf.yml` | none | n/a |
 | OpenAI Codex CLI | `AGENTS.md` (directory walkup + `AGENTS.override.md`) | `.agents/skills/` (per-skill `SKILL.md`); nested `AGENTS.md` tree | none | Yes |
 | Amazon Q Developer CLI | `.amazonq/rules/*.md` (unverified; CLI now deprecated) | `.amazonq/rules/*.md` | none — deprecated | No |
-| Kiro CLI | `AGENTS.md` at workspace root (also detected) | `.kiro/steering/*.md`; `~/.kiro/steering/` global | `DefaultKiroLayout()` | Yes |
+| Kiro CLI | `AGENTS.md` at workspace root (also detected) | `.kiro/steering/*.md` with `inclusion:` frontmatter controlling load mode (`always`, `fileMatch`, `manual`, `auto`) | `DefaultKiroLayout()` | Yes |
 | Gemini CLI | `GEMINI.md` (hierarchical walkup); `~/.gemini/GEMINI.md` global | — | `DefaultGeminiLayout()` | Yes |
 | Continue.dev | — | `.continue/rules/*.md`; `~/.continue/rules/*.md` global | `DefaultContinueLayout()` | Yes |
 | Cline | — | `.clinerules/*.md`; `~/Documents/Cline/Rules/` global | `DefaultClineLayout()` | Yes |
 | Roo Code | — | `.roo/rules/*.md`; `~/.roo/rules/` global | `DefaultRooCodeLayout()` | Yes |
 | JetBrains AI Assistant | — | `.aiassistant/rules/*.md` | `DefaultJetBrainsLayout()` | Yes |
+| Zed AI | `.rules` (root, first match wins) | — | `DefaultZedLayout()` | Yes |
 
 All preset agents enforce a 300-line limit on scoped instruction files.
 `AGENTS.md` is governed at 200 lines (root) and the default (300) for nested files.
@@ -230,12 +233,12 @@ Extensions recognized by each agent for instruction/config files in a git repo.
 
 | Agent | Extension(s) | Notes |
 |-------|-------------|-------|
-| GitHub Copilot | `.md` | `copilot-instructions.md`, `rules/*.md`, `instructions/*.instructions.md`, `prompts/*.prompt.md` |
-| Cursor | `.md`, `.mdc` | `.mdc` supports YAML frontmatter (`description`, `globs`, `alwaysApply`) |
+| GitHub Copilot | `.md` | `copilot-instructions.md`, `rules/*.md`, `instructions/*.instructions.md`, `prompts/*.prompt.md`; `excludeAgent:` frontmatter key excludes rule from specific Copilot features |
+| Cursor | `.md`, `.mdc` | `.mdc` supports YAML frontmatter (`description`, `globs`, `alwaysApply`); subdirectories within `.cursor/rules/` supported; Team/Enterprise: dashboard-managed Team Rules and remote GitHub-imported rules |
 | Windsurf | `.md` | `.windsurf/rules/*.md` (trigger frontmatter: `always_on`, `model_decision`, `glob`, `manual`); global `global_rules.md`; legacy `.windsurfrules` (no extension, not in current docs) |
 | Claude Code | `.md`, `.json` | `CLAUDE.md`, `rules/*.md`, `agents/*.md`; `settings.json` / `settings.local.json` for permissions and hooks |
 | AGENTS.md (cross-agent) | `.md` | Plain Markdown; no frontmatter required |
-| Kiro CLI | `.md` | `.kiro/steering/*.md`; YAML frontmatter supported for metadata |
+| Kiro CLI | `.md` | `.kiro/steering/*.md`; optional `inclusion:` frontmatter controls load mode (`always`/`fileMatch`/`manual`/`auto`); file refs via `#[[file:path]]` |
 | Gemini CLI | `.md` | `GEMINI.md`; hierarchical walkup from CWD to `$HOME` |
 | Continue.dev | `.md` | `.continue/rules/*.md`; YAML frontmatter: `globs`, `alwaysApply`, `description` |
 | Cline | `.md` | `.clinerules/*.md`; also accepts `.cursorrules`, `.windsurfrules`; YAML `paths:` frontmatter for conditional rules |

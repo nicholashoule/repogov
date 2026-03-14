@@ -984,11 +984,39 @@ func TestFindGitRoot_NotFound(t *testing.T) {
 }
 
 func TestResolveRoot_ExplicitPath(t *testing.T) {
-	// When root is not ".", it should be returned unchanged.
+	// An explicit absolute path that is NOT inside a git repo should be
+	// returned as-is (no .git found → fallback to the resolved path).
 	dir := t.TempDir()
 	got := resolveRoot(dir)
 	if got != dir {
-		t.Errorf("resolveRoot(%q) = %q, want %q (explicit path should be unchanged)", dir, got, dir)
+		t.Errorf("resolveRoot(%q) = %q, want %q", dir, got, dir)
+	}
+}
+
+func TestResolveRoot_ExplicitAgentSubdir(t *testing.T) {
+	// An explicit path that points at an agent subdirectory inside a git repo
+	// (e.g. -root .cursor or -root .github/rules) must be resolved up to the
+	// git root, preventing double-nested scaffolding.
+	repoRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agentDir := filepath.Join(repoRoot, ".cursor", "rules")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := resolveRoot(agentDir)
+	gotInfo, err1 := os.Stat(got)
+	wantInfo, err2 := os.Stat(repoRoot)
+	if err1 != nil {
+		t.Fatalf("resolveRoot returned unstat-able path %q: %v", got, err1)
+	}
+	if err2 != nil {
+		t.Fatalf("stat repoRoot %q: %v", repoRoot, err2)
+	}
+	if !os.SameFile(gotInfo, wantInfo) {
+		t.Errorf("resolveRoot(%q) = %q, want same dir as git root %q", agentDir, got, repoRoot)
 	}
 }
 

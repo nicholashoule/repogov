@@ -162,6 +162,31 @@ func TestLoadConfig_MergesDefaultFiles(t *testing.T) {
 		t.Errorf("Files[.github/copilot-instructions.md] = %d, want 50 (default)",
 			cfg.Files[".github/copilot-instructions.md"])
 	}
+	// memory.md and memory.instructions.md per-agent entries merged in at 200.
+	for _, key := range []string{
+		".github/rules/memory.md",
+		".github/rules/memory.instructions.md",
+		".cursor/rules/memory.md",
+		".cursor/rules/memory.instructions.md",
+		".windsurf/rules/memory.md",
+		".windsurf/rules/memory.instructions.md",
+		".claude/rules/memory.md",
+		".claude/rules/memory.instructions.md",
+		".kiro/steering/memory.md",
+		".kiro/steering/memory.instructions.md",
+		".continue/rules/memory.md",
+		".continue/rules/memory.instructions.md",
+		".clinerules/memory.md",
+		".clinerules/memory.instructions.md",
+		".roo/rules/memory.md",
+		".roo/rules/memory.instructions.md",
+		".aiassistant/rules/memory.md",
+		".aiassistant/rules/memory.instructions.md",
+	} {
+		if cfg.Files[key] != 200 {
+			t.Errorf("Files[%s] = %d, want 200 (default)", key, cfg.Files[key])
+		}
+	}
 	// Rules should fall back to defaults when not specified.
 	if cfg.Rules == nil {
 		t.Error("Rules should fall back to defaults")
