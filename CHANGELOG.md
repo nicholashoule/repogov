@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `memoryInstructionsContent()` in `init.go`; `memory.instructions.md` / `memory.md` registered in `defaultInstructionFilesFor()` and seeded for all 9 rule-seeding agents (copilot, cursor, windsurf, claude, kiro, continue, cline, roocode, jetbrains).
 - Nine `memory.md` per-file entries added to `DefaultConfig().Files` at 200 lines each (`.github/rules/memory.md`, `.cursor/rules/memory.md`, `.windsurf/rules/memory.md`, `.claude/rules/memory.md`, `.kiro/steering/memory.md`, `.continue/rules/memory.md`, `.clinerules/memory.md`, `.roo/rules/memory.md`, `.aiassistant/rules/memory.md`).
 - `*.mdc` and `scripts/hooks/pre-commit` added to `.gitattributes` LF normalization rules.
+- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.6.0` to `v0.7.0`.
 
 ### Fixed
 
