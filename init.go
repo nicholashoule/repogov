@@ -194,6 +194,12 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	// chosen directory is created and referenced by generated files.
 	if schema.Root == ".github" {
 		schema = copilotNarrowSchema(filepath.Join(root, schema.Root), schema)
+		// VS Code only auto-applies files from instructions/ when they carry
+		// the *.instructions.md suffix; force descriptive naming when that
+		// directory was selected so seeded files and generated config match.
+		if _, ok := schema.Dirs["instructions"]; ok {
+			opts.descriptive = true
+		}
 	}
 
 	layoutDir := filepath.Join(root, filepath.FromSlash(schema.Root))
@@ -337,7 +343,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 				configDir = root
 			}
 		}
-		paths, err := createDefaultConfig(root, configDir, schema)
+		paths, err := createDefaultConfig(root, configDir, schema, opts.descriptive)
 		if err != nil {
 			return created, err
 		}
@@ -1155,7 +1161,9 @@ func createDefaultConfigAll(root string) ([]string, error) {
 // values filtered to the schema's root. The file is not created when any
 // repogov config file already exists in configDir (JSON or YAML). The
 // reported relative path is derived from configDir relative to root.
-func createDefaultConfig(root, configDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+// descriptive mirrors opts.descriptive: when true, descriptive_names is set
+// in the generated config and only *.instructions.md file entries are emitted.
+func createDefaultConfig(root, configDir string, schema LayoutSchema, descriptive bool) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	// Skip if any supported config filename already exists in configDir.
 	for _, n := range configNames {
 		if _, err := os.Stat(filepath.Join(configDir, n)); err == nil {
@@ -1164,7 +1172,9 @@ func createDefaultConfig(root, configDir string, schema LayoutSchema) ([]string,
 	}
 
 	filePath := filepath.Join(configDir, "repogov-config.json")
-	cfg := schemaConfig(DefaultConfig(), schema)
+	baseCfg := DefaultConfig()
+	baseCfg.DescriptiveNames = descriptive
+	cfg := schemaConfig(baseCfg, schema)
 	data := defaultConfigJSON(cfg)
 	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
@@ -1195,6 +1205,19 @@ func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic //
 		}
 	}
 	for k, v := range cfg.Files {
+		// When descriptive_names is off, skip the .instructions.md variants —
+		// those files are never created, so their limits have no effect.
+		if !cfg.DescriptiveNames && strings.HasSuffix(k, ".instructions.md") {
+			continue
+		}
+		// When descriptive_names is on, skip plain .md entries that have a
+		// corresponding .instructions.md counterpart — only the descriptive
+		// variant is seeded, so the plain entry's limit is irrelevant.
+		if cfg.DescriptiveNames && strings.HasSuffix(k, ".md") && !strings.HasSuffix(k, ".instructions.md") {
+			if _, exists := cfg.Files[strings.TrimSuffix(k, ".md")+".instructions.md"]; exists {
+				continue
+			}
+		}
 		include := false
 		switch {
 		case strings.HasPrefix(k, prefix):

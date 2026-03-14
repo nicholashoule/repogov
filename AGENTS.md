@@ -12,6 +12,4 @@ See [agents.md](https://agents.md) for the open format specification.
 
 ## Nested Instructions
 
-Place an `AGENTS.md` in any subdirectory to provide directory-scoped instructions.
-Agents load the nearest `AGENTS.md` walking up to the repo root; more specific
-files take precedence over less specific ones.
+Place an `AGENTS.md` in any subdirectory to provide directory-scoped instructions. Agents load the nearest `AGENTS.md` walking up to the repo root; more specific files take precedence over less specific ones.

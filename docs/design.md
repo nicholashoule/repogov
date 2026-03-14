@@ -106,7 +106,7 @@ repogov [flags] <limits|layout|init|validate|all|version>
 
 Flags:
   -config    Path to JSON/YAML config (default: auto-discovered)
-  -root      Repository root (default: .; always resolved to git root)
+  -root      Repository root (default: .; resolved to git root when available, otherwise to the absolute path)
   -exts      Extension filter (e.g., .go,.md)
   -agent     Agent preset: copilot, cursor, windsurf, claude, kiro, gemini,
              continue, cline, roocode, jetbrains, zed, gitlab, root, or all

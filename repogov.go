@@ -248,15 +248,26 @@ func DefaultConfig() Config {
 			// so it shares the 200-line limit used by AGENTS.md, CLAUDE.md, etc.
 			// Claude Code empirically loads the first 200 lines of its MEMORY.md
 			// at every session start, which establishes 200 as the practical ceiling.
-			".github/rules/memory.md":      200,
-			".cursor/rules/memory.md":      200,
-			".windsurf/rules/memory.md":    200,
-			".claude/rules/memory.md":      200,
-			".kiro/steering/memory.md":     200,
-			".continue/rules/memory.md":    200,
-			".clinerules/memory.md":        200,
-			".roo/rules/memory.md":         200,
-			".aiassistant/rules/memory.md": 200,
+			// Both naming conventions are covered: plain .md (default) and
+			// .instructions.md (used when descriptive_names is enabled).
+			".github/rules/memory.md":                   200,
+			".github/rules/memory.instructions.md":      200,
+			".cursor/rules/memory.md":                   200,
+			".cursor/rules/memory.instructions.md":      200,
+			".windsurf/rules/memory.md":                 200,
+			".windsurf/rules/memory.instructions.md":    200,
+			".claude/rules/memory.md":                   200,
+			".claude/rules/memory.instructions.md":      200,
+			".kiro/steering/memory.md":                  200,
+			".kiro/steering/memory.instructions.md":     200,
+			".continue/rules/memory.md":                 200,
+			".continue/rules/memory.instructions.md":    200,
+			".clinerules/memory.md":                     200,
+			".clinerules/memory.instructions.md":        200,
+			".roo/rules/memory.md":                      200,
+			".roo/rules/memory.instructions.md":         200,
+			".aiassistant/rules/memory.md":              200,
+			".aiassistant/rules/memory.instructions.md": 200,
 		},
 	}
 }

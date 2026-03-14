@@ -107,10 +107,12 @@ Creates:
 
 Existing files are **never overwritten**. Re-running `init` is safe.
 
-> **Note:** `-root` is always resolved to the nearest `.git` ancestor before
-> scaffolding begins. Running `init` from inside an agent subdirectory (e.g.,
-> `.cursor/rules/`) or passing an explicit agent path via `-root .cursor` both
-> correctly target the repository root, preventing double-nested directories.
+> **Note:** `-root` is resolved to the nearest `.git` ancestor when one exists;
+> if no `.git` directory is found, the resolved absolute `-root` path is used.
+> Running `init` from inside an agent subdirectory (e.g., `.cursor/rules/`) or
+> passing an explicit agent path via `-root .cursor` both correctly target the
+> repository root for Git repositories, while non-git or temporary directories
+> are scaffolded in-place, preventing double-nested directories.
 
 ### `validate`
 
