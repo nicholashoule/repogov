@@ -166,6 +166,7 @@ func TestLoadConfig_MergesDefaultFiles(t *testing.T) {
 	for _, key := range []string{
 		".github/rules/memory.md",
 		".github/rules/memory.instructions.md",
+		".github/instructions/memory.instructions.md",
 		".cursor/rules/memory.md",
 		".cursor/rules/memory.instructions.md",
 		".windsurf/rules/memory.md",

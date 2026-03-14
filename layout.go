@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -335,8 +334,8 @@ func formatDirMinMessage(dir string, rule DirRule, count int) string {
 	}
 	return strings.Join([]string{
 		desc, " -- ",
-		intToStr(count), " file(s) matching ", rule.Glob,
-		" (min: ", intToStr(rule.Min), ")",
+		intStr(count), " file(s) matching ", rule.Glob,
+		" (min: ", intStr(rule.Min), ")",
 	}, "")
 }
 
@@ -349,12 +348,7 @@ func formatDirPassMessage(dir string, rule DirRule, count int) string {
 	}
 	return strings.Join([]string{
 		desc, " -- ",
-		intToStr(count), " file(s) matching ", rule.Glob,
-		" (min: ", intToStr(rule.Min), ")",
+		intStr(count), " file(s) matching ", rule.Glob,
+		" (min: ", intStr(rule.Min), ")",
 	}, "")
-}
-
-// intToStr converts an int to its string representation.
-func intToStr(n int) string {
-	return strconv.Itoa(n)
 }

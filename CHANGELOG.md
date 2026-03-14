@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-03-14
+
+### Changed
+
+- **Code decomposition**: split `init.go` (1252 lines) into three focused files:
+  - `init.go` (334 lines) — public API and orchestration (`InitLayout`, `InitLayoutWithConfig`, `InitLayoutAll`, `InitLayoutAllWithConfig`, `initLayoutSingle`, `initLayoutAllWithOptions`), plus `initOptions`, `templateStem`, and `shouldSeedFile`.
+  - `template.go` (33 lines) — embedded template filesystem (`templateFS`), `mustReadTemplate`, and `mustRenderTemplate`.
+  - `scaffold.go` (889 lines) — all scaffolding content generators and file-writing helpers: agent-specific file creators (`createCopilotInstructions`, `createClaudeMd`, `createGeminiMd`, `createZedRules`), AGENTS.md management (`createAgentsMd`, `updateAgentsMdContext`, `UpdateAgentsMdContextAll`, context section builders), instruction template seeding (`createDefaultInstructions`, `defaultInstructionFilesFor`, all `*InstructionsContent` functions), config scaffolding (`createDefaultConfig`, `createDefaultConfigAll`, `schemaConfig`, `defaultConfigJSON`), filesystem helpers (`dirIsNew`, `isDirEmpty`, `dirHasGlobFiles`, `copilotNarrowSchema`), and mapping utilities (`schemaRootToAgent`, `rulesLabel`, `placeholderContent`).
+- **Deduplicated `intToStr`/`intStr`**: removed `intToStr` from `layout.go` (identical to `intStr` in `scaffold.go`); `formatDirMinMessage` and `formatDirPassMessage` now call the single `intStr` utility.
+- **Extracted `spliceContextSection` helper** in `scaffold.go`: the read→find-marker→splice→write logic was duplicated between `updateAgentsMdContext` and `UpdateAgentsMdContextAll`; both now delegate to the shared helper.
+- **Simplified `agentsMdContextSection`**: was a 35-line near-duplicate of `agentsMdMergedContextSection`; now a one-liner that delegates via `agentsMdMergedContextSection([]LayoutSchema{schema})`.
+- **Added `writeLine` closure** in `agentsMdMergedContextSection`: replaced 10 repetitions of the dedup-and-write pattern with a single closure.
+- **Fixed misplaced doc comment**: the `agentsMdContextSection` godoc was orphaned above `UpdateAgentsMdContextAll`; moved to its correct function.
+- **Updated `docs/design.md` Package Structure**: added missing files (`scaffold.go`, `template.go`, `yaml.go`), corrected function-to-file attributions, and expanded descriptions for `config.go` and `init.go`.
+
+### Fixed
+
+- `DefaultConfig().Files` — added `.github/instructions/memory.instructions.md: 200` entry. Repos where Copilot init targeted `instructions/` instead of `rules/` were missing the per-file limit for the memory template, falling back to the 300-line glob instead of the intended 200-line limit.
+
 ## [v0.5.1] - 2026-03-13
 
 ### Added
@@ -142,7 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.6.0...HEAD
+[v0.6.0]: https://github.com/nicholashoule/repogov/compare/v0.5.1...v0.6.0
 [v0.5.1]: https://github.com/nicholashoule/repogov/compare/v0.5.0...v0.5.1
 [v0.5.0]: https://github.com/nicholashoule/repogov/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/nicholashoule/repogov/compare/v0.3.0...v0.4.0
