@@ -126,6 +126,7 @@ func DefaultCopilotLayout() LayoutSchema {
 				Glob:        "",
 				Min:         0,
 				Description: "GitHub Actions workflows (recognized; contents not enforced)",
+				NoCreate:    true,
 			},
 		},
 		Naming: NamingRule{
@@ -380,6 +381,26 @@ func DefaultJetBrainsLayout() LayoutSchema {
 				Description: "JetBrains AI Assistant scoped rule files",
 			},
 		},
+		Naming: NamingRule{
+			Case: "lowercase",
+		},
+	}
+}
+
+// DefaultZedLayout returns a [LayoutSchema] matching Zed AI repository
+// conventions. Zed reads a single project-level rules file at the root;
+// its preferred filename is .rules (first in Zed's priority list). If .rules
+// is absent, Zed falls back to AGENTS.md, CLAUDE.md, GEMINI.md, and others
+// that are seeded by other agents' inits, so all Zed users benefit from any
+// existing agent init without needing the .rules file specifically.
+func DefaultZedLayout() LayoutSchema {
+	return LayoutSchema{
+		Root: ".",
+		Required: []string{
+			".rules",
+		},
+		Optional: []string{},
+		Dirs:     map[string]DirRule{},
 		Naming: NamingRule{
 			Case: "lowercase",
 		},

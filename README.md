@@ -6,15 +6,21 @@
 [![License](https://img.shields.io/github/license/nicholashoule/repogov)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](go.mod)
 
-A dependency-free Go library and CLI for repository governance: enforce file-length limits and validate or scaffold AI-agent-ready directory layouts for Copilot, Cursor, Windsurf, Claude, GitLab, and common repository root conventions.
+A dependency-free Go library and CLI for repository governance: enforce file-length limits and validate or scaffold AI-agent-ready directory layouts for Copilot, Cursor, Windsurf, Claude, Kiro, Gemini CLI, Continue, Cline, Roo Code, JetBrains AI Assistant, Zed AI, GitLab, and common repository root conventions.
 
 ## Features
 
 - **Line-count limits** -- configurable per-file, per-glob, and default
   limits with PASS/WARN/FAIL/SKIP classification
 - **Layout governance** -- schema-based validation of `.github/`, `.cursor/`,
-  `.windsurf/`, `.claude/`, `.gitlab/`, and repository root directory structure
-- **Platform presets** -- built-in rules for Copilot, Cursor, Windsurf, Claude, GitLab, and root conventions
+  `.windsurf/`, `.claude/`, `.kiro/`, `.continue/`, `.clinerules/`, `.roo/`,
+  `.aiassistant/`, `.gitlab/`, and repository root directory structure
+- **Platform presets** -- built-in rules for Copilot, Cursor, Windsurf, Claude,
+  Kiro, Gemini CLI, Continue, Cline, Roo Code, JetBrains AI Assistant, Zed AI,
+  GitLab, and root conventions
+- **Seeded rule files** -- `init` scaffolds a curated set of scoped rule templates
+  (general, memory, codereview, governance, security, testing, and more) into each
+  platform's rules directory; existing files are never overwritten
 - **Zero dependencies** -- pure stdlib, no external imports
 - **Cross-platform** -- works on Windows, Linux, and macOS
 
@@ -149,6 +155,13 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `DefaultCursorLayout()` | presets.go | Cursor AI `.cursor/` preset |
 | `DefaultWindsurfLayout()` | presets.go | Windsurf `.windsurf/` preset |
 | `DefaultClaudeLayout()` | presets.go | Claude Code `.claude/` preset |
+| `DefaultKiroLayout()` | presets.go | Kiro `.kiro/steering/` preset |
+| `DefaultGeminiLayout()` | presets.go | Gemini CLI root-level `GEMINI.md` preset |
+| `DefaultContinueLayout()` | presets.go | Continue `.continue/rules/` preset |
+| `DefaultClineLayout()` | presets.go | Cline `.clinerules/` preset |
+| `DefaultRooCodeLayout()` | presets.go | Roo Code `.roo/rules/` preset |
+| `DefaultJetBrainsLayout()` | presets.go | JetBrains AI Assistant `.aiassistant/rules/` preset |
+| `DefaultZedLayout()` | presets.go | Zed AI root-level `.rules` preset |
 | `DefaultGitLabLayout()` | presets.go | GitLab `.gitlab/` preset |
 | `DefaultRootLayout()` | presets.go | Repository root layout preset |
 | `Passed(results)` | format.go | Check if all results pass |
@@ -174,7 +187,7 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `-config` | auto-discovered | Path to JSON or YAML config file (searched in repo root then `.github/`) |
 | `-root` | `.` | Repository root directory |
 | `-exts` | from config | Comma-separated extension filter override; use `all` to scan every file type (default read from `include_exts` in config) |
-| `-agent` | | Agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `gitlab`, `root`, `all`, or comma-separated list |
+| `-agent` | | Agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `kiro`, `gemini`, `continue`, `cline`, `roocode`, `jetbrains`, `zed`, `gitlab`, `root`, `all`, or comma-separated list |
 | `-quiet` | `false` | Suppress output; exit code only |
 | `-json` | `false` | Output results as JSON |
 

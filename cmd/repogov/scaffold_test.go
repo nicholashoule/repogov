@@ -168,7 +168,7 @@ func TestScaffold_Copilot_Init(t *testing.T) {
 	// Default naming convention (DescriptiveNames=false): all templates seeded
 	// as plain <name>.md files into rules/.
 	for _, name := range []string{
-		"general.md", "codereview.md", "governance.md",
+		"general.md", "memory.md", "codereview.md", "governance.md",
 		"library.md", "testing.md", "emoji-prevention.md",
 		"backend.md", "frontend.md", "security.md", "repo.md",
 	} {
@@ -248,6 +248,7 @@ func TestScaffold_Copilot_Init_Descriptive(t *testing.T) {
 	// Every default instruction file must exist in rules/ with *.instructions.md names.
 	instructionFiles := []string{
 		"general.instructions.md",
+		"memory.instructions.md",
 		"codereview.instructions.md",
 		"governance.instructions.md",
 		"library.instructions.md",
@@ -291,15 +292,19 @@ func TestScaffold_Cursor_Init(t *testing.T) {
 	assertDirExists(t, filepath.Join(root, ".cursor"))
 	assertDirExists(t, filepath.Join(root, ".cursor", "rules"))
 
-	// general.md must exist with standard instruction frontmatter (full template set).
+	// general.md and memory.md must exist with standard instruction frontmatter.
 	mdPath := filepath.Join(root, ".cursor", "rules", "general.md")
 	assertFileExists(t, mdPath)
 	assertFileContains(t, mdPath, "---")
 	assertFileContains(t, mdPath, "applyTo:")
 	assertFileContains(t, mdPath, "# General Instructions")
 
-	// Config must exist within .cursor/ (no .github/ present for this init).
-	cfgPath := filepath.Join(root, ".cursor", "repogov-config.json")
+	memPath := filepath.Join(root, ".cursor", "rules", "memory.md")
+	assertFileExists(t, memPath)
+	assertFileContains(t, memPath, "# Project Memory")
+
+	// Config must exist at repo root (no .github/ present; FindConfig discovers root before agent dirs).
+	cfgPath := filepath.Join(root, "repogov-config.json")
 	assertFileExists(t, cfgPath)
 	assertValidJSON(t, cfgPath)
 	assertConfigHasDefault(t, cfgPath)
@@ -335,15 +340,19 @@ func TestScaffold_Windsurf_Init(t *testing.T) {
 	assertDirExists(t, filepath.Join(root, ".windsurf"))
 	assertDirExists(t, filepath.Join(root, ".windsurf", "rules"))
 
-	// general.md must exist with standard instruction frontmatter and content.
+	// general.md and memory.md must exist with standard instruction frontmatter.
 	mdPath := filepath.Join(root, ".windsurf", "rules", "general.md")
 	assertFileExists(t, mdPath)
 	assertFileContains(t, mdPath, "---")
 	assertFileContains(t, mdPath, "applyTo:")
 	assertFileContains(t, mdPath, "# General Instructions")
 
-	// Config must exist within .windsurf/.
-	cfgPath := filepath.Join(root, ".windsurf", "repogov-config.json")
+	memPath := filepath.Join(root, ".windsurf", "rules", "memory.md")
+	assertFileExists(t, memPath)
+	assertFileContains(t, memPath, "# Project Memory")
+
+	// Config must exist at repo root (FindConfig discovers root before agent dirs).
+	cfgPath := filepath.Join(root, "repogov-config.json")
 	assertFileExists(t, cfgPath)
 	assertValidJSON(t, cfgPath)
 	assertConfigHasDefault(t, cfgPath)
@@ -389,15 +398,19 @@ func TestScaffold_Claude_Init(t *testing.T) {
 	assertFileContains(t, claudePath, "-agent claude")
 	assertFileNotContains(t, claudePath, "{{.Agent}}")
 
-	// general.md must exist with standard instruction frontmatter and content.
+	// general.md and memory.md must exist with standard instruction frontmatter.
 	mdPath := filepath.Join(root, ".claude", "rules", "general.md")
 	assertFileExists(t, mdPath)
 	assertFileContains(t, mdPath, "---")
 	assertFileContains(t, mdPath, "applyTo:")
 	assertFileContains(t, mdPath, "# General Instructions")
 
-	// Config must exist within .claude/.
-	cfgPath := filepath.Join(root, ".claude", "repogov-config.json")
+	memPath := filepath.Join(root, ".claude", "rules", "memory.md")
+	assertFileExists(t, memPath)
+	assertFileContains(t, memPath, "# Project Memory")
+
+	// Config must exist at repo root (FindConfig discovers root before agent dirs).
+	cfgPath := filepath.Join(root, "repogov-config.json")
 	assertFileExists(t, cfgPath)
 	assertValidJSON(t, cfgPath)
 	assertConfigHasDefault(t, cfgPath)
@@ -432,10 +445,20 @@ func TestScaffold_Kiro_Init(t *testing.T) {
 	assertDirExists(t, filepath.Join(root, ".kiro"))
 	assertDirExists(t, filepath.Join(root, ".kiro", "steering"))
 
-	// general.md must be seeded into steering/.
+	// general.md and memory.md must be seeded into steering/.
 	mdPath := filepath.Join(root, ".kiro", "steering", "general.md")
 	assertFileExists(t, mdPath)
 	assertFileContains(t, mdPath, "# General Instructions")
+
+	memPath := filepath.Join(root, ".kiro", "steering", "memory.md")
+	assertFileExists(t, memPath)
+	assertFileContains(t, memPath, "# Project Memory")
+
+	// Config must exist at repo root.
+	cfgPath := filepath.Join(root, "repogov-config.json")
+	assertFileExists(t, cfgPath)
+	assertValidJSON(t, cfgPath)
+	assertConfigHasDefault(t, cfgPath)
 
 	agPath := filepath.Join(root, "AGENTS.md")
 	assertFileExists(t, agPath)
@@ -497,6 +520,16 @@ func TestScaffold_Continue_Init(t *testing.T) {
 	assertFileExists(t, mdPath)
 	assertFileContains(t, mdPath, "# General Instructions")
 
+	memPath := filepath.Join(root, ".continue", "rules", "memory.md")
+	assertFileExists(t, memPath)
+	assertFileContains(t, memPath, "# Project Memory")
+
+	// Config must exist at repo root.
+	cfgPath := filepath.Join(root, "repogov-config.json")
+	assertFileExists(t, cfgPath)
+	assertValidJSON(t, cfgPath)
+	assertConfigHasDefault(t, cfgPath)
+
 	agPath := filepath.Join(root, "AGENTS.md")
 	assertFileExists(t, agPath)
 	assertFileContains(t, agPath, ".continue/rules/")
@@ -523,7 +556,7 @@ func TestScaffold_Cline_Init(t *testing.T) {
 
 	// Rule files are seeded directly into .clinerules/.
 	for _, name := range []string{
-		"general.md", "codereview.md", "governance.md",
+		"general.md", "memory.md", "codereview.md", "governance.md",
 		"library.md", "testing.md", "emoji-prevention.md",
 		"backend.md", "frontend.md", "security.md", "repo.md",
 	} {
@@ -534,6 +567,12 @@ func TestScaffold_Cline_Init(t *testing.T) {
 
 	// The emoji-prevention link in general.md must point to .clinerules/ directly.
 	assertFileContains(t, filepath.Join(root, ".clinerules", "general.md"), ".clinerules/emoji-prevention.md")
+
+	// Config must exist at repo root.
+	cfgPath := filepath.Join(root, "repogov-config.json")
+	assertFileExists(t, cfgPath)
+	assertValidJSON(t, cfgPath)
+	assertConfigHasDefault(t, cfgPath)
 
 	agPath := filepath.Join(root, "AGENTS.md")
 	assertFileExists(t, agPath)
@@ -564,6 +603,16 @@ func TestScaffold_RooCode_Init(t *testing.T) {
 	assertFileExists(t, mdPath)
 	assertFileContains(t, mdPath, "# General Instructions")
 
+	memPath := filepath.Join(root, ".roo", "rules", "memory.md")
+	assertFileExists(t, memPath)
+	assertFileContains(t, memPath, "# Project Memory")
+
+	// Config must exist at repo root.
+	cfgPath := filepath.Join(root, "repogov-config.json")
+	assertFileExists(t, cfgPath)
+	assertValidJSON(t, cfgPath)
+	assertConfigHasDefault(t, cfgPath)
+
 	agPath := filepath.Join(root, "AGENTS.md")
 	assertFileExists(t, agPath)
 	assertFileContains(t, agPath, ".roo/rules/")
@@ -593,6 +642,16 @@ func TestScaffold_JetBrains_Init(t *testing.T) {
 	assertFileExists(t, mdPath)
 	assertFileContains(t, mdPath, "# General Instructions")
 
+	memPath := filepath.Join(root, ".aiassistant", "rules", "memory.md")
+	assertFileExists(t, memPath)
+	assertFileContains(t, memPath, "# Project Memory")
+
+	// Config must exist at repo root.
+	cfgPath := filepath.Join(root, "repogov-config.json")
+	assertFileExists(t, cfgPath)
+	assertValidJSON(t, cfgPath)
+	assertConfigHasDefault(t, cfgPath)
+
 	agPath := filepath.Join(root, "AGENTS.md")
 	assertFileExists(t, agPath)
 	assertFileContains(t, agPath, ".aiassistant/rules/")
@@ -600,6 +659,35 @@ func TestScaffold_JetBrains_Init(t *testing.T) {
 
 	if code := runLayout(root, "jetbrains", false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runLayout jetbrains after init: exit %d\nstdout: %s", code, stdout.String())
+	}
+}
+
+// -------------------------------------------------------------------
+// Zed
+// -------------------------------------------------------------------
+
+func TestScaffold_Zed_Init(t *testing.T) {
+	root := scaffoldDir(t, "zed")
+	stdout, stderr := bufs()
+
+	if code := runInit(root, "", "zed", false, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runInit zed: exit %d\nstderr: %s", code, stderr.String())
+	}
+
+	// .rules must be created at root with {{.Agent}} rendered.
+	rulesPath := filepath.Join(root, ".rules")
+	assertFileExists(t, rulesPath)
+	assertFileContains(t, rulesPath, "# Project Rules")
+	assertFileContains(t, rulesPath, "-agent zed")
+	assertFileNotContains(t, rulesPath, "{{.Agent}}")
+
+	agPath := filepath.Join(root, "AGENTS.md")
+	assertFileExists(t, agPath)
+	assertFileContains(t, agPath, ".rules")
+	assertFileNotContains(t, agPath, "copilot-instructions.md")
+
+	if code := runLayout(root, "zed", false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runLayout zed after init: exit %d\nstdout: %s", code, stdout.String())
 	}
 }
 
@@ -639,14 +727,22 @@ func TestScaffold_All_Init(t *testing.T) {
 	// Spot-check one artifact per platform.
 	assertFileExists(t, filepath.Join(root, ".github", "copilot-instructions.md"))
 	assertFileExists(t, filepath.Join(root, ".cursor", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".cursor", "rules", "memory.md"))
 	assertFileExists(t, filepath.Join(root, ".windsurf", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".windsurf", "rules", "memory.md"))
 	assertFileExists(t, filepath.Join(root, ".claude", "CLAUDE.md"))
 	assertFileExists(t, filepath.Join(root, ".claude", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".claude", "rules", "memory.md"))
 	assertFileExists(t, filepath.Join(root, ".kiro", "steering", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".kiro", "steering", "memory.md"))
 	assertFileExists(t, filepath.Join(root, "GEMINI.md"))
 	assertFileExists(t, filepath.Join(root, ".continue", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".continue", "rules", "memory.md"))
 	assertFileExists(t, filepath.Join(root, ".roo", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".roo", "rules", "memory.md"))
 	assertFileExists(t, filepath.Join(root, ".aiassistant", "rules", "general.md"))
+	assertFileExists(t, filepath.Join(root, ".aiassistant", "rules", "memory.md"))
+	assertFileExists(t, filepath.Join(root, ".rules"))
 
 	// AGENTS.md must contain context links for every platform.
 	agPath := filepath.Join(root, "AGENTS.md")
@@ -666,6 +762,7 @@ func TestScaffold_All_Init(t *testing.T) {
 		".clinerules/",
 		".roo/rules/",
 		".aiassistant/rules/",
+		".rules",
 	}
 	for _, link := range wantLinks {
 		assertFileContains(t, agPath, link)
@@ -686,6 +783,7 @@ func TestScaffold_All_Init(t *testing.T) {
 		"- Cline rule files: [.clinerules/](.clinerules/)",
 		"- Roo Code rule files: [.roo/rules/](.roo/rules/)",
 		"- JetBrains rule files: [.aiassistant/rules/](.aiassistant/rules/)",
+		"- Zed rules: [.rules](.rules)",
 	}
 	data, _ := os.ReadFile(agPath)
 	content := string(data)
@@ -699,7 +797,7 @@ func TestScaffold_All_Init(t *testing.T) {
 	assertFileContains(t, agPath, "## Nested Instructions")
 
 	// Layout must pass for every platform.
-	for _, platform := range []string{"copilot", "cursor", "windsurf", "claude", "kiro", "gemini", "continue", "cline", "roocode", "jetbrains"} {
+	for _, platform := range []string{"copilot", "cursor", "windsurf", "claude", "kiro", "gemini", "continue", "cline", "roocode", "jetbrains", "zed"} {
 		stdout.Reset()
 		if code := runLayout(root, platform, false, false, stdout, stderr); code != 0 {
 			t.Errorf("runLayout %s after all-init: exit %d\nstdout: %s", platform, code, stdout.String())
@@ -731,6 +829,7 @@ func TestScaffold_Idempotent(t *testing.T) {
 		{"cline"},
 		{"roocode"},
 		{"jetbrains"},
+		{"zed"},
 		{"all"},
 	}
 	for _, tc := range tests {
@@ -1333,6 +1432,13 @@ func TestScaffold_AgentsMd_ContextLinks(t *testing.T) {
 			mustHave: []string{"README.md", "docs/", ".aiassistant/rules/"},
 			mustNotHave: []string{
 				"copilot-instructions.md", ".cursor/", ".claude/",
+			},
+		},
+		{
+			agent:    "zed",
+			mustHave: []string{"README.md", "docs/", ".rules"},
+			mustNotHave: []string{
+				"copilot-instructions.md", ".cursor/", ".claude/", "GEMINI.md",
 			},
 		},
 	}

@@ -1724,6 +1724,20 @@ func TestAgentsMdContent_PerPlatformContextLinks(t *testing.T) {
 				".cursor/", ".claude/",
 			},
 		},
+		{
+			name:   "zed",
+			schema: repogov.DefaultZedLayout(),
+			wantLinks: []string{
+				"README.md",
+				"docs/",
+				".rules",
+			},
+			noLinks: []string{
+				"copilot-instructions.md",
+				".cursor/", ".claude/",
+				"GEMINI.md",
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -1770,6 +1784,7 @@ func TestInitAllPlatforms_TempDir(t *testing.T) {
 		{"cline", repogov.DefaultClineLayout()},
 		{"roocode", repogov.DefaultRooCodeLayout()},
 		{"jetbrains", repogov.DefaultJetBrainsLayout()},
+		{"zed", repogov.DefaultZedLayout()},
 	}
 
 	for _, p := range platforms {

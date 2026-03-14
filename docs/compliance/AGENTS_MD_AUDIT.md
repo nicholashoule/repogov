@@ -24,6 +24,21 @@ recognized by GitHub Copilot, Cursor, Claude Code, OpenAI Codex, and others.
 - PR instructions
 - Links to `docs/` and platform-specific instruction directories
 
+## Memory Configuration
+
+`AGENTS.md` itself _is_ the cross-agent memory layer — it is the standard mechanism for
+providing persistent, always-on context to any agent that supports it. There is no separate
+`memory.md` concept for this format.
+
+| Scope | File | Auto-loaded |
+|-------|------|-------------|
+| Root | `AGENTS.md` (repo root) | Yes — loaded by all supporting agents |
+| Nested | `AGENTS.md` (any subdirectory) | Yes — scoped to that directory and below |
+
+Agents including GitHub Copilot, Cursor, Claude Code, Kiro CLI, Windsurf, Continue.dev,
+Cline, Roo Code, and Zed all recognize `AGENTS.md`. Place long-lived project context here
+to share it across agents without duplicating it in each agent's own rule files.
+
 ## Limits
 
 - Root `AGENTS.md`: 200 lines (repogov governance).

@@ -252,6 +252,11 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		if schema.Root == "." && req == "GEMINI.md" {
 			continue
 		}
+		// .rules is handled by createZedRules below with purpose-built
+		// content; skip it here.
+		if schema.Root == "." && req == ".rules" {
+			continue
+		}
 		filePath := filepath.Join(layoutDir, filepath.FromSlash(req))
 
 		// Ensure parent directory exists.
@@ -302,6 +307,20 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		}
 	}
 
+	// Create .rules for Zed schemas when it doesn't already exist.
+	if schema.Root == "." {
+		for _, req := range schema.Required {
+			if req == ".rules" {
+				paths, err := createZedRules(root)
+				if err != nil {
+					return created, err
+				}
+				created = append(created, paths...)
+				break
+			}
+		}
+	}
+
 	// Create repogov-config.json with sensible defaults when it doesn't
 	// already exist. Prefer .github/ if it already exists (FindConfig checks
 	// there first); otherwise write it into the agent's own layout directory.
@@ -312,6 +331,10 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		if schema.Root != ".github" {
 			if info, err := os.Stat(filepath.Join(root, ".github")); err == nil && info.IsDir() {
 				configDir = filepath.Join(root, ".github")
+			} else {
+				// No .github/ present: write config at repo root so FindConfig
+				// can discover it without an explicit -config flag.
+				configDir = root
 			}
 		}
 		paths, err := createDefaultConfig(root, configDir, schema)
@@ -458,6 +481,28 @@ func geminiMdContent() string {
 	}{"gemini"})
 }
 
+// createZedRules creates .rules at the repository root with a default template
+// when it doesn't already exist. Returns the list of created paths.
+func createZedRules(root string) ([]string, error) {
+	filePath := filepath.Join(root, ".rules")
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		return nil, nil
+	}
+	content := zedRulesContent()
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+		return nil, err
+	}
+	return []string{".rules"}, nil
+}
+
+// zedRulesContent returns the default content for .rules rendered from
+// the embedded template.
+func zedRulesContent() string {
+	return mustRenderTemplate("agents/zed-rules.tmpl", struct {
+		Agent string
+	}{"zed"})
+}
+
 // dirIsNew returns true if the directory does not yet exist.
 func dirIsNew(path string) bool {
 	_, err := os.Stat(path)
@@ -572,6 +617,7 @@ func detectConfigRelFrom(root, fromDir string) (name, relPath string) {
 func defaultInstructionFilesFor(root, subdir string) map[string]func() string {
 	return map[string]func() string{
 		"general.instructions.md":          func() string { return generalInstructionsContent(root, subdir) },
+		"memory.instructions.md":           memoryInstructionsContent,
 		"codereview.instructions.md":       codereviewInstructionsContent,
 		"library.instructions.md":          libraryInstructionsContent,
 		"testing.instructions.md":          testingInstructionsContent,
@@ -721,9 +767,16 @@ func schemaRootToAgent(root string) string {
 		return "roocode"
 	case ".aiassistant":
 		return "jetbrains"
+	case ".zed":
+		return "zed"
 	default:
 		return root
 	}
+}
+
+// memoryInstructionsContent returns default content for memory.instructions.md.
+func memoryInstructionsContent() string {
+	return mustRenderTemplate("rules/memory.md.tmpl", nil)
 }
 
 // libraryInstructionsContent returns default content for library.instructions.md.
@@ -973,7 +1026,13 @@ func agentsMdMergedContextSection(schemas []LayoutSchema) string { //nolint:gocr
 						seen[line] = true
 						b.WriteString(line)
 					}
-					break
+				}
+				if req == ".rules" {
+					line := "- Zed rules: [.rules](.rules)\n"
+					if !seen[line] {
+						seen[line] = true
+						b.WriteString(line)
+					}
 				}
 			}
 		}
@@ -1013,7 +1072,9 @@ func agentsMdContextSection(schema LayoutSchema) string { //nolint:gocritic // h
 		for _, req := range schema.Required {
 			if req == "GEMINI.md" {
 				b.WriteString("- Gemini repo-wide context: [GEMINI.md](GEMINI.md)\n")
-				break
+			}
+			if req == ".rules" {
+				b.WriteString("- Zed rules: [.rules](.rules)\n")
 			}
 		}
 	}
@@ -1032,6 +1093,7 @@ type agentsMdTemplateData struct {
 	HasSteering     bool
 	HasRootRules    bool
 	IsGemini        bool
+	IsZed           bool
 }
 
 // agentsMdContent generates the content for AGENTS.md from the embedded
@@ -1044,11 +1106,14 @@ func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugePara
 	_, hasAgents := schema.Dirs["agents"]
 	_, hasSteering := schema.Dirs["steering"]
 	isGemini := false
+	isZed := false
 	if schema.Root == "." {
 		for _, req := range schema.Required {
 			if req == "GEMINI.md" {
 				isGemini = true
-				break
+			}
+			if req == ".rules" {
+				isZed = true
 			}
 		}
 	}
@@ -1063,6 +1128,7 @@ func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugePara
 		HasSteering:     hasSteering,
 		HasRootRules:    schema.Root == ".clinerules",
 		IsGemini:        isGemini,
+		IsZed:           isZed,
 	}
 	return mustRenderTemplate("agents/AGENTS.md.tmpl", data)
 }
@@ -1098,7 +1164,7 @@ func createDefaultConfig(root, configDir string, schema LayoutSchema) ([]string,
 	}
 
 	filePath := filepath.Join(configDir, "repogov-config.json")
-	cfg := schemaConfig(DefaultConfig(), schema.Root)
+	cfg := schemaConfig(DefaultConfig(), schema)
 	data := defaultConfigJSON(cfg)
 	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
@@ -1111,9 +1177,11 @@ func createDefaultConfig(root, configDir string, schema LayoutSchema) ([]string,
 // those whose glob or path begins with the given root prefix (e.g. ".github/").
 // Genuinely cross-agent root-level files (e.g. AGENTS.md) are always preserved.
 // Agent-specific root-level files (e.g. GEMINI.md) are only included when the
-// schema root matches their agent (root == ".").
+// file appears in schema.Required, preventing cross-contamination between agents
+// that share Root=="." (e.g. Gemini owns GEMINI.md; Zed owns .rules).
 // The base scalars (Default, WarningThreshold, SkipDirs) are kept as-is.
-func schemaConfig(cfg Config, root string) Config { //nolint:gocritic // hugeParam: intentional value semantics
+func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic // hugeParam: intentional value semantics
+	root := schema.Root
 	prefix := root + "/"
 	out := Config{
 		Default:          cfg.Default,
@@ -1135,8 +1203,10 @@ func schemaConfig(cfg Config, root string) Config { //nolint:gocritic // hugePar
 		case !strings.Contains(k, "/") && crossAgentRootFile(k):
 			// Root-level file that is genuinely cross-agent (e.g. AGENTS.md).
 			include = true
-		case root == "." && !strings.Contains(k, "/"):
-			// Gemini schema (Root==".") governs all root-level files it owns.
+		case root == "." && isInRequired(k, schema.Required):
+			// Root-level file explicitly owned by this schema (e.g. GEMINI.md for
+			// Gemini, .rules for Zed). Scoped to Required to prevent cross-
+			// contamination between agents that share Root==".".
 			include = true
 		}
 		if include {
@@ -1147,6 +1217,16 @@ func schemaConfig(cfg Config, root string) Config { //nolint:gocritic // hugePar
 		}
 	}
 	return out
+}
+
+// isInRequired reports whether name appears in the schema's Required list.
+func isInRequired(name string, required []string) bool {
+	for _, r := range required {
+		if r == name {
+			return true
+		}
+	}
+	return false
 }
 
 // crossAgentRootFile reports whether a root-level filename (no path separator)

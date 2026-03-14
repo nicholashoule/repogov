@@ -2,8 +2,8 @@
 
 `repogov` is a command-line tool for auditing repository file line-count limits and
 directory layout conventions for AI-agent platforms (GitHub Copilot, Cursor, Windsurf,
-Claude, Kiro, Gemini CLI, Continue, Cline, Roo Code, JetBrains AI Assistant, GitLab)
-and common repository root structure.
+Claude, Kiro, Gemini CLI, Continue, Cline, Roo Code, JetBrains AI Assistant, Zed AI,
+GitLab) and common repository root structure.
 
 ## Installation
 
@@ -32,7 +32,7 @@ repogov [flags] <subcommand>
 | `-config <path>` | auto-discovered | Path to a JSON or YAML config file. Searched in repo root, then `.github/`. |
 | `-root <dir>` | `.` | Repository root directory. |
 | `-exts .md,.mdc` | from config `include_exts` | Comma-separated extension filter. Use `all` to scan every file type. |
-| `-agent <name[,name…]>` | _(none)_ | Agent/layout preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `kiro`, `gemini`, `continue`, `cline`, `roocode`, `jetbrains`, `gitlab`, `root`, or `all`. Required for `init`. Comma-separate for multiple. |
+| `-agent <name[,name…]>` | _(none)_ | Agent/layout preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `kiro`, `gemini`, `continue`, `cline`, `roocode`, `jetbrains`, `zed`, `gitlab`, `root`, or `all`. Required for `init`. Comma-separate for multiple. |
 | `-quiet` | false | Suppress output; rely on exit code only. |
 | `-json` | false | Output results as JSON. |
 
@@ -63,6 +63,7 @@ repogov -root . -agent copilot layout
 repogov -root . -agent cursor layout
 repogov -root . -agent kiro layout
 repogov -root . -agent gemini layout
+repogov -root . -agent zed layout
 repogov -root . -agent gitlab layout
 repogov -root . -agent root layout
 repogov -root . -agent all layout
@@ -86,17 +87,30 @@ repogov -root . -agent copilot init
 repogov -root . -agent cursor init
 repogov -root . -agent kiro init
 repogov -root . -agent gemini init
+repogov -root . -agent zed init
 repogov -root . -agent gitlab init
 repogov -root . -agent copilot,windsurf init
 repogov -root . -agent all init
 ```
 
 Creates:
-- The platform root directory (`.github/`, `.cursor/`, `.windsurf/`, `.claude/`, `.kiro/`, `.continue/`, `.clinerules/`, `.roo/`, `.aiassistant/`, `.gitlab/`)
+- The platform root directory (`.github/`, `.cursor/`, `.windsurf/`, `.claude/`, `.kiro/`, `.continue/`, `.clinerules/`, `.roo/`, `.aiassistant/`, `.gitlab/`) or a root-level file (`.rules` for Zed, `GEMINI.md` for Gemini CLI)
 - Required subdirectories
 - Placeholder files for each required file that does not already exist
+- A curated set of scoped rule templates seeded into the platform's rules directory:
+  `general`, `memory`, `codereview`, `governance`, `security`, `testing`, `library`,
+  `backend`, `frontend`, `emoji-prevention`, `repo`
+- `AGENTS.md` at the repository root (created or context-section updated)
+- `repogov-config.json` — for Copilot, placed in `.github/`; for all other agents,
+  placed at `.github/` if it already exists, otherwise at the repository root so
+  `FindConfig` can discover it without an explicit `-config` flag
 
 Existing files are **never overwritten**. Re-running `init` is safe.
+
+> **Note:** `-root` is always resolved to the nearest `.git` ancestor before
+> scaffolding begins. Running `init` from inside an agent subdirectory (e.g.,
+> `.cursor/rules/`) or passing an explicit agent path via `-root .cursor` both
+> correctly target the repository root, preventing double-nested directories.
 
 ### `validate`
 

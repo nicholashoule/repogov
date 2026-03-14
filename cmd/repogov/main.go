@@ -108,7 +108,7 @@ Examples:
 	fs.StringVar(&configPath, "config", "", "path to config file (JSON or YAML; auto-discovered if omitted)")
 	fs.StringVar(&root, "root", ".", "repository root directory")
 	fs.StringVar(&exts, "exts", "", "comma-separated extension filter override (default: from config include_exts; use \"all\" to scan every file type)")
-	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, kiro, gemini, continue, cline, roocode, jetbrains, root, all, or comma-separated list (required for init)")
+	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, kiro, gemini, continue, cline, roocode, jetbrains, zed, root, all, or comma-separated list (required for init)")
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
@@ -362,7 +362,7 @@ type platformEntry struct {
 // keyword; it is handled separately in run.
 func isKnownAgentName(s string) bool {
 	switch strings.ToLower(s) {
-	case "copilot", "cursor", "windsurf", "claude", "gitlab", "kiro", "gemini", "continue", "cline", "roocode", "jetbrains", "root":
+	case "copilot", "cursor", "windsurf", "claude", "gitlab", "kiro", "gemini", "continue", "cline", "roocode", "jetbrains", "zed", "root":
 		return true
 	}
 	return false
@@ -382,6 +382,7 @@ func allPlatformSchemas() []platformEntry {
 		{"cline", repogov.DefaultClineLayout()},
 		{"roocode", repogov.DefaultRooCodeLayout()},
 		{"jetbrains", repogov.DefaultJetBrainsLayout()},
+		{"zed", repogov.DefaultZedLayout()},
 	}
 }
 
@@ -411,12 +412,14 @@ func resolvePlatform(platform string) (repogov.LayoutSchema, string) {
 		return repogov.DefaultRooCodeLayout(), ""
 	case "jetbrains":
 		return repogov.DefaultJetBrainsLayout(), ""
+	case "zed":
+		return repogov.DefaultZedLayout(), ""
 	case "root":
 		return repogov.DefaultRootLayout(), ""
 	case "all":
 		return repogov.LayoutSchema{}, ""
 	}
-	return repogov.LayoutSchema{}, "unknown agent: " + platform + " (use copilot, cursor, windsurf, claude, gitlab, kiro, gemini, continue, cline, roocode, jetbrains, root, or all)"
+	return repogov.LayoutSchema{}, "unknown agent: " + platform + " (use copilot, cursor, windsurf, claude, gitlab, kiro, gemini, continue, cline, roocode, jetbrains, zed, root, or all)"
 }
 
 func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
@@ -758,22 +761,30 @@ func findGitRoot(dir string) string {
 }
 
 // resolveRoot returns the effective repository root to use for all operations.
-// When root is the default "." it resolves the working directory and walks up
-// to find the nearest git repository root, preventing confusing results when
-// the tool is invoked from a subdirectory such as ".github" or ".gitlab".
-// Falls back to the literal value when no git root is found.
+// It resolves the given root to an absolute path and then walks up to the
+// nearest git repository root. This handles two cases:
+//
+//  1. root is "." and the CWD is inside a subdirectory (e.g. .github/rules).
+//  2. An explicit agent subdirectory is passed via -root (e.g. -root .cursor)
+//     — it is walked up to the repo root rather than double-nesting files.
+//
+// Falls back to the resolved absolute path when no .git is found (covers temp
+// directories in tests and non-git working trees).
 func resolveRoot(root string) string {
-	if root != "." {
-		return root
+	// Resolve relative roots against the working directory.
+	abs := root
+	if !isAbsolute(root) {
+		if wd, err := os.Getwd(); err == nil {
+			abs = filepath.Join(wd, root)
+		}
 	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return root
-	}
-	if git := findGitRoot(wd); git != "" {
+	// Walk up to the nearest git root. Handles both "."
+	// (CWD inside a subdirectory) and an explicit agent path (e.g. ".cursor").
+	if git := findGitRoot(abs); git != "" {
 		return git
 	}
-	return root
+	// No git root found: use the resolved path as-is.
+	return abs
 }
 
 // isAbsolute returns true if the path looks absolute on any platform.

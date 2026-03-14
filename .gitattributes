@@ -10,6 +10,7 @@ go.sum text eol=lf
 
 # Documentation and config
 *.md text eol=lf
+*.mdc text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.json text eol=lf
@@ -18,6 +19,7 @@ LICENSE text eol=lf
 
 # Shell scripts
 *.sh text eol=lf
+scripts/hooks/pre-commit text eol=lf
 
 # Keep CRLF for Windows-specific files (if any)
 *.bat text eol=crlf

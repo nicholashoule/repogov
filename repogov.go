@@ -243,6 +243,20 @@ func DefaultConfig() Config {
 			".claude/CLAUDE.md":               200,
 			"AGENTS.md":                       200,
 			"GEMINI.md":                       200,
+			".rules":                          200,
+			// memory.md is read holistically as session context (not a scoped rule),
+			// so it shares the 200-line limit used by AGENTS.md, CLAUDE.md, etc.
+			// Claude Code empirically loads the first 200 lines of its MEMORY.md
+			// at every session start, which establishes 200 as the practical ceiling.
+			".github/rules/memory.md":      200,
+			".cursor/rules/memory.md":      200,
+			".windsurf/rules/memory.md":    200,
+			".claude/rules/memory.md":      200,
+			".kiro/steering/memory.md":     200,
+			".continue/rules/memory.md":    200,
+			".clinerules/memory.md":        200,
+			".roo/rules/memory.md":         200,
+			".aiassistant/rules/memory.md": 200,
 		},
 	}
 }

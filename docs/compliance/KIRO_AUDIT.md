@@ -1,8 +1,8 @@
 # Kiro CLI Audit
 
 Sources:
-- https://kiro.dev/docs/cli/steering/ — verified 2026-03-07
-- https://kiro.dev/docs/cli/custom-agents/creating/ — verified 2026-03-07
+- https://kiro.dev/docs/steering/ — verified 2026-03-13
+- https://kiro.dev/docs/cli/custom-agents/creating/ — verified 2026-03-13
 - https://github.com/aws/amazon-q-developer-cli — deprecation notice verified 2026-03-07
 
 ## Background
@@ -18,9 +18,30 @@ See [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) for Amazon Q Developer CLI history.
 
 ### Workspace Steering
 
-- `.kiro/steering/` — primary multi-file steering directory. All `.md` files
-  are loaded automatically in every chat session. Files are plain Markdown
-  with no mandatory frontmatter.
+- `.kiro/steering/` — primary multi-file steering directory. Steering files are
+  plain Markdown with optional YAML frontmatter. Whether a file is loaded
+  depends on its **inclusion mode** (`inclusion:` frontmatter key; default: `always`).
+
+  **Inclusion modes:**
+
+  | Mode | Frontmatter | Behaviour |
+  |------|------------|----------|
+  | `always` (default) | `inclusion: always` (or omit) | Loaded in every interaction |
+  | `fileMatch` | `inclusion: fileMatch` + `fileMatchPattern: "*.tsx"` | Loaded when a context file matches the pattern (string or array) |
+  | `manual` | `inclusion: manual` | Invoked via `#steering-file-name` in chat or `/name` slash command |
+  | `auto` | `inclusion: auto` + `name:` + `description:` | Model decides when relevant; also available as a slash command |
+
+  Example for a scoped steering file:
+  ```yaml
+  ---
+  inclusion: fileMatch
+  fileMatchPattern: "**/*.go"
+  ---
+  ```
+
+  **File references:** Embed live workspace files inline with
+  `#[[file:relative_file_name]]` to keep steering context up-to-date
+  without copy-pasting.
 
   Recommended foundation files (conventional names only — no schema enforcement):
 
@@ -83,7 +104,7 @@ built-in team-sync mechanism; distribution is manual or tool-assisted.
 
 | Extension | Notes |
 |-----------|-------|
-| `.md` | `.kiro/steering/*.md` — Markdown steering files (no mandatory frontmatter) |
+| `.md` | `.kiro/steering/*.md` — Markdown with optional `inclusion:` frontmatter |
 | `.json` | `.kiro/agents/*.json` — Custom agent configuration |
 | `.md` | `.kiro/skills/<name>/SKILL.md` — Skill definition files |
 
@@ -92,6 +113,25 @@ built-in team-sync mechanism; distribution is manual or tool-assisted.
 No documented line/character limits per steering file. The official best-
 practice guidance is to keep files focused on a single domain.
 
+## Memory Configuration
+
+Kiro has no dedicated runtime memory file. Context persistence is handled through
+steering files in `.kiro/steering/`. Only files with `inclusion: always` (the default)
+or matching `inclusion: fileMatch` patterns are loaded automatically; `manual` and
+`auto` files require explicit invocation.
+
+| Scope | File | Auto-loaded |
+|-------|------|-------------|
+| Project (always) | `.kiro/steering/*.md` with `inclusion: always` | Yes — every interaction |
+| Project (scoped) | `.kiro/steering/*.md` with `inclusion: fileMatch` | Yes — when context files match |
+| Project (on-demand) | `.kiro/steering/*.md` with `inclusion: manual`/`auto` | No — invoked explicitly |
+| Global | `~/.kiro/steering/*.md` | Yes — loaded in every workspace |
+| Agent-specific | `.kiro/agents/*.json` | Only in custom agent sessions (`resources` list) |
+
+For always-on project context, use default `inclusion: always` steering files.
+For cross-project instructions, use `~/.kiro/steering/`.
+There is no `memory.md` equivalent that Kiro writes to automatically.
+
 ## AGENTS.md Compatibility
 
 Kiro explicitly supports the [AGENTS.md](https://agents.md/) cross-agent
@@ -99,22 +139,19 @@ standard. Files placed at the workspace root or inside `~/.kiro/steering/` are
 picked up automatically and always included (equivalent to `alwaysApply: true`
 in other agents).
 
-## repogov Support Status
+## Seeded Files
 
-Not yet supported. Qualifies for a **Tier 1** preset (see
-[AI_AGENTS_AUDIT.md](AI_AGENTS_AUDIT.md#implementation-priority-tiers)).
+`init -agent kiro` creates the `.kiro/steering/` directory and seeds:
 
-To add support:
+| File | Purpose |
+|------|---------|
+| `general.md` | General project conventions (no mandatory frontmatter) |
 
-1. Create `DefaultKiroLayout()` in `presets.go`:
-   - `Root`: `.kiro`
-   - `Dirs`: `steering` -> glob `*.md`, min 0, description "Kiro steering files"
-   - Optional agents dir: `agents` -> glob `*.json`
-   - `Naming.Case`: `lowercase`
-2. Add `TestInitLayout_KiroSchema` to `init_test.go`.
-3. Add `kiro` as a CLI agent name in `cmd/repogov/main.go` mapping to
-   `DefaultKiroLayout()`.
-4. Scaffold a `cmd/repogov/tmp/kiro/` example directory.
-5. Update [AI_AGENTS_AUDIT.md](AI_AGENTS_AUDIT.md) — move this file from
-   Planned Backlog to the Supported table.
-6. Add Kiro to the Support Matrix and Supported File Extensions tables.
+## Limits
+
+No documented line/character limits. repogov enforces 300 lines per `.kiro/steering/*.md` file.
+
+## Preset
+
+`DefaultKiroLayout()` in `presets.go`. Validates `.kiro/steering/` with `*.md` glob.
+CLI agent name: `kiro`.

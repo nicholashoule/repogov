@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.5.1] - 2026-03-13
+
+### Added
+
+- `DefaultZedLayout()` preset in `presets.go` — supports Zed AI's single-file `.rules` format at repo root.
+- `-agent zed` CLI preset for `layout`, `init`, and `all` subcommands.
+- `templates/agents/zed-rules.tmpl` — template for Zed's root-level `.rules` project rules file.
+- `createZedRules()` and `zedRulesContent()` in `init.go`; `IsZed` template data field and context section logic for `AGENTS.md`.
+- `".rules": 200` added to `DefaultConfig()` (`repogov.go`).
+- `docs/compliance/ZED_AUDIT.md` — Preset, Seeded Files, Memory Configuration, and Limits sections added; "Not yet supported" section removed.
+- `docs/compliance/AI_AGENTS_AUDIT.md` — Zed AI added to criteria table (all Pass), Supported table, Tier 1 table, and Support Matrix.
+- **Memory Configuration** sections added to all agent audit files: `COPILOT_AUDIT.md`, `CURSOR_AUDIT.md`, `WINDSURF_AUDIT.md`, `CLAUDE_AUDIT.md`, `KIRO_AUDIT.md`, `CLINE_AUDIT.md`, `ROOCODE_AUDIT.md`, `CONTINUE_AUDIT.md`, `JETBRAINS_AUDIT.md`, `GEMINI_AUDIT.md`, `AGENTS_MD_AUDIT.md`, `ZED_AUDIT.md`.
+- `docs/compliance/KIRO_AUDIT.md` — "Not yet supported" section replaced with Preset, Seeded Files, Memory Configuration, and Limits sections.
+- `templates/rules/memory.md.tmpl` — dedicated project memory seed template with sections for Architecture Decisions, Known Issues, Conventions, Dependency Notes, and Session Notes. Kept separate from `general.md` which serves a different purpose.
+- `memoryInstructionsContent()` in `init.go`; `memory.instructions.md` / `memory.md` registered in `defaultInstructionFilesFor()` and seeded for all 9 rule-seeding agents (copilot, cursor, windsurf, claude, kiro, continue, cline, roocode, jetbrains).
+- Nine `memory.md` per-file entries added to `DefaultConfig().Files` at 200 lines each (`.github/rules/memory.md`, `.cursor/rules/memory.md`, `.windsurf/rules/memory.md`, `.claude/rules/memory.md`, `.kiro/steering/memory.md`, `.continue/rules/memory.md`, `.clinerules/memory.md`, `.roo/rules/memory.md`, `.aiassistant/rules/memory.md`).
+- `*.mdc` and `scripts/hooks/pre-commit` added to `.gitattributes` LF normalization rules.
+
+### Fixed
+
+- `DefaultCopilotLayout()` `workflows` `DirRule` — `NoCreate: true` was missing, causing an empty `workflows/` directory to be created on every `copilot init` even when GitHub Actions was not in use.
+- `schemaConfig()` in `init.go` — changed signature from `(cfg Config, root string)` to `(cfg Config, schema LayoutSchema)` and replaced the `root == "." && !strings.Contains(k, "/")` case with `root == "." && isInRequired(k, schema.Required)`. Added `isInRequired` helper. Gemini and Zed both use `Root == "."` but own different root-level files (`GEMINI.md` and `.rules` respectively); the old code included both in each agent's generated config.
+- `initLayoutSingle` config placement — when no `.github/` directory exists (all non-copilot single-agent inits), the generated `repogov-config.json` now lands at the repo root instead of inside the agent's own directory (e.g., `.cursor/repogov-config.json`). `FindConfig` searches the repo root first, so the config is now auto-discoverable without requiring an explicit `-config` flag.
+- `resolveRoot()` in `cmd/repogov/main.go` — generalized from "only git-walk when root is `.`" to "always resolve to an absolute path, then walk up to the nearest git root". An explicit `-root .cursor` (or any agent subdir path) is now correctly resolved to the repo root, preventing double-nested scaffolding (e.g., `.cursor/.cursor/rules/`).
+
 ## [v0.5.0] - 2026-03-12
 
 ### Added
@@ -115,7 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.5.1...HEAD
+[v0.5.1]: https://github.com/nicholashoule/repogov/compare/v0.5.0...v0.5.1
 [v0.5.0]: https://github.com/nicholashoule/repogov/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/nicholashoule/repogov/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/nicholashoule/repogov/compare/v0.2.0...v0.3.0

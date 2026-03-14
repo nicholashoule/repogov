@@ -31,13 +31,14 @@ programmatically or formatted for human-readable output.
 repogov.go      -- Core types: Status, Config, Rule, Result
 check.go        -- CountLines, CheckFile, CheckDir, CheckDirContext
 layout.go       -- LayoutSchema, CheckLayout, CheckLayoutContext
-presets.go       -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout,
+presets.go      -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout,
                    DefaultClaudeLayout, DefaultKiroLayout, DefaultGeminiLayout,
                    DefaultContinueLayout, DefaultClineLayout, DefaultRooCodeLayout,
-                   DefaultJetBrainsLayout, DefaultGitLabLayout, DefaultRootLayout
-config.go        -- LoadConfig, SaveConfig (JSON)
-format.go        -- Summary, Passed, LayoutSummary, LayoutPassed
-cmd/repogov/     -- CLI with limits/layout/all/version subcommands
+                   DefaultJetBrainsLayout, DefaultZedLayout, DefaultGitLabLayout, DefaultRootLayout
+config.go       -- LoadConfig, SaveConfig (JSON)
+format.go       -- Summary, Passed, LayoutSummary, LayoutPassed
+init.go         -- InitLayout, InitLayoutAll, createDefaultConfig, schemaConfig, seeded rule templates
+cmd/repogov/    -- CLI with limits/layout/init/validate/all/version subcommands
 ```
 
 ## Configuration
@@ -105,10 +106,10 @@ repogov [flags] <limits|layout|init|validate|all|version>
 
 Flags:
   -config    Path to JSON/YAML config (default: auto-discovered)
-  -root      Repository root (default: .)
+  -root      Repository root (default: .; always resolved to git root)
   -exts      Extension filter (e.g., .go,.md)
   -agent     Agent preset: copilot, cursor, windsurf, claude, kiro, gemini,
-             continue, cline, roocode, jetbrains, gitlab, root, or all
+             continue, cline, roocode, jetbrains, zed, gitlab, root, or all
   -quiet     Exit code only
   -json      JSON output
 ```

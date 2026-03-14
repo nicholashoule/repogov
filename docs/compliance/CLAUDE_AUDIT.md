@@ -1,19 +1,34 @@
 # Claude Code (Anthropic) Audit
 
 Source: https://code.claude.com/docs/en/settings and https://code.claude.com/docs/en/memory
-Verified: 2026-03-07
+Verified: 2026-03-13
 
 ## Configuration Files
 
 - `CLAUDE.md` at repo root OR `.claude/CLAUDE.md` — primary instruction file; loaded every
   session. Target under 200 lines. Use `@path` imports to reference other files.
 - `.claude/rules/*.md` — scoped instruction files; optional `paths` YAML frontmatter for
-  per-file-pattern scoping. Subdirectories supported. Governed at 300 lines.
+  per-file-pattern scoping. Subdirectories and symlinks supported.
 - `.claude/agents/*.md` — subagent definitions with YAML frontmatter. Governed at 300 lines.
 - `.claude/settings.json` — project settings (permissions, env vars, hooks, MCP servers).
   Hooks are defined here under the `hooks` key — NOT as a separate directory.
 - `.claude/settings.local.json` — personal overrides; gitignored.
+  `claudeMdExcludes` key here can suppress specific `CLAUDE.md` files in monorepos.
 - `.mcp.json` at repo root — project-scoped MCP server configuration (outside `.claude/`).
+
+### User-level rules
+
+- `~/.claude/CLAUDE.md` — global instruction file; applied to all projects.
+- `~/.claude/rules/` — user-level rules directory (same format as `.claude/rules/*.md`).
+  Separate path from `~/.claude/CLAUDE.md`; rules here are user-personal, not project files.
+
+### Managed policy CLAUDE.md (enterprise / IT)
+
+| OS | Path |
+|----|------|
+| macOS | `/Library/Application Support/ClaudeCode/CLAUDE.md` |
+| Linux | `/etc/claude-code/CLAUDE.md` |
+| Windows | `C:\Program Files\ClaudeCode\CLAUDE.md` |
 
 ## File Extensions
 
@@ -21,6 +36,44 @@ Verified: 2026-03-07
 |-----------|-------|
 | `.md` | `CLAUDE.md`, `rules/*.md`, `agents/*.md` |
 | `.json` | `settings.json` / `settings.local.json` for permissions and hooks |
+
+## Memory Configuration
+
+Claude Code has two separate memory mechanisms:
+
+### Static CLAUDE.md instructions
+
+`CLAUDE.md` (or `.claude/CLAUDE.md`) is the primary instruction file — loaded every session
+without any auto-updating by the agent. This is the correct place for stable project context.
+
+| Scope | File | Auto-loaded |
+|-------|------|-------------|
+| Project (primary) | `CLAUDE.md` or `.claude/CLAUDE.md` | Yes — loaded every session |
+| Project (scoped) | `.claude/rules/*.md` | Yes — matched by `paths:` frontmatter glob |
+| Settings / hooks | `.claude/settings.json` | Yes — permissions, env vars, hooks |
+| Personal overrides | `.claude/settings.local.json` | Yes — gitignored |
+| User global | `~/.claude/CLAUDE.md` and `~/.claude/rules/*.md` | Yes — applied to all projects |
+| System policy | OS-specific managed CLAUDE.md (see Configuration Files) | Yes — IT-managed, read-only |
+
+### Auto memory system
+
+Claude Code can automatically write and maintain a memory file as it works across sessions.
+This is **machine-local and git-repo-scoped** — never committed to version control.
+
+| Item | Detail |
+|------|---------|
+| Storage location | `~/.claude/projects/<project-hash>/memory/` |
+| Index file | `MEMORY.md` — first 200 lines loaded at every session start |
+| Topic files | e.g. `debugging.md`, `testing.md` — loaded on demand when relevant |
+| Trigger | Claude writes to memory when it learns something useful for future sessions |
+| Toggle | `autoMemoryEnabled` in settings (default: on), or env `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` |
+| Inspect / edit | `/memory` slash command lists all active CLAUDE.md files and memory entries |
+
+Repogov does not govern auto-memory files (they are outside the repo). The CLAUDE.md
+instruction files in the repo remain the authoritative team-shared context layer.
+
+Claude Code uses `@path` import syntax inside `CLAUDE.md` to compose larger context
+from smaller focused files.
 
 ## Seeded Files
 
