@@ -174,6 +174,41 @@ func TestResolveLimit_DirGlob_NilLimit(t *testing.T) {
 	}
 }
 
+// TestResolveLimit_FilesOverridesGlob verifies that per-file entries in the
+// "files" map take precedence over matching glob rules, confirming that
+// memory.instructions.md at 200 is not overridden by a *.md glob at 300.
+func TestResolveLimit_FilesOverridesGlob(t *testing.T) {
+	cfg := repogov.Config{
+		Default: 500,
+		Rules: []repogov.Rule{
+			{Glob: ".github/rules/*.md", Limit: repogov.RuleLimit(300)},
+		},
+		Files: map[string]int{
+			".github/copilot-instructions.md":             50,
+			".github/instructions/memory.instructions.md": 200,
+			"AGENTS.md": 200,
+		},
+	}
+	tests := []struct {
+		name string
+		path string
+		want int
+	}{
+		{"files override: copilot-instructions", ".github/copilot-instructions.md", 50},
+		{"files override: memory instructions", ".github/instructions/memory.instructions.md", 200},
+		{"files override: AGENTS.md", "AGENTS.md", 200},
+		{"glob match: general rule in rules/", ".github/rules/general.md", 300},
+		{"default fallback: unmatched file", "src/main.go", 500},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := repogov.ResolveLimit(tt.path, cfg); got != tt.want {
+				t.Errorf("ResolveLimit(%q) = %d, want %d", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStatusMarshalJSON(t *testing.T) {
 	tests := []struct {
 		status repogov.Status

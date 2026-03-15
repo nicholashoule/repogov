@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.1] - 2026-03-14
+
+### Added
+
+- `-seed` CLI flag for `init` subcommand — seeds missing template files into existing directories without overwriting. Maps to `init_always_create` config option at runtime, providing a convenient CLI alternative to editing the config.
+- `TestCheckDir_FilesOverrideViaCheckDir` regression test (`check_test.go`) — end-to-end test that verifies `files` overrides are applied correctly when limits are resolved through `CheckDir`.
+- `TestResolveLimit_FilesOverridesGlob` test (`repogov_test.go`) — verifies the documented resolution priority (files > rules > default) with the exact config shape used by downstream consumers.
+- `TestScaffold_Copilot_Init_Instructions` test (`scaffold_test.go`) — verifies that when `.github/instructions/` already has content, init detects it, sets `descriptive_names=true`, and generates a config referencing only `instructions/` paths.
+
+### Fixed
+
+- **`CheckDirContext` absolute-path bug** (`check.go`) — `CheckDirContext` passed the absolute filesystem path (e.g. `C:/Users/.../README.md`) to `CheckFile`, which used it for `ResolveLimit`. Neither `files` exact-match lookups nor `rules` glob patterns ever matched absolute paths, so **all overrides were silently ignored** and every file received the `default` limit. Introduced internal `checkFileAt(fsPath, relPath, cfg)` to separate the filesystem path (for `CountLines`) from the repo-relative path (for config lookups). `CheckFile` public API is unchanged.
+- **`schemaConfig` missing `DescriptiveNames` propagation** (`scaffold.go`) — the output `Config` from `schemaConfig` did not copy `cfg.DescriptiveNames`, so generated `repogov-config.json` always had `"descriptive_names": false` even when `instructions/` was detected and descriptive naming was forced.
+- **`schemaConfig` duplicate `rules/`/`instructions/` file entries** (`scaffold.go`) — when `copilotNarrowSchema` removed one directory (e.g. `rules/`), `schemaConfig` still included `files` entries for both directories. Added `firstSegment` helper to skip file entries whose subdirectory is absent from the narrowed `schema.Dirs`.
+
 ## [v0.6.0] - 2026-03-14
 
 ### Changed
@@ -161,7 +176,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.6.1...HEAD
+[v0.6.1]: https://github.com/nicholashoule/repogov/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/nicholashoule/repogov/compare/v0.5.1...v0.6.0
 [v0.5.1]: https://github.com/nicholashoule/repogov/compare/v0.5.0...v0.5.1
 [v0.5.0]: https://github.com/nicholashoule/repogov/compare/v0.4.0...v0.5.0

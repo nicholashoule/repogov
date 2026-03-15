@@ -712,6 +712,7 @@ func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic //
 	prefix := root + "/"
 	out := Config{
 		Default:          cfg.Default,
+		DescriptiveNames: cfg.DescriptiveNames,
 		WarningThreshold: cfg.WarningThreshold,
 		IncludeExts:      cfg.IncludeExts,
 		SkipDirs:         cfg.SkipDirs,
@@ -739,6 +740,14 @@ func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic //
 		switch {
 		case strings.HasPrefix(k, prefix):
 			// File is inside this schema's root directory.
+			// When the schema has been narrowed (e.g. Copilot selects
+			// instructions/ or rules/ — not both), skip file entries
+			// whose subdirectory is absent from schema.Dirs.
+			if sub := firstSegment(strings.TrimPrefix(k, prefix)); sub != "" {
+				if _, ok := schema.Dirs[sub]; !ok {
+					continue
+				}
+			}
 			include = true
 		case !strings.Contains(k, "/") && crossAgentRootFile(k):
 			// Root-level file that is genuinely cross-agent (e.g. AGENTS.md).
@@ -767,6 +776,16 @@ func isInRequired(name string, required []string) bool {
 		}
 	}
 	return false
+}
+
+// firstSegment returns the first path segment of rel (the text before the
+// first "/"). If rel contains no slash it returns "" — the path is a direct
+// child of the schema root, not inside a subdirectory.
+func firstSegment(rel string) string {
+	if idx := strings.Index(rel, "/"); idx >= 0 {
+		return rel[:idx]
+	}
+	return ""
 }
 
 // crossAgentRootFile reports whether a root-level filename (no path separator)
