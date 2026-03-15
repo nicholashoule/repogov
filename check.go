@@ -28,10 +28,12 @@ func CountLines(path string) (int, error) {
 // CheckFile checks a single file against its resolved line limit.
 // It returns a Result with the line count and status.
 // path is used both as the filesystem path for reading the file and,
-// after normalizing to forward slashes, as the repo-relative key for
-// config lookups. When called from [CheckDir], the internal
-// checkFileAt variant is used instead so that the repo-relative path
-// is computed correctly from the walk root.
+// after normalizing path separators to forward slashes, as the key for
+// config lookups. The normalized path is used as-is; callers should pass
+// repository-relative paths (using the same root as CheckDir) if they want
+// Config.Files / Config.Rules patterns to match consistently. When called
+// from [CheckDir], the internal checkFileAt variant is used instead so that
+// the repo-relative path is computed correctly from the walk root.
 func CheckFile(path string, cfg Config) (Result, error) { //nolint:gocritic // hugeParam: stable public API
 	relPath := filepath.ToSlash(path)
 	return checkFileAt(path, relPath, cfg)
@@ -39,7 +41,8 @@ func CheckFile(path string, cfg Config) (Result, error) { //nolint:gocritic // h
 
 // checkFileAt is the shared implementation for CheckFile and CheckDirContext.
 // fsPath is the filesystem path passed to CountLines; relPath is the
-// repo-relative path (forward slashes) used for config lookups.
+// slash-normalized path key used for config lookups. When invoked from
+// CheckDir, relPath is computed as a repo-relative path from the walk root.
 func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:gocritic // hugeParam: stable public API
 	limit := ResolveLimit(relPath, cfg)
 	if limit == 0 {
