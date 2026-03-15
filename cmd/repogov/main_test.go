@@ -70,7 +70,7 @@ func TestRun_BadFlag(t *testing.T) {
 func TestRun_DefaultAll(t *testing.T) {
 	root := t.TempDir()
 	// Pre-init github so limits has a config and layout has its dir.
-	runInit(root, "", "copilot", true, false, false, new(bytes.Buffer), new(bytes.Buffer))
+	runInit(root, "", "copilot", true, false, false, false, new(bytes.Buffer), new(bytes.Buffer))
 	stdout, stderr := bufs()
 	code := run([]string{"-root", root, "-agent", "copilot", "-quiet"}, stdout, stderr)
 	if code != 0 {
@@ -93,7 +93,7 @@ func TestRun_Limits(t *testing.T) {
 func TestRun_Layout(t *testing.T) {
 	root := t.TempDir()
 	// Pre-init all platforms so every layout check has its dir.
-	runInit(root, "", "all", true, false, false, new(bytes.Buffer), new(bytes.Buffer))
+	runInit(root, "", "all", true, false, false, false, new(bytes.Buffer), new(bytes.Buffer))
 	stdout, stderr := bufs()
 	code := run([]string{"-root", root, "-agent", "all", "-quiet", "layout"}, stdout, stderr)
 	if code != 0 {
@@ -489,7 +489,7 @@ func TestRunLayout_Verbose(t *testing.T) {
 
 func TestRunInit_RequiresPlatform(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "", "", true, false, false, stdout, stderr); code != 2 {
+	if code := runInit(t.TempDir(), "", "", true, false, false, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected exit 2 when no platform given, got %d", code)
 	}
 	if !strings.Contains(stderr.String(), "-agent is required") {
@@ -518,7 +518,7 @@ func TestRunInit_EachPlatformToTemp(t *testing.T) {
 			stdout, stderr := bufs()
 
 			// Init the platform layout.
-			if code := runInit(temp, "", tc.platform, true, false, false, stdout, stderr); code != 0 {
+			if code := runInit(temp, "", tc.platform, true, false, false, false, stdout, stderr); code != 0 {
 				t.Fatalf("runInit %s: exit %d (stderr: %s)", tc.platform, code, stderr.String())
 			}
 
@@ -545,7 +545,7 @@ func TestRunInit_AllToTemp(t *testing.T) {
 	stdout, stderr := bufs()
 
 	// First init: create all platforms.
-	if code := runInit(temp, "", "all", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(temp, "", "all", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit all: exit %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -556,7 +556,7 @@ func TestRunInit_AllToTemp(t *testing.T) {
 
 	// Second init: must be idempotent (nothing new created).
 	stdout.Reset()
-	if code := runInit(temp, "", "all", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(temp, "", "all", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("second runInit all: exit %d", code)
 	}
 	if strings.Contains(stdout.String(), "Scaffolded") {
@@ -567,7 +567,7 @@ func TestRunInit_AllToTemp(t *testing.T) {
 func TestRunInit_CreatesLayout(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "copilot", true, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", true, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".github")); err != nil {
@@ -582,7 +582,7 @@ func TestRunInit_CreatesLayout(t *testing.T) {
 func TestRunInit_GitLab(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "gitlab", true, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "gitlab", true, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, ".gitlab")); err != nil {
@@ -593,7 +593,7 @@ func TestRunInit_GitLab(t *testing.T) {
 func TestRunInit_Cursor(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "cursor", true, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "cursor", true, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".cursor", "rules")); err != nil {
@@ -604,7 +604,7 @@ func TestRunInit_Cursor(t *testing.T) {
 func TestRunInit_Windsurf(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "windsurf", true, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "windsurf", true, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".windsurf", "rules")); err != nil {
@@ -615,7 +615,7 @@ func TestRunInit_Windsurf(t *testing.T) {
 func TestRunInit_Claude(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "claude", true, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "claude", true, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	for _, dir := range []string{".claude/rules", ".claude/agents"} {
@@ -628,7 +628,7 @@ func TestRunInit_Claude(t *testing.T) {
 func TestRunInit_All(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "all", true, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "all", true, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d (stderr: %s)", code, stderr.String())
 	}
 	for _, dir := range []string{".github", ".cursor/rules", ".windsurf/rules", ".claude/rules", ".claude/agents"} {
@@ -641,7 +641,7 @@ func TestRunInit_All(t *testing.T) {
 func TestRunInit_All_JSON(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "all", false, true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "all", false, true, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var results []struct {
@@ -665,16 +665,16 @@ func TestRunInit_All_JSON(t *testing.T) {
 func TestRunInit_AlreadyExists(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "", "copilot", true, false, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, false, false, stdout, stderr)
 	stdout.Reset()
-	if code := runInit(root, "", "copilot", true, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", true, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 }
 
 func TestRunInit_UnknownPlatform(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "", "bitbucket", true, false, false, stdout, stderr); code != 2 {
+	if code := runInit(t.TempDir(), "", "bitbucket", true, false, false, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected 2, got %d", code)
 	}
 	if !strings.Contains(stderr.String(), "unknown agent") {
@@ -685,7 +685,7 @@ func TestRunInit_UnknownPlatform(t *testing.T) {
 func TestRunInit_JSON(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "copilot", false, true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, true, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var result struct {
@@ -706,9 +706,9 @@ func TestRunInit_JSON(t *testing.T) {
 func TestRunInit_JSON_AlreadyExists(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "", "copilot", true, false, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, false, false, stdout, stderr)
 	stdout.Reset()
-	if code := runInit(root, "", "copilot", false, true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, true, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	var result struct {
@@ -725,7 +725,7 @@ func TestRunInit_JSON_AlreadyExists(t *testing.T) {
 func TestRunInit_Verbose(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	if code := runInit(root, "", "copilot", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if !strings.Contains(stdout.String(), "Scaffolded") {
@@ -736,9 +736,9 @@ func TestRunInit_Verbose(t *testing.T) {
 func TestRunInit_Verbose_AlreadyExists(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "", "copilot", true, false, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, false, false, stdout, stderr)
 	stdout.Reset()
-	if code := runInit(root, "", "copilot", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
 	if !strings.Contains(stdout.String(), "nothing to create") {

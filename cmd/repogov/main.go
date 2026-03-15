@@ -21,6 +21,7 @@
 //	-exts .md,.mdc        Extension filter override; default from config include_exts; use "all" to scan every type
 //	-agent <name[,name…]>  Agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, root, or all (required for init)
 //	-descriptive          Use *.instructions.md naming convention for seeded files (overrides config descriptive_names)
+//	-seed                 Seed missing template files into existing directories without overwriting (init only)
 //	-quiet                Suppress output; exit code only
 //	-json                 Output results as JSON
 package main
@@ -58,6 +59,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		quiet       bool
 		jsonOut     bool
 		descriptive bool
+		seed        bool
 	)
 
 	fs.Usage = func() {
@@ -112,6 +114,7 @@ Examples:
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
+	fs.BoolVar(&seed, "seed", false, "seed missing template files into existing directories without overwriting (init only)")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -149,7 +152,7 @@ Examples:
 		fmt.Fprintln(stdout, "repogov", version)
 		return 0
 	case "init":
-		return runInit(root, configPath, agent, quiet, jsonOut, descriptive, stdout, stderr)
+		return runInit(root, configPath, agent, quiet, jsonOut, descriptive, seed, stdout, stderr)
 	case "validate":
 		return runValidate(root, configPath, quiet, jsonOut, stdout, stderr)
 	case "limits":
@@ -519,7 +522,7 @@ func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Wri
 	return 0
 }
 
-func runInit(root, configPath, platform string, quiet, jsonOut, descriptive bool, stdout, stderr io.Writer) int {
+func runInit(root, configPath, platform string, quiet, jsonOut, descriptive, seed bool, stdout, stderr io.Writer) int {
 	if platform == "" {
 		fmt.Fprintln(stderr, "error: -agent is required for init")
 		fmt.Fprintln(stderr, "usage: repogov -agent <copilot|cursor|windsurf|claude|all[,...]> init")
@@ -543,6 +546,9 @@ func runInit(root, configPath, platform string, quiet, jsonOut, descriptive bool
 	}
 	if descriptive {
 		cfg.DescriptiveNames = true
+	}
+	if seed {
+		cfg.InitAlwaysCreate = true
 	}
 
 	// Normalize: split comma-separated list and trim spaces.

@@ -163,6 +163,59 @@ func TestCheckDir_SkipDirs(t *testing.T) {
 	}
 }
 
+// TestCheckDir_FilesOverrideViaCheckDir verifies that per-file entries in
+// Config.Files are respected when limits are resolved through CheckDir
+// (which walks with absolute paths internally). This is a regression test
+// for a bug where CheckDir passed the absolute filesystem path to
+// ResolveLimit instead of the repo-relative path, causing Files entries
+// to never match.
+func TestCheckDir_FilesOverrideViaCheckDir(t *testing.T) {
+	files := map[string]string{
+		"README.md":                                   strings.Repeat("line\n", 10),
+		".github/copilot-instructions.md":             strings.Repeat("line\n", 5),
+		".github/instructions/memory.instructions.md": strings.Repeat("line\n", 8),
+	}
+	root := writeTempDir(t, files)
+
+	cfg := repogov.Config{
+		Default:          500,
+		WarningThreshold: 85,
+		IncludeExts:      []string{".md"},
+		SkipDirs:         []string{".git"},
+		Files: map[string]int{
+			"README.md":                                   1200,
+			".github/copilot-instructions.md":             50,
+			".github/instructions/memory.instructions.md": 200,
+		},
+	}
+
+	results, err := repogov.CheckDir(root, []string{".md"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	limits := make(map[string]int)
+	for _, r := range results {
+		limits[r.Path] = r.Limit
+	}
+
+	want := map[string]int{
+		"README.md":                                   1200,
+		".github/copilot-instructions.md":             50,
+		".github/instructions/memory.instructions.md": 200,
+	}
+	for path, wantLimit := range want {
+		got, ok := limits[path]
+		if !ok {
+			t.Errorf("missing result for %s", path)
+			continue
+		}
+		if got != wantLimit {
+			t.Errorf("CheckDir: %s limit = %d, want %d (files override ignored)", path, got, wantLimit)
+		}
+	}
+}
+
 func TestCheckFile_NonexistentFile(t *testing.T) {
 	cfg := repogov.DefaultConfig()
 	_, err := repogov.CheckFile(filepath.Join(os.TempDir(), "nonexistent.md"), cfg)

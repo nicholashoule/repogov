@@ -142,7 +142,7 @@ func TestScaffold_Copilot_Init(t *testing.T) {
 	root := scaffoldDir(t, "copilot")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "copilot", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit copilot: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -233,6 +233,7 @@ func TestScaffold_Copilot_Init_Descriptive(t *testing.T) {
 		"  ],\n" +
 		"  \"files\": {\n" +
 		"    \".github/copilot-instructions.md\": 50,\n" +
+		"    \".github/rules/memory.instructions.md\": 200,\n" +
 		"    \"AGENTS.md\": 200\n" +
 		"  }\n" +
 		"}\n"
@@ -241,7 +242,7 @@ func TestScaffold_Copilot_Init_Descriptive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if code := runInit(root, cfgPath, "copilot", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, cfgPath, "copilot", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit copilot descriptive: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -276,6 +277,64 @@ func TestScaffold_Copilot_Init_Descriptive(t *testing.T) {
 	assertFileContains(t, emojiPath, "demojify")
 }
 
+// TestScaffold_Copilot_Init_Instructions verifies that when .github/instructions/
+// already has content, init detects it, sets descriptive_names=true, and generates
+// a config that references only instructions/ paths — not rules/ duplicates.
+// Template files are not re-seeded into a non-empty directory (by design);
+// the test focuses on config correctness and AGENTS.md links.
+func TestScaffold_Copilot_Init_Instructions(t *testing.T) {
+	root := scaffoldDir(t, "copilot-instructions")
+	stdout, stderr := bufs()
+
+	// Pre-create .github/instructions/ with a file so detectCopilotTargetDir
+	// picks instructions/ over rules/.
+	instrDir := filepath.Join(root, ".github", "instructions")
+	if err := os.MkdirAll(instrDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := filepath.Join(instrDir, "existing.instructions.md")
+	if err := os.WriteFile(seed, []byte("# Existing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := runInit(root, "", "copilot", false, false, false, false, stdout, stderr); code != 0 {
+		t.Fatalf("runInit copilot instructions: exit %d\nstderr: %s", code, stderr.String())
+	}
+
+	// instructions/ must exist; rules/ must NOT be created.
+	assertDirExists(t, instrDir)
+	if _, err := os.Stat(filepath.Join(root, ".github", "rules")); err == nil {
+		t.Error("expected .github/rules/ to NOT exist when instructions/ was detected")
+	}
+
+	// The pre-existing seed file must still be present.
+	assertFileExists(t, seed)
+
+	// Generated config must set descriptive_names=true.
+	cfgPath := filepath.Join(root, ".github", "repogov-config.json")
+	assertFileExists(t, cfgPath)
+	assertValidJSON(t, cfgPath)
+	assertFileContains(t, cfgPath, `"descriptive_names": true`)
+
+	// Config must reference instructions/ paths, not rules/ paths.
+	assertFileContains(t, cfgPath, ".github/instructions/memory.instructions.md")
+	assertFileNotContains(t, cfgPath, ".github/rules/memory")
+
+	// Rules glob is always .github/rules/*.md (harmless when dir absent).
+	assertFileContains(t, cfgPath, ".github/rules/*.md")
+
+	// AGENTS.md must reference instructions/, not rules/.
+	agPath := filepath.Join(root, "AGENTS.md")
+	assertFileExists(t, agPath)
+	assertFileContains(t, agPath, ".github/instructions/")
+	assertFileNotContains(t, agPath, ".github/rules/")
+
+	// copilot-instructions.md must reference instructions/ dir.
+	ciPath := filepath.Join(root, ".github", "copilot-instructions.md")
+	assertFileExists(t, ciPath)
+	assertFileContains(t, ciPath, "instructions/")
+}
+
 // -------------------------------------------------------------------
 // Cursor
 // -------------------------------------------------------------------
@@ -284,7 +343,7 @@ func TestScaffold_Cursor_Init(t *testing.T) {
 	root := scaffoldDir(t, "cursor")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "cursor", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "cursor", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit cursor: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -332,7 +391,7 @@ func TestScaffold_Windsurf_Init(t *testing.T) {
 	root := scaffoldDir(t, "windsurf")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "windsurf", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "windsurf", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit windsurf: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -379,7 +438,7 @@ func TestScaffold_Claude_Init(t *testing.T) {
 	root := scaffoldDir(t, "claude")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "claude", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "claude", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit claude: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -438,7 +497,7 @@ func TestScaffold_Kiro_Init(t *testing.T) {
 	root := scaffoldDir(t, "kiro")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "kiro", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "kiro", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit kiro: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -479,7 +538,7 @@ func TestScaffold_Gemini_Init(t *testing.T) {
 	root := scaffoldDir(t, "gemini")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "gemini", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "gemini", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit gemini: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -509,7 +568,7 @@ func TestScaffold_Continue_Init(t *testing.T) {
 	root := scaffoldDir(t, "continue")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "continue", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "continue", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit continue: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -548,7 +607,7 @@ func TestScaffold_Cline_Init(t *testing.T) {
 	root := scaffoldDir(t, "cline")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "cline", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "cline", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit cline: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -592,7 +651,7 @@ func TestScaffold_RooCode_Init(t *testing.T) {
 	root := scaffoldDir(t, "roocode")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "roocode", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "roocode", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit roocode: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -631,7 +690,7 @@ func TestScaffold_JetBrains_Init(t *testing.T) {
 	root := scaffoldDir(t, "jetbrains")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "jetbrains", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "jetbrains", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit jetbrains: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -670,7 +729,7 @@ func TestScaffold_Zed_Init(t *testing.T) {
 	root := scaffoldDir(t, "zed")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "zed", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "zed", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit zed: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -699,7 +758,7 @@ func TestScaffold_All_Init(t *testing.T) {
 	root := scaffoldDir(t, "all")
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "all", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "all", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit all: exit %d\nstderr: %s", code, stderr.String())
 	}
 
@@ -838,13 +897,13 @@ func TestScaffold_Idempotent(t *testing.T) {
 			stdout, stderr := bufs()
 
 			// First init.
-			if code := runInit(root, "", tc.agent, true, false, false, stdout, stderr); code != 0 {
+			if code := runInit(root, "", tc.agent, true, false, false, false, stdout, stderr); code != 0 {
 				t.Fatalf("first runInit %s: exit %d\nstderr: %s", tc.agent, code, stderr.String())
 			}
 
 			// Second init in verbose mode; "nothing to create" or empty created list.
 			stdout.Reset()
-			if code := runInit(root, "", tc.agent, false, false, false, stdout, stderr); code != 0 {
+			if code := runInit(root, "", tc.agent, false, false, false, false, stdout, stderr); code != 0 {
 				t.Fatalf("second runInit %s: exit %d\nstderr: %s", tc.agent, code, stderr.String())
 			}
 			out := stdout.String()
@@ -876,7 +935,7 @@ func TestScaffold_DoesNotOverwrite(t *testing.T) {
 			stdout, stderr := bufs()
 
 			// First init to create the directory structure.
-			runInit(root, "", tc.agent, true, false, false, stdout, stderr)
+			runInit(root, "", tc.agent, true, false, false, false, stdout, stderr)
 
 			// Overwrite the file with a custom marker.
 			abs := filepath.Join(root, filepath.FromSlash(tc.relPath))
@@ -886,7 +945,7 @@ func TestScaffold_DoesNotOverwrite(t *testing.T) {
 
 			// Second init must not overwrite the file.
 			stdout.Reset()
-			runInit(root, "", tc.agent, true, false, false, stdout, stderr)
+			runInit(root, "", tc.agent, true, false, false, false, stdout, stderr)
 			assertFileContains(t, abs, tc.marker)
 		})
 	}
@@ -898,7 +957,7 @@ func TestScaffold_DoesNotOverwrite(t *testing.T) {
 
 func TestScaffold_Init_NoAgent(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "", "", true, false, false, stdout, stderr); code != 2 {
+	if code := runInit(t.TempDir(), "", "", true, false, false, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected exit 2, got %d", code)
 	}
 	if !strings.Contains(stderr.String(), "-agent") {
@@ -908,7 +967,7 @@ func TestScaffold_Init_NoAgent(t *testing.T) {
 
 func TestScaffold_Init_UnknownAgent(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "", "notion", true, false, false, stdout, stderr); code != 2 {
+	if code := runInit(t.TempDir(), "", "notion", true, false, false, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected exit 2, got %d", code)
 	}
 	if !strings.Contains(stderr.String(), "unknown agent") {
@@ -920,7 +979,7 @@ func TestScaffold_Init_OutputReportsCreatedPaths(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "copilot", false, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit: exit %d, stderr: %s", code, stderr.String())
 	}
 	out := stdout.String()
@@ -941,7 +1000,7 @@ func TestScaffold_Init_JSON_ReportsCreatedPaths(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
 
-	if code := runInit(root, "", "copilot", false, true, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", false, true, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit JSON: exit %d, stderr: %s", code, stderr.String())
 	}
 	var result struct {
@@ -975,7 +1034,7 @@ func TestScaffold_Limits_PassAfterInit(t *testing.T) {
 	stdout, stderr := bufs()
 
 	// Init first so a valid config and .md files are present.
-	if code := runInit(root, "", "copilot", true, false, false, stdout, stderr); code != 0 {
+	if code := runInit(root, "", "copilot", true, false, false, false, stdout, stderr); code != 0 {
 		t.Fatalf("runInit: exit %d", code)
 	}
 	stdout.Reset()
@@ -1080,7 +1139,7 @@ func TestScaffold_Layout_PassAfterInit(t *testing.T) {
 		t.Run(tc.agent, func(t *testing.T) {
 			root := t.TempDir()
 			stdout, stderr := bufs()
-			if code := runInit(root, "", tc.agent, true, false, false, stdout, stderr); code != 0 {
+			if code := runInit(root, "", tc.agent, true, false, false, false, stdout, stderr); code != 0 {
 				t.Fatalf("runInit %s: exit %d", tc.agent, code)
 			}
 			if code := runLayout(root, tc.platform, true, false, stdout, stderr); code != 0 {
@@ -1094,7 +1153,7 @@ func TestScaffold_Layout_MissingCopilotInstructions(t *testing.T) {
 	// Init copilot, then delete the required file.
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "", "copilot", true, false, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, false, false, stdout, stderr)
 
 	required := filepath.Join(root, ".github", "copilot-instructions.md")
 	if err := os.Remove(required); err != nil {
@@ -1132,7 +1191,7 @@ func TestScaffold_Layout_UnknownPlatform(t *testing.T) {
 func TestScaffold_Layout_All_PassAfterInit(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "", "all", true, false, false, stdout, stderr)
+	runInit(root, "", "all", true, false, false, false, stdout, stderr)
 
 	if code := runLayout(root, "all", true, false, stdout, stderr); code != 0 {
 		t.Fatalf("expected layout all to pass after init, got exit %d\nstderr: %s", code, stderr.String())
@@ -1142,7 +1201,7 @@ func TestScaffold_Layout_All_PassAfterInit(t *testing.T) {
 func TestScaffold_Layout_JSONOutput(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "", "copilot", true, false, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, false, false, stdout, stderr)
 
 	stdout.Reset()
 	if code := runLayout(root, "copilot", false, true, stdout, stderr); code != 0 {
@@ -1270,7 +1329,7 @@ func TestScaffold_Validate_JSONOutput_Invalid(t *testing.T) {
 func TestScaffold_Validate_PassAfterInit(t *testing.T) {
 	root := t.TempDir()
 	stdout, stderr := bufs()
-	runInit(root, "", "copilot", true, false, false, stdout, stderr)
+	runInit(root, "", "copilot", true, false, false, false, stdout, stderr)
 
 	stdout.Reset()
 	if code := runValidate(root, "", false, false, stdout, stderr); code != 0 {
@@ -1289,7 +1348,7 @@ func TestScaffold_Run_EachSubcommand(t *testing.T) {
 	root := t.TempDir()
 	// Pre-init so all subcommands have a config and layout dirs.
 	bufs1, bufs2 := bufs()
-	runInit(root, "", "all", true, false, false, bufs1, bufs2)
+	runInit(root, "", "all", true, false, false, false, bufs1, bufs2)
 
 	tests := []struct {
 		args     []string
@@ -1446,7 +1505,7 @@ func TestScaffold_AgentsMd_ContextLinks(t *testing.T) {
 		t.Run(tc.agent, func(t *testing.T) {
 			root := t.TempDir()
 			stdout, stderr := bufs()
-			runInit(root, "", tc.agent, true, false, false, stdout, stderr)
+			runInit(root, "", tc.agent, true, false, false, false, stdout, stderr)
 
 			agPath := filepath.Join(root, "AGENTS.md")
 			for _, link := range tc.mustHave {
