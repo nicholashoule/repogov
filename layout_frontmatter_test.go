@@ -165,9 +165,10 @@ func TestCheckLayout_FrontmatterMultipleKeys(t *testing.T) {
 	passCount, failCount := 0, 0
 	for _, r := range results {
 		if strings.Contains(r.Message, "frontmatter key") {
-			if r.Status == repogov.Pass {
+			switch r.Status {
+			case repogov.Pass:
 				passCount++
-			} else if r.Status == repogov.Fail {
+			case repogov.Fail:
 				failCount++
 			}
 		}
