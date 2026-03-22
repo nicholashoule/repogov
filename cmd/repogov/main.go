@@ -20,7 +20,7 @@
 //	-root <dir>           Repository root directory (default: .)
 //	-exts .md,.mdc        Extension filter override; default from config include_exts; use "all" to scan every type
 //	-agent <name[,name…]>  AI agent preset(s): copilot, cursor, windsurf, claude, kiro, gemini, continue, cline, roocode, jetbrains, zed, or all
-//	-platform <name[,name…]>  Repository platform preset(s): gitlab, root, or all
+//	-platform <name[,name…]>  Repository platform preset(s): github, gitlab, bitbucket, root, or all
 //	-descriptive          Use *.instructions.md naming convention for seeded files (overrides config descriptive_names)
 //	-seed                 Seed missing template files into existing directories without overwriting (init only)
 //	-quiet                Suppress output; exit code only
@@ -95,8 +95,14 @@ Examples:
   # Check root-level layout (README, LICENSE, CONTRIBUTING, etc.)
   repogov -root . -platform root layout
 
+  # Check GitHub platform layout
+  repogov -root . -platform github layout
+
   # Check GitLab layout
   repogov -root . -platform gitlab layout
+
+  # Auto-detect platforms (omit -platform to detect from repo markers)
+  repogov -root . -platform auto layout
 
   # Use a custom config file
   repogov -root . -config path/to/config.json limits
@@ -116,7 +122,7 @@ Examples:
 	fs.StringVar(&root, "root", ".", "repository root directory")
 	fs.StringVar(&exts, "exts", "", "comma-separated extension filter override (default: from config include_exts; use \"all\" to scan every file type)")
 	fs.StringVar(&agent, "agent", "", "AI agent preset(s): copilot, cursor, windsurf, claude, kiro, gemini, continue, cline, roocode, jetbrains, zed, all, or comma-separated list")
-	fs.StringVar(&platform, "platform", "", "repository platform preset(s): gitlab, root, all, or comma-separated list")
+	fs.StringVar(&platform, "platform", "", "repository platform preset(s): github, gitlab, bitbucket, root, all, or comma-separated list")
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
@@ -389,7 +395,7 @@ func isKnownAgentName(s string) bool {
 // isKnownPlatformName reports whether s is a recognized repository platform name.
 func isKnownPlatformName(s string) bool {
 	switch strings.ToLower(s) {
-	case "gitlab", "root":
+	case "github", "gitlab", "bitbucket", "root", "auto":
 		return true
 	}
 	return false
@@ -415,6 +421,8 @@ func allAgentSchemas() []platformEntry {
 // allRepoSchemas returns all repository platform schemas in a stable order.
 func allRepoSchemas() []platformEntry {
 	return []platformEntry{
+		{"bitbucket", repogov.DefaultBitbucketLayout()},
+		{"github", repogov.DefaultGitHubLayout()},
 		{"gitlab", repogov.DefaultGitLabLayout()},
 		{"root", repogov.DefaultRootLayout()},
 	}
@@ -446,8 +454,12 @@ func resolvePlatform(name string) (repogov.LayoutSchema, string) {
 		return repogov.DefaultJetBrainsLayout(), ""
 	case "zed":
 		return repogov.DefaultZedLayout(), ""
+	case "github":
+		return repogov.DefaultGitHubLayout(), ""
 	case "gitlab":
 		return repogov.DefaultGitLabLayout(), ""
+	case "bitbucket":
+		return repogov.DefaultBitbucketLayout(), ""
 	case "root":
 		return repogov.DefaultRootLayout(), ""
 	case "all":
@@ -456,13 +468,15 @@ func resolvePlatform(name string) (repogov.LayoutSchema, string) {
 	if isKnownPlatformName(name) {
 		return repogov.LayoutSchema{}, "\"" + name + "\" is a repository platform -- use -platform " + name + " instead of -agent"
 	}
-	return repogov.LayoutSchema{}, "unknown agent: " + name + " (use -agent for AI agents or -platform for gitlab/root)"
+	return repogov.LayoutSchema{}, "unknown agent: " + name + " (use -agent for AI agents or -platform for github/gitlab/bitbucket/root)"
 }
 
 // collectSchemas builds a unified list of platformEntry items from the
 // -agent and -platform flag values. "all" on -agent expands to all AI
-// agents; "all" on -platform expands to all repo platforms.
-func collectSchemas(agentFlag, platformFlag string, stderr io.Writer) ([]platformEntry, int) {
+// agents; "all" on -platform expands to all repo platforms; "auto" on
+// -platform auto-detects platforms from repo markers (e.g. .github/,
+// .gitlab/, bitbucket-pipelines.*).
+func collectSchemas(root, agentFlag, platformFlag string, stderr io.Writer) ([]platformEntry, int) {
 	var entries []platformEntry
 
 	// Parse -agent names.
@@ -501,6 +515,14 @@ func collectSchemas(agentFlag, platformFlag string, stderr io.Writer) ([]platfor
 				entries = append(entries, allRepoSchemas()...)
 				continue
 			}
+			if name == "auto" {
+				detected := repogov.DetectPlatforms(root)
+				for _, d := range detected {
+					schema, _ := resolvePlatform(d)
+					entries = append(entries, platformEntry{d, schema})
+				}
+				continue
+			}
 			if isKnownAgentName(name) {
 				fmt.Fprintf(stderr, "%q is an AI agent -- use -agent %s instead of -platform\n", name, name)
 				return nil, 2
@@ -526,7 +548,7 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 		return 2
 	}
 
-	entries, code := collectSchemas(agentFlag, platformFlag, stderr)
+	entries, code := collectSchemas(root, agentFlag, platformFlag, stderr)
 	if code != 0 {
 		return code
 	}
@@ -607,7 +629,7 @@ func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, d
 	if agentFlag == "" && platformFlag == "" {
 		fmt.Fprintln(stderr, "error: -agent or -platform is required for init")
 		fmt.Fprintln(stderr, "usage: repogov -agent <copilot|cursor|windsurf|claude|all[,...]> init")
-		fmt.Fprintln(stderr, "       repogov -platform <gitlab|root|all[,...]> init")
+		fmt.Fprintln(stderr, "       repogov -platform <github|gitlab|bitbucket|root|all[,...]> init")
 		return 2
 	}
 
@@ -633,7 +655,7 @@ func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, d
 		cfg.InitAlwaysCreate = true
 	}
 
-	entries, code := collectSchemas(agentFlag, platformFlag, stderr)
+	entries, code := collectSchemas(root, agentFlag, platformFlag, stderr)
 	if code != 0 {
 		return code
 	}

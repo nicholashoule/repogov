@@ -199,7 +199,7 @@ func TestRunInit_AlreadyExists(t *testing.T) {
 
 func TestRunInit_UnknownPlatform(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runInit(t.TempDir(), "", "bitbucket", "", true, false, false, false, stdout, stderr); code != 2 {
+	if code := runInit(t.TempDir(), "", "unknownplatform", "", true, false, false, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected 2, got %d", code)
 	}
 	if !strings.Contains(stderr.String(), "unknown agent") {

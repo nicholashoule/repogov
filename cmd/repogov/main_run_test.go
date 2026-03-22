@@ -239,7 +239,7 @@ func TestRunLayout_Pass(t *testing.T) {
 
 func TestRunLayout_UnknownPlatform(t *testing.T) {
 	stdout, stderr := bufs()
-	if code := runLayout(t.TempDir(), "", "bitbucket", "", true, false, stdout, stderr); code != 2 {
+	if code := runLayout(t.TempDir(), "", "unknownplatform", "", true, false, stdout, stderr); code != 2 {
 		t.Fatalf("expected 2, got %d", code)
 	}
 	if !strings.Contains(stderr.String(), "unknown agent") {
