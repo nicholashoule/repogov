@@ -9,16 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.7.0] - 2026-03-22
 
+### Added
+
+- **`DetectPlatforms(root)`** (`detect.go`) — inspects a repository for well-known platform markers and returns the detected platform names in stable order: `"bitbucket"` (presence of `bitbucket-pipelines.*`), `"github"` (`.github/` directory), `"gitlab"` (`.gitlab/` directory or `.gitlab-ci.*` file). Used by `-platform auto` in the CLI.
+- **`DefaultGitHubLayout()`** (`presets.go`) — new layout preset for GitHub repository platform conventions, covering `.github/` with optional `ISSUE_TEMPLATE/`, `PULL_REQUEST_TEMPLATE/`, `workflows/`, and standard community health files (`CODE_OF_CONDUCT.md`, `CODEOWNERS`, `CONTRIBUTING.md`, `SECURITY.md`, etc.).
+- **`DefaultBitbucketLayout()`** (`presets.go`) — new layout preset for Bitbucket repository conventions; validates common community health files at the repository root.
+- **`DirRule.Frontmatter`** (`layout.go`) — new field on `DirRule` enforces required YAML frontmatter keys in every matching file within a managed directory. When non-empty, `CheckLayoutContext` validates each file for a `---`-delimited frontmatter block containing all listed keys and emits `FAIL` results for missing delimiters or keys. `.github/instructions/` and `.github/rules/` now require `applyTo` in `DefaultCopilotLayout()`.
+- **`StripFrontmatter(schema)`** (`layout.go`) — returns a copy of a `LayoutSchema` with all `DirRule.Frontmatter` slices cleared; used when `Config.SkipFrontmatter` is true.
+- **`Config.SkipFrontmatter`** (`repogov.go`) — new config field (`skip_frontmatter`); when `true`, frontmatter requirements are stripped from all schemas before layout checks. Supported in both JSON and YAML config formats.
+- **`-platform` CLI flag** (`cmd/repogov/main.go`) — separates repository platform presets (`github`, `gitlab`, `bitbucket`, `root`) from AI agent presets (now `-agent` only). Accepts a comma-separated list, `all` (all repo platforms), or `auto` (auto-detect from repository markers via `DetectPlatforms`). Passing a platform name to `-agent` or an agent name to `-platform` produces a clear error message.
+- **`collectSchemas()`** (`cmd/repogov/main.go`) — builds a unified, de-duplicated list of layout entries from both `-agent` and `-platform` flag values, replacing the previous single-flag expansion logic.
+- **`allAgentSchemas()` / `allRepoSchemas()`** (`cmd/repogov/main.go`) — split from the former `allPlatformSchemas()` to distinguish AI agents from repository platform schemas.
+- **Subdirectory README seeding** (`scaffold.go`) — `createSubdirReadmes()` seeds a `README.md` into each non-`NoCreate` subdirectory defined in a layout schema during `repogov init`. The file describes the directory's purpose, expected file naming glob, and any frontmatter requirements. Existing `README.md` files are never overwritten; `.` (Cline's root-level rule directory) is skipped to avoid conflicting with the project's own README.
+- **`templates/readme/README.md.tmpl`** — embedded template used by `subdirReadmeContent()` to render subdirectory README files.
+- **`golangci-lint config verify`** (`scripts/hooks/pre-commit.go`) — pre-commit now runs `golangci-lint config verify` before `golangci-lint run` to catch config-format errors early; install comment updated to reference the v2 module path.
+- **`.golangci.yml` v2 migration** — migrated from golangci-lint v1 to v2 config format: moved `gofmt` to `formatters`, renamed `linters-settings` to `linters.settings`, replaced `disable-all` with `default: none`, converted `issues` rules to exclusions. Pinned lint version to `v2.11.4`.
+- **CI upgrade** (`.github/workflows/ci.yml`) — upgraded `golangci/golangci-lint-action` from v6 to v9.2.0 with pinned SHA, set `cache: false` to avoid action-cache conflicts, bumped lint job Go version from `1.22.x` to `1.23`.
+- **Compliance audit docs** (`docs/compliance/`) — added `BITBUCKET_PLATFORM_AUDIT.md`, `GITHUB_PLATFORM_AUDIT.md`, and `GITLAB_PLATFORM_AUDIT.md` covering platform-level layout support and governance integration.
+- **Test file splitting** — large omnibus test files broken into focused files to improve navigability:
+  - `config_test.go` → `config_load_test.go` + `config_validate_test.go`
+  - `init_test.go` → `init_agents_test.go` + `init_config_test.go` + `init_content_test.go` (plus trimmed `init_test.go`)
+  - `repogov_test.go` → `repogov_limits_test.go` + `repogov_types_test.go`
+  - `layout_test.go` → `layout_check_test.go` + `layout_frontmatter_test.go`
+  - `cmd/repogov/main_test.go` → `main_init_test.go` + `main_paths_test.go` + `main_run_test.go`
+  - `cmd/repogov/scaffold_test.go` → `scaffold_init_test.go` + `scaffold_subcommands_test.go`
+- **Shared test assertion helpers** (`helpers_test.go`) — `assertExists`, `assertNotExists`, `assertFileContains`, `assertFileNotContains` eliminate repetitive inline `os.Stat`/`strings.Contains` boilerplate; `hasViolation` and `hasAnySeverity` moved to their sole consumer `config_validate_test.go`.
+
 ### Changed
 
 - `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.7.0` to `v0.7.2`.
-- `scripts/hooks/pre-commit` — bumped `repogov` from `v0.5.1` to `v0.7.0`.
-- **Test helper consolidation** (`helpers_test.go`): added 4 shared assertion helpers (`assertExists`, `assertNotExists`, `assertFileContains`, `assertFileNotContains`) to eliminate repetitive inline `os.Stat`/`os.IsNotExist` and `strings.Contains` boilerplate across root-level test files.
-- **Moved single-consumer helpers** (`config_validate_test.go`): relocated `hasViolation` and `hasAnySeverity` from `helpers_test.go` to their only consumer, keeping the shared helper file focused on broadly-used utilities.
-- **Refactored `init_test.go`**: replaced ~22 inline existence checks with shared helpers; removed unused `strings` import.
-- **Refactored `init_agents_test.go`**: replaced 6 inline `os.Stat` / `os.ReadFile` + `strings.Contains` patterns with shared helpers.
-- **Refactored `init_content_test.go`**: replaced 4 inline existence and content-match patterns with shared helpers.
-- **Refactored `init_config_test.go`**: replaced ~10 inline `os.Stat` checks with shared helpers.
+- `scripts/hooks/pre-commit` — bumped `repogov` from `v0.5.1` to `v0.7.0`; converted inline `go run` calls to named `repogov_ref` and `demojify_ref` variables for maintainability.
+- **`-agent` flag scope narrowed** (`cmd/repogov/main.go`) — `gitlab` and `root` removed from `-agent`; they now belong to `-platform`. `isKnownAgentName` updated accordingly. The old `allPlatformSchemas()` removed in favor of `allAgentSchemas()` + `allRepoSchemas()`.
+- **`runLayout()` signature** (`cmd/repogov/main.go`) — now accepts `configPath` and `platformFlag` in addition to `agentFlag`; loads config to check `SkipFrontmatter` before running checks.
+- **`DefaultCopilotLayout()`** (`presets.go`) — added `Frontmatter: []string{"applyTo"}` to both the `instructions` and `rules` directory rules, enforcing that all scoped instruction/rule files declare an `applyTo` scope.
+- **Layout walker** (`layout.go`) — `README.md` files in managed directories are now silently skipped alongside `.gitkeep`, preventing false unexpected-file, frontmatter, or naming warnings on the scaffolded directory READMEs.
+- **`isDirEmpty()` and `dirHasGlobFiles()`** (`scaffold.go`) — both now treat `README.md` as an infrastructure file (alongside `.gitkeep`), so seeded READMEs do not cause directories to be considered non-empty or trigger glob matches.
+- **`schemaConfig()`** (`scaffold.go`) — now propagates `SkipFrontmatter` from the input config to the output config for generated `repogov-config.json`.
+- **`defaultConfigJSON()`** (`scaffold.go`) — outputs `skip_frontmatter` field in generated config JSON.
+
+### Fixed
+
+- **`subdirReadmeInfo` empty `dirName` guard** (`scaffold.go`) — guarded against a panic when `dirName` is an empty string by checking length before `utf8.DecodeRuneInString`; Description punctuation normalized to always end with `.`.
+- **Pre-commit hook shell comment** (`scripts/hooks/pre-commit`) — fixed comment to correctly list `go test` among the checks run by the hook.
+- **`isSafeFileSegment` De Morgan's law** (`repogov.go`) — applied `QF1001` staticcheck suggestion; condition rewritten to an early-return De Morgan form, functionally identical.
 
 ## [v0.6.1] - 2026-03-14
 
