@@ -7,15 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.7.0` to `v0.7.2`.
-- `scripts/hooks/pre-commit` — bumped `repogov` from `v0.5.1` to `v0.6.1`.
-
 ## [v0.7.0] - 2026-03-22
 
 ### Changed
 
+- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.7.0` to `v0.7.2`.
+- `scripts/hooks/pre-commit` — bumped `repogov` from `v0.5.1` to `v0.7.0`.
 - **Test helper consolidation** (`helpers_test.go`): added 4 shared assertion helpers (`assertExists`, `assertNotExists`, `assertFileContains`, `assertFileNotContains`) to eliminate repetitive inline `os.Stat`/`os.IsNotExist` and `strings.Contains` boilerplate across root-level test files.
 - **Moved single-consumer helpers** (`config_validate_test.go`): relocated `hasViolation` and `hasAnySeverity` from `helpers_test.go` to their only consumer, keeping the shared helper file focused on broadly-used utilities.
 - **Refactored `init_test.go`**: replaced ~22 inline existence checks with shared helpers; removed unused `strings` import.

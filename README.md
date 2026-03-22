@@ -195,7 +195,7 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `-root` | `.` | Repository root directory |
 | `-exts` | from config | Comma-separated extension filter override; use `all` to scan every file type (default read from `include_exts` in config) |
 | `-agent` | | AI agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `kiro`, `gemini`, `continue`, `cline`, `roocode`, `jetbrains`, `zed`, `all`, or comma-separated list |
-| `-platform` | | Repository platform preset(s): `gitlab`, `root`, `all`, or comma-separated list |
+| `-platform` | | Repository platform preset(s): `github`, `gitlab`, `bitbucket`, `root`, `auto`, or comma-separated list |
 | `-descriptive` | `false` | Use `*.instructions.md` naming convention for seeded files (overrides config `descriptive_names`) |
 | `-seed` | `false` | Seed missing template files into existing directories without overwriting (`init` only) |
 | `-quiet` | `false` | Suppress output; exit code only |

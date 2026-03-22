@@ -33,7 +33,7 @@ repogov [flags] <subcommand>
 | `-root <dir>` | `.` | Repository root directory. |
 | `-exts .md,.mdc` | from config `include_exts` | Comma-separated extension filter. Use `all` to scan every file type. |
 | `-agent <name[,name…]>` | _(none)_ | AI agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `kiro`, `gemini`, `continue`, `cline`, `roocode`, `jetbrains`, `zed`, or `all`. Required for `init` (unless `-platform` is given). Comma-separate for multiple. |
-| `-platform <name[,name…]>` | _(none)_ | Repository platform preset(s): `gitlab`, `root`, or `all`. Comma-separate for multiple. Use explicitly — not included in `-agent all`. |
+| `-platform <name[,name…]>` | _(none)_ | Repository platform preset(s): `github`, `gitlab`, `bitbucket`, `root`, or `auto`. Comma-separate for multiple. Use explicitly — not included in `-agent all`. |
 | `-descriptive` | `false` | Use `*.instructions.md` naming convention for seeded files (overrides config `descriptive_names`). |
 | `-seed` | `false` | Seed missing template files into existing directories without overwriting (`init` only). Maps to `init_always_create` at runtime. |
 | `-quiet` | false | Suppress output; rely on exit code only. |

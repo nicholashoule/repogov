@@ -122,7 +122,7 @@ Examples:
 	fs.StringVar(&root, "root", ".", "repository root directory")
 	fs.StringVar(&exts, "exts", "", "comma-separated extension filter override (default: from config include_exts; use \"all\" to scan every file type)")
 	fs.StringVar(&agent, "agent", "", "AI agent preset(s): copilot, cursor, windsurf, claude, kiro, gemini, continue, cline, roocode, jetbrains, zed, all, or comma-separated list")
-	fs.StringVar(&platform, "platform", "", "repository platform preset(s): github, gitlab, bitbucket, root, all, or comma-separated list")
+	fs.StringVar(&platform, "platform", "", "repository platform preset(s): github, gitlab, bitbucket, root, all, auto (auto-detect from repository), or comma-separated list")
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
@@ -536,7 +536,17 @@ func collectSchemas(root, agentFlag, platformFlag string, stderr io.Writer) ([]p
 		}
 	}
 
-	return entries, 0
+	// De-duplicate by name, preserving first-seen order.
+	seen := make(map[string]struct{}, len(entries))
+	deduped := entries[:0]
+	for i := range entries {
+		if _, ok := seen[entries[i].name]; !ok {
+			seen[entries[i].name] = struct{}{}
+			deduped = append(deduped, entries[i])
+		}
+	}
+
+	return deduped, 0
 }
 
 func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
@@ -628,8 +638,8 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, descriptive, seed bool, stdout, stderr io.Writer) int {
 	if agentFlag == "" && platformFlag == "" {
 		fmt.Fprintln(stderr, "error: -agent or -platform is required for init")
-		fmt.Fprintln(stderr, "usage: repogov -agent <copilot|cursor|windsurf|claude|all[,...]> init")
-		fmt.Fprintln(stderr, "       repogov -platform <github|gitlab|bitbucket|root|all[,...]> init")
+		fmt.Fprintln(stderr, "usage: repogov -agent <name[,name…]> init")
+		fmt.Fprintln(stderr, "       repogov -platform <name[,name…]> init")
 		return 2
 	}
 
@@ -698,6 +708,13 @@ func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, d
 			enc.Encode([]initResult{{Platform: displayName, Created: created}}) //nolint:errcheck
 		}
 		return 0
+	}
+
+	// Guard: collectSchemas may return an empty slice (e.g. -platform auto with no
+	// detectable markers) without setting a non-zero exit code.
+	if len(entries) == 0 {
+		fmt.Fprintf(stderr, "error: no agent or platform could be resolved; specify -agent or -platform explicitly\n")
+		return 2
 	}
 
 	// Single-schema path.

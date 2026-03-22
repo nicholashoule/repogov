@@ -401,7 +401,7 @@ func checkFrontmatter(absPath, displayPath string, requiredKeys []string) []Layo
 		return []LayoutResult{{
 			Path:    displayPath,
 			Status:  Fail,
-			Message: "frontmatter: unable to read file",
+			Message: fmt.Sprintf("frontmatter: unable to read file: %v", err),
 		}}
 	}
 	defer f.Close()
@@ -438,6 +438,14 @@ func checkFrontmatter(absPath, displayPath string, requiredKeys []string) []Layo
 			Path:    displayPath,
 			Status:  Fail,
 			Message: "YAML frontmatter block not closed -- FIX: add closing '---' delimiter",
+		}}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return []LayoutResult{{
+			Path:    displayPath,
+			Status:  Fail,
+			Message: fmt.Sprintf("frontmatter: error reading file: %v", err),
 		}}
 	}
 
