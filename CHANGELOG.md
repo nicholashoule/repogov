@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.7.0` to `v0.7.2`.
+- `scripts/hooks/pre-commit` — bumped `repogov` from `v0.5.1` to `v0.6.1`.
+
 ## [v0.7.0] - 2026-03-22
 
 ### Changed
