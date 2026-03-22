@@ -5,16 +5,28 @@ runs automatically before every commit and blocks the commit if any check fails.
 
 ## What the Hook Checks
 
-The pre-commit hook runs four checks in order. All four must pass for the commit
-to proceed.
+The pre-commit hook (`scripts/hooks/pre-commit`) runs three phases in order.
+All must pass for the commit to proceed.
+
+### Phase 1: repogov governance
+
+Runs `repogov -agent copilot` via `go run` to check line limits and layout.
+
+### Phase 2: demojify-sanitize
+
+Runs `demojify` to detect emoji characters. If emoji are found, automatically
+substitutes them, re-stages changes, and aborts so the user can review.
+
+### Phase 3: Go checks (pre-commit.go)
+
+`scripts/hooks/pre-commit.go` runs four checks sequentially:
 
 | Check | Tool | What it enforces |
 |-------|------|-----------------|
 | `gofmt` | `gofmt -s` | Go source formatting. Auto-fixes and re-stages unformatted files. |
 | `go vet` | `go vet ./...` | Go static analysis. |
-| Zero dependencies | `go.mod` | No `require` directives — external tools must be invoked via `os/exec`, not imported. |
-| Markdown line limits | `repogov` | `.md` files stay within configured line-count limits. |
-| Emoji violations | `demojify` | No emoji characters in committed files. |
+| `go test` | `go test ./...` | All tests must pass. |
+| `golangci-lint` | `golangci-lint run ./...` | Linter checks. Must be installed separately. |
 
 ### gofmt (auto-fix)
 
@@ -80,8 +92,8 @@ The hook consists of two files:
 
 | File | Purpose |
 |------|---------|
-| `scripts/hooks/pre-commit` | Minimal POSIX shell shebang wrapper; `cd`s to `scripts/hooks/` and runs `go run . <repo-root>` |
-| `scripts/hooks/pre-commit.go` | Full cross-platform implementation in Go (`package main`) |
+| `scripts/hooks/pre-commit` | POSIX shell wrapper; runs repogov, demojify-sanitize, and delegates to pre-commit.go |
+| `scripts/hooks/pre-commit.go` | Cross-platform Go implementation of gofmt, go vet, go test, and golangci-lint checks |
 
 Because the implementation is `go run`-based, it works identically on Linux, macOS,
 and Windows (via Git for Windows' bundled `sh.exe`) without any compiled artifacts to

@@ -116,11 +116,13 @@ func DefaultCopilotLayout() LayoutSchema {
 				Glob:        "*.md",
 				Min:         0,
 				Description: "Scoped instruction files",
+				Frontmatter: []string{"applyTo"},
 			},
 			"rules": {
 				Glob:        "*.md",
 				Min:         0,
 				Description: "Copilot scoped rule files",
+				Frontmatter: []string{"applyTo"},
 			},
 			"workflows": {
 				Glob:        "",

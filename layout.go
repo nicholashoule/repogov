@@ -1,7 +1,9 @@
 package repogov
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +47,14 @@ type DirRule struct {
 	// NoCreate prevents this directory from being created by 'repogov init'.
 	// The directory is still recognized and checked by layout commands.
 	NoCreate bool `json:"no_create,omitempty"`
+
+	// Frontmatter lists YAML frontmatter keys that must be present in
+	// every file within this directory. When non-empty, each file
+	// matching Glob is checked for a YAML frontmatter block (delimited
+	// by "---") containing the listed keys. For example,
+	// Frontmatter: []string{"applyTo"} enforces that every
+	// .instructions.md file declares an applyTo scope.
+	Frontmatter []string `json:"frontmatter,omitempty"`
 }
 
 // NamingRule enforces filename conventions within a [LayoutSchema].
@@ -203,10 +213,10 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		}
 		name := filepath.Base(relPath)
 
-		// Silently skip .gitkeep files in managed directories; they are
-		// infrastructure created by 'repogov init' and should not trigger
-		// unexpected-file warnings.
-		if name == ".gitkeep" {
+		// Silently skip .gitkeep and README.md files in managed directories;
+		// they are infrastructure created by 'repogov init' and should not
+		// trigger unexpected-file, frontmatter, or naming warnings.
+		if name == ".gitkeep" || name == "README.md" {
 			continue
 		}
 
@@ -252,6 +262,14 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 				Status:  Warn,
 				Message: "unexpected file -- not in required, optional, or managed dirs",
 			})
+		}
+
+		// Check YAML frontmatter requirements for managed directories.
+		if rule, ok := schema.Dirs[dirKey]; ok && len(rule.Frontmatter) > 0 {
+			if rule.Glob == "" || matchGlob(rule.Glob, name) {
+				absPath := filepath.Join(layoutDir, filepath.FromSlash(relPath))
+				results = append(results, checkFrontmatter(absPath, filepath.ToSlash(filepath.Join(schema.Root, relPath)), rule.Frontmatter)...)
+			}
 		}
 
 		// Check naming conventions.
@@ -351,4 +369,93 @@ func formatDirPassMessage(dir string, rule DirRule, count int) string {
 		intStr(count), " file(s) matching ", rule.Glob,
 		" (min: ", intStr(rule.Min), ")",
 	}, "")
+}
+
+// StripFrontmatter returns a copy of schema with all [DirRule.Frontmatter]
+// slices cleared. Use this to disable frontmatter validation when
+// [Config.SkipFrontmatter] is true.
+func StripFrontmatter(schema LayoutSchema) LayoutSchema { //nolint:gocritic // hugeParam: LayoutSchema is part of the public API
+	if len(schema.Dirs) == 0 {
+		return schema
+	}
+	dirs := make(map[string]DirRule, len(schema.Dirs))
+	for k, v := range schema.Dirs {
+		v.Frontmatter = nil
+		dirs[k] = v
+	}
+	schema.Dirs = dirs
+	return schema
+}
+
+// checkFrontmatter validates that the file at absPath contains a YAML
+// frontmatter block (delimited by "---") with all requiredKeys present.
+// It returns zero or more LayoutResult entries (PASS for valid, FAIL for
+// missing delimiter or missing keys). displayPath is used in results.
+func checkFrontmatter(absPath, displayPath string, requiredKeys []string) []LayoutResult {
+	if len(requiredKeys) == 0 {
+		return nil
+	}
+
+	f, err := os.Open(absPath)
+	if err != nil {
+		return []LayoutResult{{
+			Path:    displayPath,
+			Status:  Fail,
+			Message: "frontmatter: unable to read file",
+		}}
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+
+	// First line must be "---".
+	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
+		return []LayoutResult{{
+			Path:    displayPath,
+			Status:  Fail,
+			Message: "missing YAML frontmatter delimiter '---' on first line -- FIX: add YAML frontmatter block",
+		}}
+	}
+
+	// Collect keys from the frontmatter block until the closing "---".
+	foundKeys := make(map[string]bool)
+	closed := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "---" {
+			closed = true
+			break
+		}
+		// Extract the key from "key: value" lines (top-level only).
+		if k, _, ok := yamlSplitKV(trimmed); ok {
+			foundKeys[k] = true
+		}
+	}
+
+	if !closed {
+		return []LayoutResult{{
+			Path:    displayPath,
+			Status:  Fail,
+			Message: "YAML frontmatter block not closed -- FIX: add closing '---' delimiter",
+		}}
+	}
+
+	var results []LayoutResult
+	for _, key := range requiredKeys {
+		if foundKeys[key] {
+			results = append(results, LayoutResult{
+				Path:    displayPath,
+				Status:  Pass,
+				Message: fmt.Sprintf("frontmatter key %q present", key),
+			})
+		} else {
+			results = append(results, LayoutResult{
+				Path:    displayPath,
+				Status:  Fail,
+				Message: fmt.Sprintf("missing required frontmatter key %q -- FIX: add '%s' to YAML frontmatter", key, key),
+			})
+		}
+	}
+	return results
 }

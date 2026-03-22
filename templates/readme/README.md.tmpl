@@ -1,0 +1,29 @@
+{{- if eq .DirName "rules"}}
+# Rules
+
+Scoped rule files that guide AI coding agent behavior. Each file provides domain-specific instructions applied during code generation, review, and documentation.
+{{- else if eq .DirName "instructions"}}
+# Instructions
+
+Scoped instruction files for GitHub Copilot. Each file provides context-specific guidance applied based on the `applyTo` frontmatter pattern.
+{{- else if eq .DirName "steering"}}
+# Steering
+
+Steering files that provide persistent project context to the AI agent. Each file captures conventions, patterns, and constraints specific to this project.
+{{- else if eq .DirName "agents"}}
+# Agents
+
+Subagent definitions. Each file defines a specialized agent with specific capabilities and behavioral guidelines.
+{{- else if eq .DirName "skills"}}
+# Skills
+
+Reusable skill files that encapsulate domain-specific knowledge. Each file provides expertise on a particular topic that AI agents can invoke.
+{{- else}}
+# {{.Title}}
+
+{{.Description}}
+{{- end}}
+{{- if .FileHint}}
+
+{{.FileHint}}
+{{- end}}

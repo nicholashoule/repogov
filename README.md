@@ -95,14 +95,19 @@ repogov -root . -quiet all
 
 ## Configuration
 
-Create `.github/repogov-config.json`:
+Create `.github/repogov-config.json` (or `repogov-config.json` at the repo root):
 
 ```json
 {
-  "default": 300,
-  "warning_threshold": 80,
-  "skip_dirs": [".git", "vendor"],
+  "default": 500,
+  "warning_threshold": "85%",
+  "skip_dirs": [".git", "vendor", "workflows"],
   "include_exts": [".md", ".mdc"],
+  "descriptive_names": false,
+  "skip_frontmatter": false,
+  "init_always_create": false,
+  "init_include_files": [],
+  "init_exclude_files": [],
   "rules": [
     {"glob": "docs/*.md", "limit": 1000}
   ],
@@ -143,6 +148,7 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `CheckDirContext(ctx, root, exts, cfg)` | check.go | Context-aware directory check |
 | `LoadConfig(path)` | config.go | Load JSON/YAML config with defaults |
 | `FindConfig(root)` | config.go | Auto-discover config file in standard locations |
+| `FindAllConfigs(root)` | config.go | Find all config files, ordered by precedence |
 | `SaveConfig(path, cfg)` | config.go | Write config as JSON or YAML |
 | `ValidateConfig(cfg)` | config.go | Validate config and return violations |
 | `InitLayout(root, schema)` | init.go | Scaffold platform directory structure |
@@ -151,6 +157,7 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `InitLayoutAllWithConfig(root, schemas, cfg)` | init.go | Multi-schema scaffold with config options |
 | `CheckLayout(root, schema)` | layout.go | Validate directory structure |
 | `CheckLayoutContext(ctx, root, schema)` | layout.go | Context-aware layout check |
+| `StripFrontmatter(schema)` | layout.go | Return schema copy with frontmatter requirements cleared |
 | `DefaultCopilotLayout()` | presets.go | GitHub Copilot `.github/` preset |
 | `DefaultCursorLayout()` | presets.go | Cursor AI `.cursor/` preset |
 | `DefaultWindsurfLayout()` | presets.go | Windsurf `.windsurf/` preset |
@@ -187,7 +194,10 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `-config` | auto-discovered | Path to JSON or YAML config file (searched in repo root then `.github/`) |
 | `-root` | `.` | Repository root directory |
 | `-exts` | from config | Comma-separated extension filter override; use `all` to scan every file type (default read from `include_exts` in config) |
-| `-agent` | | Agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `kiro`, `gemini`, `continue`, `cline`, `roocode`, `jetbrains`, `zed`, `gitlab`, `root`, `all`, or comma-separated list |
+| `-agent` | | AI agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `kiro`, `gemini`, `continue`, `cline`, `roocode`, `jetbrains`, `zed`, `all`, or comma-separated list |
+| `-platform` | | Repository platform preset(s): `gitlab`, `root`, `all`, or comma-separated list |
+| `-descriptive` | `false` | Use `*.instructions.md` naming convention for seeded files (overrides config `descriptive_names`) |
+| `-seed` | `false` | Seed missing template files into existing directories without overwriting (`init` only) |
 | `-quiet` | `false` | Suppress output; exit code only |
 | `-json` | `false` | Output results as JSON |
 

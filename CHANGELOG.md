@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-03-22
+
+### Changed
+
+- **Test helper consolidation** (`helpers_test.go`): added 4 shared assertion helpers (`assertExists`, `assertNotExists`, `assertFileContains`, `assertFileNotContains`) to eliminate repetitive inline `os.Stat`/`os.IsNotExist` and `strings.Contains` boilerplate across root-level test files.
+- **Moved single-consumer helpers** (`config_validate_test.go`): relocated `hasViolation` and `hasAnySeverity` from `helpers_test.go` to their only consumer, keeping the shared helper file focused on broadly-used utilities.
+- **Refactored `init_test.go`**: replaced ~22 inline existence checks with shared helpers; removed unused `strings` import.
+- **Refactored `init_agents_test.go`**: replaced 6 inline `os.Stat` / `os.ReadFile` + `strings.Contains` patterns with shared helpers.
+- **Refactored `init_content_test.go`**: replaced 4 inline existence and content-match patterns with shared helpers.
+- **Refactored `init_config_test.go`**: replaced ~10 inline `os.Stat` checks with shared helpers.
+
 ## [v0.6.1] - 2026-03-14
 
 ### Added
@@ -176,7 +187,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.7.0...HEAD
+[v0.7.0]: https://github.com/nicholashoule/repogov/compare/v0.6.1...v0.7.0
 [v0.6.1]: https://github.com/nicholashoule/repogov/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/nicholashoule/repogov/compare/v0.5.1...v0.6.0
 [v0.5.1]: https://github.com/nicholashoule/repogov/compare/v0.5.0...v0.5.1

@@ -102,6 +102,12 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 					return fmt.Errorf("line %d: invalid descriptive_names: %w", i+1, err)
 				}
 				cfg.DescriptiveNames = b
+			case "skip_frontmatter":
+				b, err := strconv.ParseBool(val)
+				if err != nil {
+					return fmt.Errorf("line %d: invalid skip_frontmatter: %w", i+1, err)
+				}
+				cfg.SkipFrontmatter = b
 			case "init_include_files":
 				sec = sInitInclude
 				cfg.InitIncludeFiles = []string{}
@@ -227,6 +233,9 @@ func marshalYAML(cfg Config) ([]byte, error) { //nolint:gocritic // hugeParam: i
 	}
 	if cfg.DescriptiveNames {
 		fmt.Fprintln(&b, "descriptive_names: true")
+	}
+	if cfg.SkipFrontmatter {
+		fmt.Fprintln(&b, "skip_frontmatter: true")
 	}
 	if len(cfg.InitIncludeFiles) > 0 {
 		fmt.Fprintln(&b, "init_include_files:")

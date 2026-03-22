@@ -19,7 +19,8 @@
 //	-config <path>        Path to config file (default: auto-discovered)
 //	-root <dir>           Repository root directory (default: .)
 //	-exts .md,.mdc        Extension filter override; default from config include_exts; use "all" to scan every type
-//	-agent <name[,name…]>  Agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, root, or all (required for init)
+//	-agent <name[,name…]>  AI agent preset(s): copilot, cursor, windsurf, claude, kiro, gemini, continue, cline, roocode, jetbrains, zed, or all
+//	-platform <name[,name…]>  Repository platform preset(s): gitlab, root, or all
 //	-descriptive          Use *.instructions.md naming convention for seeded files (overrides config descriptive_names)
 //	-seed                 Seed missing template files into existing directories without overwriting (init only)
 //	-quiet                Suppress output; exit code only
@@ -56,6 +57,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		root        string
 		exts        string
 		agent       string
+		platform    string
 		quiet       bool
 		jsonOut     bool
 		descriptive bool
@@ -91,7 +93,10 @@ Examples:
   repogov -root . -agent copilot,windsurf init
 
   # Check root-level layout (README, LICENSE, CONTRIBUTING, etc.)
-  repogov -root . -agent root layout
+  repogov -root . -platform root layout
+
+  # Check GitLab layout
+  repogov -root . -platform gitlab layout
 
   # Use a custom config file
   repogov -root . -config path/to/config.json limits
@@ -110,7 +115,8 @@ Examples:
 	fs.StringVar(&configPath, "config", "", "path to config file (JSON or YAML; auto-discovered if omitted)")
 	fs.StringVar(&root, "root", ".", "repository root directory")
 	fs.StringVar(&exts, "exts", "", "comma-separated extension filter override (default: from config include_exts; use \"all\" to scan every file type)")
-	fs.StringVar(&agent, "agent", "", "agent/layout preset(s): copilot, cursor, windsurf, claude, gitlab, kiro, gemini, continue, cline, roocode, jetbrains, zed, root, all, or comma-separated list (required for init)")
+	fs.StringVar(&agent, "agent", "", "AI agent preset(s): copilot, cursor, windsurf, claude, kiro, gemini, continue, cline, roocode, jetbrains, zed, all, or comma-separated list")
+	fs.StringVar(&platform, "platform", "", "repository platform preset(s): gitlab, root, all, or comma-separated list")
 	fs.BoolVar(&quiet, "quiet", false, "suppress output; exit code only")
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
@@ -120,16 +126,25 @@ Examples:
 		return 2
 	}
 
-	// Allow extra agent names as positional args before the subcommand so that
+	// Allow extra agent/platform names as positional args before the subcommand so that
 	//   repogov -agent windsurf copilot init
 	// is equivalent to
 	//   repogov -agent windsurf,copilot init
 	remaining := fs.Args()
-	for len(remaining) > 0 && isKnownAgentName(remaining[0]) {
-		if agent == "" {
-			agent = remaining[0]
+	for len(remaining) > 0 && (isKnownAgentName(remaining[0]) || isKnownPlatformName(remaining[0])) {
+		name := remaining[0]
+		if isKnownPlatformName(name) {
+			if platform == "" {
+				platform = name
+			} else {
+				platform += "," + name
+			}
 		} else {
-			agent += "," + remaining[0]
+			if agent == "" {
+				agent = name
+			} else {
+				agent += "," + name
+			}
 		}
 		remaining = remaining[1:]
 	}
@@ -152,22 +167,22 @@ Examples:
 		fmt.Fprintln(stdout, "repogov", version)
 		return 0
 	case "init":
-		return runInit(root, configPath, agent, quiet, jsonOut, descriptive, seed, stdout, stderr)
+		return runInit(root, configPath, agent, platform, quiet, jsonOut, descriptive, seed, stdout, stderr)
 	case "validate":
 		return runValidate(root, configPath, quiet, jsonOut, stdout, stderr)
 	case "limits":
 		return runLimits(root, configPath, exts, false, quiet, jsonOut, stdout, stderr)
 	case "layout":
 		// Default to checking all agents when none is specified.
-		if agent == "" {
+		if agent == "" && platform == "" {
 			agent = "all"
 		}
-		return runLayout(root, agent, quiet, jsonOut, stdout, stderr)
+		return runLayout(root, configPath, agent, platform, quiet, jsonOut, stdout, stderr)
 	case "all":
 		// Default to checking all agents when none is specified.
-		effective := agent
-		if effective == "" {
-			effective = "all"
+		effectiveAgent := agent
+		if effectiveAgent == "" && platform == "" {
+			effectiveAgent = "all"
 		}
 		// Print config preamble once before any checks.
 		if !quiet && !jsonOut {
@@ -177,7 +192,7 @@ Examples:
 		// Logical order: layout first (validates required files exist),
 		// then limits (checks content of those files).
 		code := 0
-		if c := runLayout(root, effective, quiet, jsonOut, stdout, stderr); c != 0 {
+		if c := runLayout(root, configPath, effectiveAgent, platform, quiet, jsonOut, stdout, stderr); c != 0 {
 			code = c
 		}
 		if c := runLimits(root, configPath, exts, true, quiet, jsonOut, stdout, stderr); c != 0 {
@@ -185,8 +200,8 @@ Examples:
 		}
 		return code
 	default:
-		fmt.Fprintf(stderr, "unknown subcommand: %s\n", sub)
-		fmt.Fprintf(stderr, "usage: repogov [flags] <limits|layout|init|validate|all|version>\n")
+		fmt.Fprintf(stderr, "unknown subcommand: %s\\n", sub)
+		fmt.Fprintf(stderr, "usage: repogov [flags] <limits|layout|init|validate|all|version>\\n")
 		return 2
 	}
 }
@@ -360,25 +375,33 @@ type platformEntry struct {
 	schema repogov.LayoutSchema
 }
 
-// isKnownAgentName reports whether s is a recognized single-platform agent
-// name. "all" is intentionally excluded because it is also a subcommand
+// isKnownAgentName reports whether s is a recognized AI agent name.
+// "all" is intentionally excluded because it is also a subcommand
 // keyword; it is handled separately in run.
 func isKnownAgentName(s string) bool {
 	switch strings.ToLower(s) {
-	case "copilot", "cursor", "windsurf", "claude", "gitlab", "kiro", "gemini", "continue", "cline", "roocode", "jetbrains", "zed", "root":
+	case "copilot", "cursor", "windsurf", "claude", "kiro", "gemini", "continue", "cline", "roocode", "jetbrains", "zed":
 		return true
 	}
 	return false
 }
 
-// allPlatformSchemas returns all supported platforms in a stable order.
-func allPlatformSchemas() []platformEntry {
+// isKnownPlatformName reports whether s is a recognized repository platform name.
+func isKnownPlatformName(s string) bool {
+	switch strings.ToLower(s) {
+	case "gitlab", "root":
+		return true
+	}
+	return false
+}
+
+// allAgentSchemas returns all AI agent platforms in a stable order.
+func allAgentSchemas() []platformEntry {
 	return []platformEntry{
 		{"copilot", repogov.DefaultCopilotLayout()},
 		{"cursor", repogov.DefaultCursorLayout()},
 		{"windsurf", repogov.DefaultWindsurfLayout()},
 		{"claude", repogov.DefaultClaudeLayout()},
-		{"gitlab", repogov.DefaultGitLabLayout()},
 		{"kiro", repogov.DefaultKiroLayout()},
 		{"gemini", repogov.DefaultGeminiLayout()},
 		{"continue", repogov.DefaultContinueLayout()},
@@ -389,10 +412,18 @@ func allPlatformSchemas() []platformEntry {
 	}
 }
 
-// resolvePlatform returns the schema for a named platform, or an error
-// message for unknown names. Returns nil schema and "" message for "all".
-func resolvePlatform(platform string) (repogov.LayoutSchema, string) {
-	switch strings.ToLower(platform) {
+// allRepoSchemas returns all repository platform schemas in a stable order.
+func allRepoSchemas() []platformEntry {
+	return []platformEntry{
+		{"gitlab", repogov.DefaultGitLabLayout()},
+		{"root", repogov.DefaultRootLayout()},
+	}
+}
+
+// resolvePlatform returns the schema for a named agent or platform, or an
+// error message for unknown names. Returns nil schema and \"\" message for \"all\".
+func resolvePlatform(name string) (repogov.LayoutSchema, string) {
+	switch strings.ToLower(name) {
 	case "copilot":
 		return repogov.DefaultCopilotLayout(), ""
 	case "cursor":
@@ -401,8 +432,6 @@ func resolvePlatform(platform string) (repogov.LayoutSchema, string) {
 		return repogov.DefaultWindsurfLayout(), ""
 	case "claude":
 		return repogov.DefaultClaudeLayout(), ""
-	case "gitlab":
-		return repogov.DefaultGitLabLayout(), ""
 	case "kiro":
 		return repogov.DefaultKiroLayout(), ""
 	case "gemini":
@@ -417,115 +446,168 @@ func resolvePlatform(platform string) (repogov.LayoutSchema, string) {
 		return repogov.DefaultJetBrainsLayout(), ""
 	case "zed":
 		return repogov.DefaultZedLayout(), ""
+	case "gitlab":
+		return repogov.DefaultGitLabLayout(), ""
 	case "root":
 		return repogov.DefaultRootLayout(), ""
 	case "all":
 		return repogov.LayoutSchema{}, ""
 	}
-	return repogov.LayoutSchema{}, "unknown agent: " + platform + " (use copilot, cursor, windsurf, claude, gitlab, kiro, gemini, continue, cline, roocode, jetbrains, zed, root, or all)"
+	if isKnownPlatformName(name) {
+		return repogov.LayoutSchema{}, "\"" + name + "\" is a repository platform -- use -platform " + name + " instead of -agent"
+	}
+	return repogov.LayoutSchema{}, "unknown agent: " + name + " (use -agent for AI agents or -platform for gitlab/root)"
 }
 
-func runLayout(root, platform string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
-	if strings.EqualFold(platform, "all") {
-		platforms := allPlatformSchemas()
-		if jsonOut {
-			out := make(map[string]interface{})
-			code := 0
-			for i := range platforms {
-				p := &platforms[i]
-				// Skip platforms whose root directory is absent (same as text path).
+// collectSchemas builds a unified list of platformEntry items from the
+// -agent and -platform flag values. "all" on -agent expands to all AI
+// agents; "all" on -platform expands to all repo platforms.
+func collectSchemas(agentFlag, platformFlag string, stderr io.Writer) ([]platformEntry, int) {
+	var entries []platformEntry
+
+	// Parse -agent names.
+	if agentFlag != "" {
+		for _, raw := range strings.Split(agentFlag, ",") {
+			name := strings.TrimSpace(strings.ToLower(raw))
+			if name == "" {
+				continue
+			}
+			if name == "all" {
+				entries = append(entries, allAgentSchemas()...)
+				continue
+			}
+			// Friendly error if a platform name is passed via -agent.
+			if isKnownPlatformName(name) {
+				fmt.Fprintf(stderr, "%q is a repository platform -- use -platform %s instead of -agent\n", name, name)
+				return nil, 2
+			}
+			schema, errMsg := resolvePlatform(name)
+			if errMsg != "" {
+				fmt.Fprintln(stderr, errMsg)
+				return nil, 2
+			}
+			entries = append(entries, platformEntry{name, schema})
+		}
+	}
+
+	// Parse -platform names.
+	if platformFlag != "" {
+		for _, raw := range strings.Split(platformFlag, ",") {
+			name := strings.TrimSpace(strings.ToLower(raw))
+			if name == "" {
+				continue
+			}
+			if name == "all" {
+				entries = append(entries, allRepoSchemas()...)
+				continue
+			}
+			if isKnownAgentName(name) {
+				fmt.Fprintf(stderr, "%q is an AI agent -- use -agent %s instead of -platform\n", name, name)
+				return nil, 2
+			}
+			schema, errMsg := resolvePlatform(name)
+			if errMsg != "" {
+				fmt.Fprintln(stderr, errMsg)
+				return nil, 2
+			}
+			entries = append(entries, platformEntry{name, schema})
+		}
+	}
+
+	return entries, 0
+}
+
+func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
+	// Load config to check SkipFrontmatter.
+	cfgPath := resolveConfigPath(root, configPath)
+	cfg, err := repogov.LoadConfig(cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "error loading config: %v\n", err)
+		return 2
+	}
+
+	entries, code := collectSchemas(agentFlag, platformFlag, stderr)
+	if code != 0 {
+		return code
+	}
+
+	// When -agent all (or default), skip absent platforms gracefully.
+	isAll := strings.EqualFold(agentFlag, "all") || (agentFlag == "" && platformFlag == "")
+
+	if jsonOut {
+		out := make(map[string]interface{})
+		code := 0
+		for i := range entries {
+			p := &entries[i]
+			// Skip absent platforms when running "all".
+			if isAll {
 				platformRoot := filepath.Join(root, filepath.FromSlash(p.schema.Root))
 				if p.schema.Root == "." {
-					// File-only schemas (e.g. Gemini): skip when no required file exists.
 					if !anyRequiredFileExists(root, p.schema.Required) {
 						continue
 					}
 				} else if _, statErr := os.Stat(platformRoot); os.IsNotExist(statErr) {
 					continue
 				}
-				results, err := repogov.CheckLayout(root, p.schema)
-				if err != nil {
-					fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
-					return 2
-				}
-				out[p.name] = results
-				if !repogov.LayoutPassed(results) {
-					code = 1
-				}
 			}
-			enc := json.NewEncoder(stdout)
-			enc.SetIndent("", "  ")
-			enc.Encode(out) //nolint:errcheck
-			return code
+			schema := p.schema
+			if cfg.SkipFrontmatter {
+				schema = repogov.StripFrontmatter(schema)
+			}
+			results, err := repogov.CheckLayout(root, schema)
+			if err != nil {
+				fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
+				return 2
+			}
+			out[p.name] = results
+			if !repogov.LayoutPassed(results) {
+				code = 1
+			}
 		}
-		code := 0
-		for i := range platforms {
-			p := &platforms[i]
-			// When running all platforms, skip any whose root directory is absent.
-			// Repos that only implement a subset of platforms should not fail
-			// for platforms they haven't adopted.
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(out) //nolint:errcheck
+		return code
+	}
+
+	code = 0
+	for i := range entries {
+		p := &entries[i]
+		if isAll {
 			platformRoot := filepath.Join(root, filepath.FromSlash(p.schema.Root))
 			if p.schema.Root == "." {
-				// File-only schemas (e.g. Gemini): skip when no required file exists.
 				if !anyRequiredFileExists(root, p.schema.Required) {
 					continue
 				}
 			} else if _, statErr := os.Stat(platformRoot); os.IsNotExist(statErr) {
 				continue
 			}
-			results, err := repogov.CheckLayout(root, p.schema)
-			if err != nil {
-				fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
-				return 2
-			}
-			if !quiet {
-				fmt.Fprintf(stdout, "Checking layout (%s)...\n\n", p.name)
-				fmt.Fprint(stdout, repogov.LayoutSummary(filterConfigInfos(root, results)))
-			}
-			if !repogov.LayoutPassed(results) {
-				code = 1
-			}
 		}
-		return code
-	}
-
-	schema, errMsg := resolvePlatform(platform)
-	if errMsg != "" {
-		fmt.Fprintln(stderr, errMsg)
-		return 2
-	}
-
-	results, err := repogov.CheckLayout(root, schema)
-	if err != nil {
-		fmt.Fprintf(stderr, "error checking layout: %v\n", err)
-		return 2
-	}
-
-	if jsonOut {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		enc.Encode(results) //nolint:errcheck
+		schema := p.schema
+		if cfg.SkipFrontmatter {
+			schema = repogov.StripFrontmatter(schema)
+		}
+		results, err := repogov.CheckLayout(root, schema)
+		if err != nil {
+			fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
+			return 2
+		}
+		if !quiet {
+			fmt.Fprintf(stdout, "Checking layout (%s)...\n\n", p.name)
+			fmt.Fprint(stdout, repogov.LayoutSummary(filterConfigInfos(root, results)))
+		}
 		if !repogov.LayoutPassed(results) {
-			return 1
+			code = 1
 		}
-		return 0
 	}
-
-	if !quiet {
-		fmt.Fprintf(stdout, "Checking layout (%s)...\n\n", platform)
-		fmt.Fprint(stdout, repogov.LayoutSummary(filterConfigInfos(root, results)))
-	}
-
-	if !repogov.LayoutPassed(results) {
-		return 1
-	}
-	return 0
+	return code
 }
 
-func runInit(root, configPath, platform string, quiet, jsonOut, descriptive, seed bool, stdout, stderr io.Writer) int {
-	if platform == "" {
-		fmt.Fprintln(stderr, "error: -agent is required for init")
+func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, descriptive, seed bool, stdout, stderr io.Writer) int {
+	if agentFlag == "" && platformFlag == "" {
+		fmt.Fprintln(stderr, "error: -agent or -platform is required for init")
 		fmt.Fprintln(stderr, "usage: repogov -agent <copilot|cursor|windsurf|claude|all[,...]> init")
+		fmt.Fprintln(stderr, "       repogov -platform <gitlab|root|all[,...]> init")
 		return 2
 	}
 
@@ -551,45 +633,20 @@ func runInit(root, configPath, platform string, quiet, jsonOut, descriptive, see
 		cfg.InitAlwaysCreate = true
 	}
 
-	// Normalize: split comma-separated list and trim spaces.
-	parts := strings.Split(platform, ",")
-	var agents []string
-	for _, p := range parts {
-		p = strings.TrimSpace(strings.ToLower(p))
-		if p != "" {
-			agents = append(agents, p)
-		}
+	entries, code := collectSchemas(agentFlag, platformFlag, stderr)
+	if code != 0 {
+		return code
 	}
 
-	// Expand "all" to every platform.
-	forAll := false
-	for _, a := range agents {
-		if a == "all" {
-			forAll = true
-			break
-		}
-	}
+	// Determine if this is a multi-schema init.
+	forAll := strings.EqualFold(agentFlag, "all") || strings.EqualFold(platformFlag, "all")
 
-	if forAll || len(agents) > 1 {
+	if forAll || len(entries) > 1 {
 		var schemas []repogov.LayoutSchema
 		var platformNames []string
-		if forAll {
-			allSchemas := allPlatformSchemas()
-			for i := range allSchemas {
-				p := &allSchemas[i]
-				schemas = append(schemas, p.schema)
-				platformNames = append(platformNames, p.name)
-			}
-		} else {
-			for _, a := range agents {
-				schema, errMsg := resolvePlatform(a)
-				if errMsg != "" {
-					fmt.Fprintln(stderr, errMsg)
-					return 2
-				}
-				schemas = append(schemas, schema)
-				platformNames = append(platformNames, a)
-			}
+		for i := range entries {
+			schemas = append(schemas, entries[i].schema)
+			platformNames = append(platformNames, entries[i].name)
 		}
 		created, err := repogov.InitLayoutAllWithConfig(root, schemas, cfg)
 		if err != nil {
@@ -621,12 +678,9 @@ func runInit(root, configPath, platform string, quiet, jsonOut, descriptive, see
 		return 0
 	}
 
-	// Single-agent path.
-	schema, errMsg := resolvePlatform(agents[0])
-	if errMsg != "" {
-		fmt.Fprintln(stderr, errMsg)
-		return 2
-	}
+	// Single-schema path.
+	schema := entries[0].schema
+	name := entries[0].name
 
 	created, err := repogov.InitLayoutWithConfig(root, schema, cfg)
 	if err != nil {
@@ -639,7 +693,7 @@ func runInit(root, configPath, platform string, quiet, jsonOut, descriptive, see
 			Platform string   `json:"platform"`
 			Created  []string `json:"created"`
 		}{
-			Platform: agents[0],
+			Platform: name,
 			Created:  created,
 		}
 		if out.Created == nil {
@@ -659,7 +713,7 @@ func runInit(root, configPath, platform string, quiet, jsonOut, descriptive, see
 	}
 
 	if !quiet {
-		fmt.Fprintf(stdout, "Scaffolded %s layout (%d items created):\n", agents[0], len(created))
+		fmt.Fprintf(stdout, "Scaffolded %s layout (%d items created):\n", name, len(created))
 		for _, p := range created {
 			fmt.Fprintf(stdout, "  + %s\n", p)
 		}
