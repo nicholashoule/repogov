@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // createCopilotInstructions creates .github/copilot-instructions.md with
@@ -909,10 +911,21 @@ type subdirReadmeData struct {
 // skills) have their content defined inline in the template; unknown names
 // fall back to Title/Description derived from the DirRule.
 func subdirReadmeInfo(dirName string, rule DirRule) subdirReadmeData { //nolint:gocritic // hugeParam: DirRule is small enough
+	title := dirName
+	if len(dirName) > 0 {
+		r, size := utf8.DecodeRuneInString(dirName)
+		title = string(unicode.ToUpper(r)) + dirName[size:]
+	}
+
+	desc := rule.Description
+	if desc != "" && !strings.HasSuffix(desc, ".") {
+		desc += "."
+	}
+
 	return subdirReadmeData{
 		DirName:     dirName,
-		Title:       strings.ToUpper(dirName[:1]) + dirName[1:],
-		Description: rule.Description + ".",
+		Title:       title,
+		Description: desc,
 		FileHint:    fileHintFromRule(rule),
 	}
 }

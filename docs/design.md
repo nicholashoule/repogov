@@ -6,7 +6,7 @@ repogov is a dependency-free Go library and CLI for auditing repository
 file lengths and directory layout conventions. It helps teams enforce
 consistent structure across GitHub Copilot, Cursor, Windsurf, Claude,
 Kiro, Gemini CLI, Continue, Cline, Roo Code, JetBrains AI Assistant,
-GitLab, and standard repository root conventions.
+Zed AI, GitLab, and standard repository root conventions.
 
 ## Architecture
 

@@ -19,14 +19,15 @@ substitutes them, re-stages changes, and aborts so the user can review.
 
 ### Phase 3: Go checks (pre-commit.go)
 
-`scripts/hooks/pre-commit.go` runs four checks sequentially:
+`scripts/hooks/pre-commit.go` runs five checks sequentially:
 
 | Check | Tool | What it enforces |
-|-------|------|-----------------|
+|-------|------|------------------|
 | `gofmt` | `gofmt -s` | Go source formatting. Auto-fixes and re-stages unformatted files. |
 | `go vet` | `go vet ./...` | Go static analysis. |
 | `go test` | `go test ./...` | All tests must pass. |
-| `golangci-lint` | `golangci-lint run ./...` | Linter checks. Must be installed separately. |
+| `golangci-lint config verify` | `golangci-lint config verify` | Validates `.golangci.yml` against the JSON schema. |
+| `golangci-lint` | `golangci-lint run ./...` | Linter checks. Must be installed separately (v2+). |
 
 ### gofmt (auto-fix)
 
