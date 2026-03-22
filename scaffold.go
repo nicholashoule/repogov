@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // createCopilotInstructions creates .github/copilot-instructions.md with
@@ -138,9 +140,9 @@ func isDirEmpty(path string) bool {
 	if err != nil {
 		return true // treat unreadable/missing as empty
 	}
-	// Ignore .gitkeep placeholder files.
+	// Ignore .gitkeep placeholder and README.md metadata files.
 	for _, e := range entries {
-		if e.Name() != ".gitkeep" {
+		if e.Name() != ".gitkeep" && e.Name() != "README.md" {
 			return false
 		}
 	}
@@ -149,6 +151,7 @@ func isDirEmpty(path string) bool {
 
 // dirHasGlobFiles reports whether dir contains at least one non-directory
 // entry whose name matches the given glob pattern (filepath.Match syntax).
+// Infrastructure files (.gitkeep, README.md) are excluded from matching.
 func dirHasGlobFiles(dir, glob string) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -156,6 +159,9 @@ func dirHasGlobFiles(dir, glob string) bool {
 	}
 	for _, e := range entries {
 		if e.IsDir() {
+			continue
+		}
+		if e.Name() == ".gitkeep" || e.Name() == "README.md" {
 			continue
 		}
 		if ok, _ := filepath.Match(glob, e.Name()); ok {
@@ -713,6 +719,7 @@ func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic //
 	out := Config{
 		Default:          cfg.Default,
 		DescriptiveNames: cfg.DescriptiveNames,
+		SkipFrontmatter:  cfg.SkipFrontmatter,
 		WarningThreshold: cfg.WarningThreshold,
 		IncludeExts:      cfg.IncludeExts,
 		SkipDirs:         cfg.SkipDirs,
@@ -809,6 +816,11 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	} else {
 		b.WriteString("  \"descriptive_names\": false,\n")
 	}
+	if cfg.SkipFrontmatter {
+		b.WriteString("  \"skip_frontmatter\": true,\n")
+	} else {
+		b.WriteString("  \"skip_frontmatter\": false,\n")
+	}
 	b.WriteString("  \"warning_threshold\": \"" + intStr(int(cfg.WarningThreshold)) + "%\",\n")
 
 	// skip_dirs as compact array.
@@ -884,4 +896,84 @@ func placeholderContent(relPath string) string {
 	default:
 		return "# " + name + "\n"
 	}
+}
+
+// subdirReadmeData is the template data passed to readme/README.md.tmpl.
+type subdirReadmeData struct {
+	DirName     string
+	Title       string
+	Description string
+	FileHint    string
+}
+
+// subdirReadmeInfo returns template data for a README.md in the given
+// subdirectory. Known directory names (rules, instructions, steering, agents,
+// skills) have their content defined inline in the template; unknown names
+// fall back to Title/Description derived from the DirRule.
+func subdirReadmeInfo(dirName string, rule DirRule) subdirReadmeData { //nolint:gocritic // hugeParam: DirRule is small enough
+	title := dirName
+	if len(dirName) > 0 {
+		r, size := utf8.DecodeRuneInString(dirName)
+		title = string(unicode.ToUpper(r)) + dirName[size:]
+	}
+
+	desc := rule.Description
+	if desc != "" && !strings.HasSuffix(desc, ".") {
+		desc += "."
+	}
+
+	return subdirReadmeData{
+		DirName:     dirName,
+		Title:       title,
+		Description: desc,
+		FileHint:    fileHintFromRule(rule),
+	}
+}
+
+// fileHintFromRule builds a brief file-convention hint from a DirRule's Glob
+// and Frontmatter fields. Returns an empty string when neither is set.
+func fileHintFromRule(rule DirRule) string { //nolint:gocritic // hugeParam: DirRule is small enough
+	var parts []string
+	if rule.Glob != "" {
+		parts = append(parts, "Files follow the `"+rule.Glob+"` naming pattern.")
+	}
+	if len(rule.Frontmatter) > 0 {
+		parts = append(parts, "Each file supports YAML frontmatter (`"+strings.Join(rule.Frontmatter, "`, `")+"`).")
+	}
+	return strings.Join(parts, " ")
+}
+
+// subdirReadmeContent renders the README.md content for a subdirectory from
+// the embedded readme/README.md.tmpl template.
+func subdirReadmeContent(dirName string, rule DirRule) string { //nolint:gocritic // hugeParam: DirRule is small enough
+	return mustRenderTemplate("readme/README.md.tmpl", subdirReadmeInfo(dirName, rule))
+}
+
+// createSubdirReadmes creates a README.md inside each non-NoCreate
+// subdirectory defined in the schema. Existing README.md files are never
+// overwritten. The "." directory (used by Cline for root-level rules) is
+// skipped because a root-level README.md would conflict with the project's
+// own README. Returns the list of created relative paths.
+func createSubdirReadmes(layoutDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	var created []string
+	for dirName, rule := range schema.Dirs {
+		if rule.NoCreate || dirName == "." {
+			continue
+		}
+		dirPath := filepath.Join(layoutDir, filepath.FromSlash(dirName))
+		readmePath := filepath.Join(dirPath, "README.md")
+		if _, err := os.Stat(readmePath); !os.IsNotExist(err) {
+			continue
+		}
+		if err := os.MkdirAll(dirPath, 0o755); err != nil {
+			return created, err
+		}
+		content := subdirReadmeContent(dirName, rule)
+		if err := os.WriteFile(readmePath, []byte(content), 0o644); err != nil {
+			return created, err
+		}
+		rel := filepath.ToSlash(filepath.Join(schema.Root, dirName, "README.md"))
+		created = append(created, rel)
+	}
+	return created, nil
 }

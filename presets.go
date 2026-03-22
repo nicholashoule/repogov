@@ -116,11 +116,13 @@ func DefaultCopilotLayout() LayoutSchema {
 				Glob:        "*.md",
 				Min:         0,
 				Description: "Scoped instruction files",
+				Frontmatter: []string{"applyTo"},
 			},
 			"rules": {
 				Glob:        "*.md",
 				Min:         0,
 				Description: "Copilot scoped rule files",
+				Frontmatter: []string{"applyTo"},
 			},
 			"workflows": {
 				Glob:        "",
@@ -191,6 +193,68 @@ func DefaultWindsurfLayout() LayoutSchema {
 	}
 }
 
+// DefaultGitHubLayout returns a [LayoutSchema] matching GitHub repository
+// platform conventions. It expects a .github/ directory with subdirectories
+// for issue templates, pull request templates, and workflows. This schema
+// validates the platform-level structure (templates, CI, community health
+// files); use [DefaultCopilotLayout] for Copilot-specific instruction files.
+func DefaultGitHubLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".github",
+		Required: []string{},
+		Optional: []string{
+			"CODE_OF_CONDUCT.md",
+			"CODEOWNERS",
+			"CONTRIBUTING.md",
+			"FUNDING.yml",
+			"ISSUE_TEMPLATE.md",
+			"PULL_REQUEST_TEMPLATE.md",
+			"SECURITY.md",
+			"SUPPORT.md",
+			"dependabot.yml",
+			"pull_request_template.md",
+			"repogov-config.json",
+			"repogov-config.yaml",
+			"repogov-config.yml",
+		},
+		Dirs: map[string]DirRule{
+			"ISSUE_TEMPLATE": {
+				Glob:        "",
+				Min:         0,
+				Description: "GitHub issue templates",
+				NoCreate:    true,
+			},
+			"PULL_REQUEST_TEMPLATE": {
+				Glob:        "",
+				Min:         0,
+				Description: "GitHub pull request templates",
+				NoCreate:    true,
+			},
+			"workflows": {
+				Glob:        "",
+				Min:         0,
+				Description: "GitHub Actions workflows",
+				NoCreate:    true,
+			},
+		},
+		Naming: NamingRule{
+			Case: "lowercase",
+			Exceptions: []string{
+				"CODE_OF_CONDUCT.md",
+				"CODEOWNERS",
+				"CONTRIBUTING.md",
+				"FUNDING.yml",
+				"ISSUE_TEMPLATE",
+				"ISSUE_TEMPLATE.md",
+				"PULL_REQUEST_TEMPLATE",
+				"PULL_REQUEST_TEMPLATE.md",
+				"SECURITY.md",
+				"SUPPORT.md",
+			},
+		},
+	}
+}
+
 // DefaultGitLabLayout returns a [LayoutSchema] matching GitLab repository
 // conventions. It expects a .gitlab/ directory with subdirectories for issue
 // and merge request templates, and an optional CODEOWNERS file. Note that
@@ -219,6 +283,33 @@ func DefaultGitLabLayout() LayoutSchema {
 			Case: "lowercase",
 			Exceptions: []string{
 				"CODEOWNERS",
+			},
+		},
+	}
+}
+
+// DefaultBitbucketLayout returns a [LayoutSchema] for Bitbucket repository
+// conventions. Bitbucket does not use a dedicated configuration directory;
+// its CI pipeline is defined by bitbucket-pipelines.yml at the repository
+// root (outside the scope of this layout schema). This schema validates
+// common Bitbucket community health and configuration files at the root.
+func DefaultBitbucketLayout() LayoutSchema {
+	return LayoutSchema{
+		Root:     ".",
+		Required: []string{},
+		Optional: []string{
+			"bitbucket-pipelines.yml",
+			"CONTRIBUTING.md",
+			"LICENSE",
+			"README.md",
+		},
+		Dirs: map[string]DirRule{},
+		Naming: NamingRule{
+			Case: "lowercase",
+			Exceptions: []string{
+				"CONTRIBUTING.md",
+				"LICENSE",
+				"README.md",
 			},
 		},
 	}

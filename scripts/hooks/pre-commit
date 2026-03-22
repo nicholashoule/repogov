@@ -8,26 +8,28 @@ cd "$root"
 
 # Run repogov governance checks (line limits + layout) using the tagged release.
 # If the module cannot be fetched the check will fail with a descriptive error.
-go run github.com/nicholashoule/repogov/cmd/repogov@v0.5.1 -root "$root" -agent copilot
+repogov_ref="github.com/nicholashoule/repogov/cmd/repogov@v0.7.0"
+go run "$repogov_ref" -root "$root" -agent copilot
 repogov_exit=$?
 if [ "$repogov_exit" -ne 0 ]; then
   echo "ERROR: repogov checks failed. To fix, run:"
-  echo "  go run github.com/nicholashoule/repogov/cmd/repogov@v0.5.1 -root \"$root\" -agent copilot"
+  echo "  go run $repogov_ref -root \"$root\" -agent copilot"
 fi
 
 # Run demojify-sanitize. If emoji are found, substitute them automatically,
 # re-stage the modified files, and abort the commit so the user can review
 # the substitutions before re-committing.
-go run github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.7.0 -root "$root"
+demojify_ref="github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.7.2"
+go run "$demojify_ref" -root "$root"
 demojify_exit=$?
 if [ "$demojify_exit" -ne 0 ]; then
   echo "INFO: emoji found -- running -sub to substitute and re-staging changes..."
-  go run github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.7.0 -root "$root" -sub
+  go run "$demojify_ref" -root "$root" -sub
   git add -u
   echo "ERROR: emoji were substituted and re-staged. Review the changes and re-commit."
 fi
 
-# precommit_exit covers gofmt, go vet, and golangci-lint (via checkLint in pre-commit.go).
+# precommit_exit covers gofmt, go vet, go test, and golangci-lint (via checkLint in pre-commit.go).
 go run "$root/scripts/hooks/pre-commit.go"
 precommit_exit=$?
 

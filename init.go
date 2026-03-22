@@ -348,6 +348,15 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		}
 	}
 
+	// Create README.md in each non-NoCreate subdirectory to describe the
+	// intent of the directory and its files. Existing README.md files are
+	// never overwritten.
+	readmePaths, readmeErr := createSubdirReadmes(layoutDir, schema)
+	if readmeErr != nil {
+		return created, readmeErr
+	}
+	created = append(created, readmePaths...)
+
 	// Create AGENTS.md at the repo root when it doesn't already exist.
 	// AGENTS.md is a cross-agent open standard (https://agents.md) and is
 	// recognized by GitHub Copilot, Cursor, Claude Code, and OpenAI Codex.

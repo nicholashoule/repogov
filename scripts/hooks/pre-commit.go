@@ -98,18 +98,29 @@ func checkTest() bool {
 	return true
 }
 
-// checkLint runs golangci-lint run ./... and blocks the commit on failure.
+// checkLint runs golangci-lint config verify and golangci-lint run ./...,
+// blocking the commit on failure.
 // golangci-lint must be installed:
 //
-//	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+//	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 func checkLint() bool {
 	path, err := exec.LookPath("golangci-lint")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "[FAIL] golangci-lint not found on PATH.")
 		fmt.Fprintln(os.Stderr, "Install it with:")
-		fmt.Fprintln(os.Stderr, "  go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest")
+		fmt.Fprintln(os.Stderr, "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest")
 		return false
 	}
+
+	// Validate the config against the JSON schema before running.
+	verify := exec.Command(path, "config", "verify")
+	verify.Stdout = os.Stderr
+	verify.Stderr = os.Stderr
+	if err := verify.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "[FAIL] golangci-lint config verify")
+		return false
+	}
+
 	cmd := exec.Command(path, "run", "./...")
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr

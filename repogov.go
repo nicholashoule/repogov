@@ -156,6 +156,13 @@ type Config struct {
 	// init (e.g., ["backend", "frontend", "emoji-prevention"]). Entries whose
 	// stem matches are not created. Ignored when InitIncludeFiles is non-empty.
 	InitExcludeFiles []string `json:"init_exclude_files,omitempty"`
+
+	// SkipFrontmatter disables YAML frontmatter validation during layout
+	// checks. When false (the default), files in directories whose
+	// [DirRule.Frontmatter] is non-empty are checked for the required
+	// keys. When true, frontmatter requirements are stripped from all
+	// schemas before checking.
+	SkipFrontmatter bool `json:"skip_frontmatter,omitempty"`
 }
 
 // Rule maps a glob pattern to a line limit.
@@ -343,8 +350,8 @@ func isSafeFileSegment(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') ||
-			(r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.') {
+		if (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') &&
+			(r < '0' || r > '9') && r != '_' && r != '-' && r != '.' {
 			return false
 		}
 	}
