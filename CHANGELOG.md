@@ -228,7 +228,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.7.1...HEAD
+[v0.7.1]: https://github.com/nicholashoule/repogov/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/nicholashoule/repogov/compare/v0.6.1...v0.7.0
 [v0.6.1]: https://github.com/nicholashoule/repogov/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/nicholashoule/repogov/compare/v0.5.1...v0.6.0
