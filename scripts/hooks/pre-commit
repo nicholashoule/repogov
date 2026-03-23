@@ -19,7 +19,7 @@ fi
 # Run demojify-sanitize. If emoji are found, substitute them automatically,
 # re-stage the modified files, and abort the commit so the user can review
 # the substitutions before re-committing.
-demojify_ref="github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.7.2"
+demojify_ref="github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.7.3"
 go run "$demojify_ref" -root "$root"
 demojify_exit=$?
 if [ "$demojify_exit" -ne 0 ]; then
