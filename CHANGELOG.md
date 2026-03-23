@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.7.1] - 2026-03-23
+
+### Changed
+
+- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.7.2` to `v0.7.3`.
+
 ## [v0.7.0] - 2026-03-22
 
 ### Added
@@ -27,12 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI upgrade** (`.github/workflows/ci.yml`) — upgraded `golangci/golangci-lint-action` from v6 to v9.2.0 with pinned SHA, set `cache: false` to avoid action-cache conflicts, bumped lint job Go version from `1.22.x` to `1.23`.
 - **Compliance audit docs** (`docs/compliance/`) — added `BITBUCKET_PLATFORM_AUDIT.md`, `GITHUB_PLATFORM_AUDIT.md`, and `GITLAB_PLATFORM_AUDIT.md` covering platform-level layout support and governance integration.
 - **Test file splitting** — large omnibus test files broken into focused files to improve navigability:
-  - `config_test.go` → `config_load_test.go` + `config_validate_test.go`
-  - `init_test.go` → `init_agents_test.go` + `init_config_test.go` + `init_content_test.go` (plus trimmed `init_test.go`)
-  - `repogov_test.go` → `repogov_limits_test.go` + `repogov_types_test.go`
-  - `layout_test.go` → `layout_check_test.go` + `layout_frontmatter_test.go`
-  - `cmd/repogov/main_test.go` → `main_init_test.go` + `main_paths_test.go` + `main_run_test.go`
-  - `cmd/repogov/scaffold_test.go` → `scaffold_init_test.go` + `scaffold_subcommands_test.go`
+  - `config_test.go` -> `config_load_test.go` + `config_validate_test.go`
+  - `init_test.go` -> `init_agents_test.go` + `init_config_test.go` + `init_content_test.go` (plus trimmed `init_test.go`)
+  - `repogov_test.go` -> `repogov_limits_test.go` + `repogov_types_test.go`
+  - `layout_test.go` -> `layout_check_test.go` + `layout_frontmatter_test.go`
+  - `cmd/repogov/main_test.go` -> `main_init_test.go` + `main_paths_test.go` + `main_run_test.go`
+  - `cmd/repogov/scaffold_test.go` -> `scaffold_init_test.go` + `scaffold_subcommands_test.go`
 - **Shared test assertion helpers** (`helpers_test.go`) — `assertExists`, `assertNotExists`, `assertFileContains`, `assertFileNotContains` eliminate repetitive inline `os.Stat`/`strings.Contains` boilerplate; `hasViolation` and `hasAnySeverity` moved to their sole consumer `config_validate_test.go`.
 
 ### Changed
@@ -77,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `template.go` (33 lines) — embedded template filesystem (`templateFS`), `mustReadTemplate`, and `mustRenderTemplate`.
   - `scaffold.go` (889 lines) — all scaffolding content generators and file-writing helpers: agent-specific file creators (`createCopilotInstructions`, `createClaudeMd`, `createGeminiMd`, `createZedRules`), AGENTS.md management (`createAgentsMd`, `updateAgentsMdContext`, `UpdateAgentsMdContextAll`, context section builders), instruction template seeding (`createDefaultInstructions`, `defaultInstructionFilesFor`, all `*InstructionsContent` functions), config scaffolding (`createDefaultConfig`, `createDefaultConfigAll`, `schemaConfig`, `defaultConfigJSON`), filesystem helpers (`dirIsNew`, `isDirEmpty`, `dirHasGlobFiles`, `copilotNarrowSchema`), and mapping utilities (`schemaRootToAgent`, `rulesLabel`, `placeholderContent`).
 - **Deduplicated `intToStr`/`intStr`**: removed `intToStr` from `layout.go` (identical to `intStr` in `scaffold.go`); `formatDirMinMessage` and `formatDirPassMessage` now call the single `intStr` utility.
-- **Extracted `spliceContextSection` helper** in `scaffold.go`: the read→find-marker→splice→write logic was duplicated between `updateAgentsMdContext` and `UpdateAgentsMdContextAll`; both now delegate to the shared helper.
+- **Extracted `spliceContextSection` helper** in `scaffold.go`: the read->find-marker->splice->write logic was duplicated between `updateAgentsMdContext` and `UpdateAgentsMdContextAll`; both now delegate to the shared helper.
 - **Simplified `agentsMdContextSection`**: was a 35-line near-duplicate of `agentsMdMergedContextSection`; now a one-liner that delegates via `agentsMdMergedContextSection([]LayoutSchema{schema})`.
 - **Added `writeLine` closure** in `agentsMdMergedContextSection`: replaced 10 repetitions of the dedup-and-write pattern with a single closure.
 - **Fixed misplaced doc comment**: the `agentsMdContextSection` godoc was orphaned above `UpdateAgentsMdContextAll`; moved to its correct function.
