@@ -24,11 +24,12 @@ vet:
 build:
 	go build -o repogov ./cmd/repogov/
 
-# Clean build artifacts
+# Clean build artifacts (cross-platform: rm -f is Unix-only and breaks
+# under cmd.exe; Make execs `go` directly so tools/xplat has no shell.)
 clean:
-	rm -f repogov
+	@go run ./tools/xplat rmrf repogov
 
-# Install pre-commit hook
+# Install pre-commit hook (cross-platform: cp/chmod are Unix-only;
+# tools/xplat cp also marks the hook executable for POSIX git.)
 hooks:
-	cp scripts/hooks/pre-commit .git/hooks/pre-commit
-	chmod +x .git/hooks/pre-commit
+	@go run ./tools/xplat cp scripts/hooks/pre-commit .git/hooks/pre-commit
