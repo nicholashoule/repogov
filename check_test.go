@@ -294,3 +294,117 @@ func TestCheckFile_ZeroWarningThreshold_UsesDefault(t *testing.T) {
 		t.Errorf("with zero WarningThreshold status = %v, want PASS (83%% < default 85%%)", result.Status)
 	}
 }
+
+// TestCountLines_LongLine is a regression test for the bufio.Scanner token
+// limit: a single line longer than 64 KiB previously made CountLines fail
+// with bufio.ErrTooLong, and CheckDir's skip-unreadable policy then silently
+// dropped the file from governance results entirely -- an over-limit file
+// could pass CI unreported. The chunked byte-count implementation has no
+// line-length limit.
+func TestCountLines_LongLine(t *testing.T) {
+	long := strings.Repeat("x", 70*1024)
+	path := writeTempFile(t, "long.md", long+"\nsecond line\n")
+	got, err := repogov.CountLines(path)
+	if err != nil {
+		t.Fatalf("CountLines with 70KiB line: %v", err)
+	}
+	if got != 2 {
+		t.Errorf("CountLines = %d, want 2", got)
+	}
+}
+
+// TestCheckDir_LongLineFileNotSkipped verifies the CheckDir half of the same
+// regression: a file that is over its line limit AND contains a >64 KiB line
+// must appear in the results as FAIL rather than being silently dropped.
+func TestCheckDir_LongLineFileNotSkipped(t *testing.T) {
+	long := strings.Repeat("x", 70*1024)
+	over := long + "\n" + strings.Repeat("line\n", 600) // 601 lines > 500 default
+	root := writeTempDir(t, map[string]string{
+		"clean.md": "one\ntwo\n",
+		"huge.md":  over,
+	})
+
+	results, err := repogov.CheckDir(root, []string{".md"}, repogov.DefaultConfig())
+	if err != nil {
+		t.Fatalf("CheckDir: %v", err)
+	}
+	var found bool
+	for _, r := range results {
+		if r.Path == "huge.md" {
+			found = true
+			if r.Status != repogov.Fail {
+				t.Errorf("huge.md status = %v, want FAIL (601 lines > 500)", r.Status)
+			}
+			if r.Lines != 601 {
+				t.Errorf("huge.md lines = %d, want 601", r.Lines)
+			}
+		}
+	}
+	if !found {
+		t.Error("huge.md missing from results -- long-line file was silently skipped")
+	}
+}
+
+// TestCheckFile_BinarySkipped verifies binary and compiled files are never
+// line-counted or parsed: a NUL byte within the first 512 bytes yields a
+// Skip result, and only the sniff prefix is read. Text files are unaffected.
+func TestCheckFile_BinarySkipped(t *testing.T) {
+	binary := "MZ\x00\x01compiled bytes\x00" + strings.Repeat("\x00garbage\n", 200)
+	path := writeTempFile(t, "tool.exe", binary)
+	result, err := repogov.CheckFile(path, repogov.DefaultConfig())
+	if err != nil {
+		t.Fatalf("CheckFile on binary: %v", err)
+	}
+	if result.Status != repogov.Skip {
+		t.Errorf("binary file status = %v, want SKIP (must never be parsed)", result.Status)
+	}
+	if result.Lines != 0 {
+		t.Errorf("binary file lines = %d, want 0 (content must not be counted)", result.Lines)
+	}
+}
+
+// TestCheckDir_BinarySkippedTextChecked verifies that with no extension
+// filter (the -exts all case) a directory walk skips binaries while still
+// checking text files normally.
+func TestCheckDir_BinarySkippedTextChecked(t *testing.T) {
+	root := writeTempDir(t, map[string]string{
+		"doc.md":   "one\ntwo\n",
+		"blob.bin": "\x00\x01\x02\x03binary\x00",
+	})
+	results, err := repogov.CheckDir(root, nil, repogov.DefaultConfig())
+	if err != nil {
+		t.Fatalf("CheckDir: %v", err)
+	}
+	statuses := make(map[string]repogov.Status, len(results))
+	for _, r := range results {
+		statuses[r.Path] = r.Status
+	}
+	if statuses["blob.bin"] != repogov.Skip {
+		t.Errorf("blob.bin status = %v, want SKIP", statuses["blob.bin"])
+	}
+	if statuses["doc.md"] != repogov.Pass {
+		t.Errorf("doc.md status = %v, want PASS", statuses["doc.md"])
+	}
+}
+
+// TestCheckFile_SensitiveExtensionsNeverOpened verifies certificate and key
+// files (.crt, .pem, .key) are skipped before the file is even opened: no
+// line count, no parse, regardless of content or size. Case-insensitive.
+func TestCheckFile_SensitiveExtensionsNeverOpened(t *testing.T) {
+	for _, name := range []string{"server.crt", "chain.pem", "private.key", "UPPER.PEM"} {
+		t.Run(name, func(t *testing.T) {
+			content := "-----BEGIN PRIVATE KEY-----\n" + strings.Repeat("SENTINEL\n", 700) + "-----END PRIVATE KEY-----\n"
+			path := writeTempFile(t, name, content)
+			result, err := repogov.CheckFile(path, repogov.DefaultConfig())
+			if err != nil {
+				t.Fatalf("CheckFile: %v", err)
+			}
+			if result.Status != repogov.Skip {
+				t.Errorf("%s status = %v, want SKIP", name, result.Status)
+			}
+			if result.Lines != 0 {
+				t.Errorf("%s lines = %d, want 0 (content must never be read)", name, result.Lines)
+			}
+		})
+	}
+}

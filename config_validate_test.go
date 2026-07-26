@@ -487,3 +487,26 @@ func TestSaveAndLoadConfig_SkipFrontmatter_YAML(t *testing.T) {
 		t.Error("round-trip: expected SkipFrontmatter=true")
 	}
 }
+
+// TestValidateConfig_TrailingSlashRuleWarning verifies that the
+// files-vs-rules limit warning uses the same glob matching as ResolveLimit,
+// including trailing-slash directory-prefix globs. Before the shared
+// ruleGlobMatches helper, ValidateConfig called filepath.Match directly, so
+// directory globs never matched and separator semantics differed by OS.
+func TestValidateConfig_TrailingSlashRuleWarning(t *testing.T) {
+	limit := 100
+	cfg := repogov.DefaultConfig()
+	cfg.Rules = []repogov.Rule{{Glob: "docs/", Limit: &limit}}
+	cfg.Files = map[string]int{"docs/huge.md": 400} // less restrictive than the rule
+
+	vs := repogov.ValidateConfig(cfg)
+	var warned bool
+	for _, v := range vs {
+		if v.Severity == "warning" && strings.Contains(v.Message, "exceeds rule") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("expected files-vs-rules warning for trailing-slash glob, got %+v", vs)
+	}
+}

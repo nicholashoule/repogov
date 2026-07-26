@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -457,5 +458,97 @@ func TestRunLayout_Verbose(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Layout:") {
 		t.Fatalf("expected Layout summary, got: %s", stdout.String())
+	}
+}
+
+// TestRun_UnknownSubcommandRealNewlines is a regression test for format
+// strings that used "\n" (literal backslash-n) instead of "\n": the error
+// and usage lines printed as one line containing literal \n text.
+func TestRun_UnknownSubcommandRealNewlines(t *testing.T) {
+	var stdout, stderr strings.Builder
+	code := run([]string{"bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	out := stderr.String()
+	if strings.Contains(out, `\n`) {
+		t.Errorf("stderr contains literal backslash-n text: %q", out)
+	}
+	if got := strings.Count(out, "\n"); got < 2 {
+		t.Errorf("expected at least 2 newline-terminated lines, got %d in %q", got, out)
+	}
+}
+
+// TestRun_AgentAllCommaListSkipsAbsent verifies that "all" is honored inside
+// a comma-separated -agent list: absent platform directories are skipped
+// instead of failing. Previously only the exact value "all" enabled the
+// skip, so "-agent all,claude" failed on every platform the repo lacked.
+func TestRun_AgentAllCommaListSkipsAbsent(t *testing.T) {
+	root := t.TempDir()
+	// A repo with only a .claude directory containing the required file.
+	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".claude", "CLAUDE.md"), []byte("# c\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr strings.Builder
+	code := run([]string{"-root", root, "-agent", "all,claude", "layout"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0 (absent platforms must be skipped); stderr=%s stdout=%s",
+			code, stderr.String(), stdout.String())
+	}
+}
+
+// TestRun_PlatformAutoNoDetection verifies that -platform auto against a
+// repository with no platform markers reports that nothing was detected
+// instead of exiting silently.
+func TestRun_PlatformAutoNoDetection(t *testing.T) {
+	root := t.TempDir() // no .github/, .gitlab/, or bitbucket-pipelines.*
+
+	var stdout, stderr strings.Builder
+	code := run([]string{"-root", root, "-platform", "auto", "layout"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "No platforms detected") {
+		t.Errorf("expected 'No platforms detected' notice, got %q", stdout.String())
+	}
+}
+
+// TestRun_LayoutClaudeIncludesSettingsAudit verifies the claude layout run
+// appends the read-only settings audit: duplicate permission rules in
+// .claude/settings.json surface as findings, and the file itself is never
+// modified by the run.
+func TestRun_LayoutClaudeIncludesSettingsAudit(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".claude", "CLAUDE.md"), []byte("# c\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const settings = `{"permissions":{"allow":["Bash(go test:*)","Bash(go test:*)"]}}` + "\n"
+	settingsPath := filepath.Join(root, ".claude", "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(settings), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr strings.Builder
+	code := run([]string{"-root", root, "-agent", "claude", "layout"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0 (settings findings are advisory Warn); stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "duplicate rule") {
+		t.Errorf("expected duplicate-rule finding in layout output, got:\n%s", stdout.String())
+	}
+	// The audit must be read-only.
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != settings {
+		t.Error("layout run modified settings.json -- audit must be read-only")
 	}
 }

@@ -18,7 +18,11 @@ const (
 	Warn
 	// Fail indicates the file exceeds its limit or a required layout rule is violated.
 	Fail
-	// Skip indicates the file is exempt (limit = 0) or does not match the extension filter.
+	// Skip indicates the file is exempt (limit = 0), does not match the
+	// extension filter, is binary (NUL byte within the first 512 bytes),
+	// or holds certificate/key material (.crt, .pem, .key). Binary and
+	// sensitive files are never line-counted or parsed; sensitive files
+	// are never opened at all.
 	Skip
 	// Info indicates an optional file is present (layout checks only).
 	Info
@@ -111,7 +115,7 @@ type Config struct {
 	Default int `json:"default"`
 
 	// WarningThreshold is the percentage of a file's line limit at which
-	// the check result changes from PASS to WARN. Default: 80.
+	// the check result changes from PASS to WARN. Default: 85.
 	WarningThreshold PercentInt `json:"warning_threshold"`
 
 	// IncludeExts lists the file extensions that the limits check scans.
@@ -288,7 +292,7 @@ func DefaultConfig() Config {
 // Resolution priority:
 //  1. Per-file override in Config.Files (exact match)
 //  2. First matching glob in Config.Rules
-//  3. Config.Default (falls back to 300 if zero)
+//  3. Config.Default (falls back to the built-in default of 500 if zero)
 //
 // Glob matching uses [filepath.Match]. As a special case, a glob that ends
 // with "/" is treated as a recursive directory prefix: it matches any file
@@ -303,19 +307,7 @@ func ResolveLimit(path string, cfg Config) int { //nolint:gocritic // hugeParam:
 
 	// 2. First matching glob rule.
 	for _, r := range cfg.Rules {
-		matched := false
-		if strings.HasSuffix(r.Glob, "/") {
-			// Trailing-slash glob: match any file under this directory prefix.
-			glob := filepath.ToSlash(r.Glob)
-			p := filepath.ToSlash(path)
-			matched = strings.HasPrefix(p, glob)
-		} else {
-			matched, _ = filepath.Match(
-				filepath.FromSlash(r.Glob),
-				filepath.FromSlash(path),
-			)
-		}
-		if matched {
+		if ruleGlobMatches(r.Glob, path) {
 			if r.Limit == nil {
 				break // nil limit -> fall through to config default
 			}
@@ -328,6 +320,23 @@ func ResolveLimit(path string, cfg Config) int { //nolint:gocritic // hugeParam:
 		return cfg.Default
 	}
 	return defaultLimit
+}
+
+// ruleGlobMatches reports whether a [Rule.Glob] pattern matches a
+// repo-relative path (forward slashes). It is the single matching
+// implementation shared by [ResolveLimit] and [ValidateConfig] so that
+// validation warnings agree with resolution behavior on every platform:
+// a trailing-slash glob matches as a recursive directory prefix, and all
+// other globs are normalized through [filepath.FromSlash] before
+// [filepath.Match] so separator semantics are consistent across
+// operating systems.
+func ruleGlobMatches(glob, path string) bool {
+	if strings.HasSuffix(glob, "/") {
+		// Trailing-slash glob: match any file under this directory prefix.
+		return strings.HasPrefix(filepath.ToSlash(path), filepath.ToSlash(glob))
+	}
+	ok, _ := filepath.Match(filepath.FromSlash(glob), filepath.FromSlash(path))
+	return ok
 }
 
 // effectiveWarningThreshold returns the warning percentage threshold,

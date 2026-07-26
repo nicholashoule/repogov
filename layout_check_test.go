@@ -370,3 +370,75 @@ func TestCheckLayout_RootDirRule(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckLayout_UppercaseFixHint verifies the FIX hint for an "uppercase"
+// naming rule suggests the uppercase form of the offending name. The hint
+// was previously hardcoded to strings.ToLower, producing a suggestion that
+// itself violated the rule.
+func TestCheckLayout_UppercaseFixHint(t *testing.T) {
+	root := writeTempDir(t, map[string]string{
+		".docs/readme.md": "content\n",
+	})
+	schema := repogov.LayoutSchema{
+		Root:   ".docs",
+		Dirs:   map[string]repogov.DirRule{".": {Glob: "*.md"}},
+		Naming: repogov.NamingRule{Case: "uppercase"},
+	}
+	results, err := repogov.CheckLayout(root, schema)
+	if err != nil {
+		t.Fatalf("CheckLayout: %v", err)
+	}
+	var hint string
+	for _, r := range results {
+		if r.Status == repogov.Fail && strings.Contains(r.Message, "naming violation") {
+			hint = r.Message
+		}
+	}
+	if hint == "" {
+		t.Fatal("expected a naming violation for lowercase file under uppercase rule")
+	}
+	if !strings.Contains(hint, "rename to README.MD") {
+		t.Errorf("uppercase rule FIX hint should suggest the uppercase name, got %q", hint)
+	}
+}
+
+// TestCheckLayout_FrontmatterCheckedOnRequiredFiles verifies that a file
+// listed in Required (or Optional) that also lives in a managed directory
+// with a Frontmatter requirement is still frontmatter-validated. The
+// required/optional classification previously short-circuited past the
+// frontmatter check, silently exempting explicitly-listed files from the
+// directory's contract.
+func TestCheckLayout_FrontmatterCheckedOnRequiredFiles(t *testing.T) {
+	root := writeTempDir(t, map[string]string{
+		// Required file present but WITHOUT the required frontmatter key.
+		".github/rules/pinned.md": "no frontmatter here\n",
+	})
+	schema := repogov.LayoutSchema{
+		Root:     ".github",
+		Required: []string{"rules/pinned.md"},
+		Dirs: map[string]repogov.DirRule{
+			"rules": {Glob: "*.md", Frontmatter: []string{"applyTo"}},
+		},
+	}
+	results, err := repogov.CheckLayout(root, schema)
+	if err != nil {
+		t.Fatalf("CheckLayout: %v", err)
+	}
+	var sawRequiredPass, sawFrontmatterFail bool
+	for _, r := range results {
+		if r.Path == ".github/rules/pinned.md" {
+			if r.Status == repogov.Pass && strings.Contains(r.Message, "required file present") {
+				sawRequiredPass = true
+			}
+			if r.Status == repogov.Fail && strings.Contains(r.Message, "frontmatter") {
+				sawFrontmatterFail = true
+			}
+		}
+	}
+	if !sawRequiredPass {
+		t.Error("expected required-file-present PASS for pinned.md")
+	}
+	if !sawFrontmatterFail {
+		t.Error("expected frontmatter FAIL for required file missing applyTo -- required listing must not exempt it")
+	}
+}

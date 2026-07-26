@@ -220,10 +220,26 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 			continue
 		}
 
-		// Count toward managed directory regardless of required/optional status.
+		// Whether the file matches a managed directory's glob. Also counts
+		// toward that directory's minimum regardless of required/optional
+		// status.
+		inManagedDir := false
 		if rule, ok := schema.Dirs[dirKey]; ok {
 			if rule.Glob == "" || matchGlob(rule.Glob, name) {
+				inManagedDir = true
 				dirFileCounts[dirKey]++
+			}
+		}
+
+		// checkManagedFrontmatter validates frontmatter for files in managed
+		// directories with a Frontmatter requirement. It runs for every
+		// matching file -- including files that are also listed in Required
+		// or Optional -- so listing a file explicitly never exempts it from
+		// the directory's frontmatter contract.
+		checkManagedFrontmatter := func() {
+			if rule, ok := schema.Dirs[dirKey]; ok && len(rule.Frontmatter) > 0 && inManagedDir {
+				absPath := filepath.Join(layoutDir, filepath.FromSlash(relPath))
+				results = append(results, checkFrontmatter(absPath, filepath.ToSlash(filepath.Join(schema.Root, relPath)), rule.Frontmatter)...)
 			}
 		}
 
@@ -235,6 +251,7 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 				Status:  Pass,
 				Message: "required file present",
 			})
+			checkManagedFrontmatter()
 			continue
 		}
 
@@ -245,18 +262,11 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 				Status:  Info,
 				Message: "optional file present",
 			})
+			checkManagedFrontmatter()
 			continue
 		}
 
-		// Check if it belongs to a managed directory.
-		matched := false
-		if rule, ok := schema.Dirs[dirKey]; ok {
-			if rule.Glob == "" || matchGlob(rule.Glob, name) {
-				matched = true
-			}
-		}
-
-		if !matched {
+		if !inManagedDir {
 			results = append(results, LayoutResult{
 				Path:    filepath.ToSlash(filepath.Join(schema.Root, relPath)),
 				Status:  Warn,
@@ -265,12 +275,7 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		}
 
 		// Check YAML frontmatter requirements for managed directories.
-		if rule, ok := schema.Dirs[dirKey]; ok && len(rule.Frontmatter) > 0 {
-			if rule.Glob == "" || matchGlob(rule.Glob, name) {
-				absPath := filepath.Join(layoutDir, filepath.FromSlash(relPath))
-				results = append(results, checkFrontmatter(absPath, filepath.ToSlash(filepath.Join(schema.Root, relPath)), rule.Frontmatter)...)
-			}
-		}
+		checkManagedFrontmatter()
 
 		// Check naming conventions.
 		if schema.Naming.Case != "" && schema.Naming.Case != "any" {
@@ -279,7 +284,7 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 					results = append(results, LayoutResult{
 						Path:    filepath.ToSlash(filepath.Join(schema.Root, relPath)),
 						Status:  Fail,
-						Message: violation + " -- FIX: rename to " + strings.ToLower(name),
+						Message: violation + " -- FIX: rename to " + fixedCaseName(name, schema.Naming.Case),
 					})
 				}
 			}
@@ -301,26 +306,24 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 	for dirName, rule := range schema.Dirs {
 		if rule.Min > 0 {
 			count := dirFileCounts[dirName]
+			status := Pass
 			if count < rule.Min {
-				results = append(results, LayoutResult{
-					Path:    filepath.ToSlash(filepath.Join(schema.Root, dirName)),
-					Status:  Fail,
-					Message: formatDirMinMessage(dirName, rule, count),
-				})
-			} else {
-				results = append(results, LayoutResult{
-					Path:    filepath.ToSlash(filepath.Join(schema.Root, dirName)),
-					Status:  Pass,
-					Message: formatDirPassMessage(dirName, rule, count),
-				})
+				status = Fail
 			}
+			results = append(results, LayoutResult{
+				Path:    filepath.ToSlash(filepath.Join(schema.Root, dirName)),
+				Status:  status,
+				Message: formatDirCountMessage(dirName, rule, count),
+			})
 		}
 	}
 
 	return results, nil
 }
 
-// matchGlob wraps filepath.Match with forward-slash normalization.
+// matchGlob wraps filepath.Match against a bare filename (no path
+// separators), discarding the pattern-syntax error: patterns come from
+// [DirRule.Glob] values that [ValidateConfig] vets separately.
 func matchGlob(pattern, name string) bool {
 	ok, _ := filepath.Match(pattern, name)
 	return ok
@@ -343,23 +346,20 @@ func checkNaming(name string, caseRule string) string {
 	return ""
 }
 
-// formatDirMinMessage returns a message for a directory that did not meet
-// its minimum file count.
-func formatDirMinMessage(dir string, rule DirRule, count int) string {
-	desc := rule.Description
-	if desc == "" {
-		desc = dir
+// fixedCaseName returns name converted to the case the rule expects, for
+// use in FIX hints. An uppercase rule suggests the uppercase form; any
+// other rule suggests lowercase.
+func fixedCaseName(name, caseRule string) string {
+	if caseRule == "uppercase" {
+		return strings.ToUpper(name)
 	}
-	return strings.Join([]string{
-		desc, " -- ",
-		intStr(count), " file(s) matching ", rule.Glob,
-		" (min: ", intStr(rule.Min), ")",
-	}, "")
+	return strings.ToLower(name)
 }
 
-// formatDirPassMessage returns a message for a directory that met its
-// minimum file count.
-func formatDirPassMessage(dir string, rule DirRule, count int) string {
+// formatDirCountMessage returns the per-directory summary line used for both
+// the minimum-met (PASS) and minimum-not-met (FAIL) outcomes; the status
+// itself conveys which case applies.
+func formatDirCountMessage(dir string, rule DirRule, count int) string {
 	desc := rule.Description
 	if desc == "" {
 		desc = dir

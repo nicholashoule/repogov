@@ -1,5 +1,7 @@
 // presets.go provides built-in [LayoutSchema] factories for each supported
-// AI-agent platform: GitHub Copilot, Cursor, Windsurf, and Claude.
+// AI-agent platform (GitHub Copilot, Cursor, Windsurf, Claude, Kiro, Gemini,
+// Continue, Cline, Roo Code, JetBrains AI Assistant, Zed) and repository
+// platform (GitHub, GitLab, Bitbucket, plus the repository root).
 // Each function returns an opinionated default that mirrors the platform's
 // published conventions; callers may further customize the returned schema.
 
@@ -320,6 +322,11 @@ func DefaultBitbucketLayout() LayoutSchema {
 // for rules and subagent definitions. CLAUDE.md is the primary instruction file,
 // analogous to copilot-instructions.md for GitHub Copilot. Hooks are configured
 // inside settings.json, not as a directory.
+//
+// settings.json and settings.local.json are listed as Optional only: they
+// are recognized and audited read-only by [CheckClaudeSettings], but init
+// never creates, modifies, or seeds them -- they are user and machine
+// configuration owned by Claude Code.
 func DefaultClaudeLayout() LayoutSchema {
 	return LayoutSchema{
 		Root: ".claude",
