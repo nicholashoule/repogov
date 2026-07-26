@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `scripts/hooks/pre-commit` — bumped the self-governance pin from
+  `repogov@v0.7.2` to the released `repogov@v0.8.0` (post-release pin
+  sweep per the PIN POLICY comment at the pin site)
+
 ## [v0.8.0] - 2026-07-26
 
 ### Added
