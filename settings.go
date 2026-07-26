@@ -68,7 +68,28 @@ func CheckClaudeSettings(root string) []LayoutResult {
 	for _, name := range claudeSettingsFiles {
 		absPath := filepath.Join(root, ".claude", name)
 		displayPath := ".claude/" + name
-		if _, err := os.Stat(absPath); err != nil {
+		// Lstat, not Stat: a symlink named settings.json must never be
+		// followed into some other target (e.g. a credential file), and a
+		// permission error must surface rather than masquerade as absence.
+		info, err := os.Lstat(absPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			results = append(results, LayoutResult{
+				Path:    displayPath,
+				Status:  Warn,
+				Message: fmt.Sprintf("unable to stat settings file: %v", err),
+			})
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			results = append(results, LayoutResult{
+				Path:   displayPath,
+				Status: Warn,
+				Message: "not a regular file (symlink or special file); content not read -- " +
+					"FIX: replace with a regular settings file; repogov refuses to follow symlinks from settings filenames",
+			})
 			continue
 		}
 		results = append(results, auditSettingsFile(absPath, displayPath)...)
@@ -84,11 +105,23 @@ func CheckClaudeSettings(root string) []LayoutResult {
 func credentialFileResults(root string) []LayoutResult {
 	var results []LayoutResult
 	for _, name := range claudeCredentialFiles {
-		if _, err := os.Stat(filepath.Join(root, ".claude", name)); err != nil {
+		displayPath := ".claude/" + name
+		// Lstat: report presence even when the entry is a symlink (possibly
+		// broken); nothing is ever opened either way. Non-ENOENT stat errors
+		// surface as findings rather than being silently suppressed.
+		if _, err := os.Lstat(filepath.Join(root, ".claude", name)); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			results = append(results, LayoutResult{
+				Path:    displayPath,
+				Status:  Warn,
+				Message: fmt.Sprintf("unable to stat credential file: %v (content is never read either way) -- FIX: check directory permissions; keep the file out of version control", err),
+			})
 			continue
 		}
 		results = append(results, LayoutResult{
-			Path:   ".claude/" + name,
+			Path:   displayPath,
 			Status: Warn,
 			Message: "credential file present (content not read by repogov) -- " +
 				"FIX: ensure it is listed in .gitignore and never committed; rotate the credentials if it ever was",

@@ -227,3 +227,56 @@ func TestCheckClaudeSettings_CredentialFilesNeverParsed(t *testing.T) {
 		t.Errorf("credential presence findings = %d, want 1", credWarn)
 	}
 }
+
+// TestCheckClaudeSettings_SymlinkRefused verifies that a settings filename
+// that is actually a symlink is never followed: a symlink could point at a
+// credential file or any other sensitive target, so the audit must refuse
+// it by Lstat type check and report a Warn instead of opening it.
+func TestCheckClaudeSettings_SymlinkRefused(t *testing.T) {
+	root := writeTempDir(t, map[string]string{
+		".claude/.credentials.json": `{"secret":"SENTINEL-SECRET"}`,
+	})
+	link := filepath.Join(root, ".claude", "settings.json")
+	if err := os.Symlink(filepath.Join(root, ".claude", ".credentials.json"), link); err != nil {
+		t.Skipf("symlink creation not permitted on this system: %v", err)
+	}
+
+	results := repogov.CheckClaudeSettings(root)
+	var refused bool
+	for _, r := range results {
+		if strings.Contains(r.Message, "SENTINEL-SECRET") {
+			t.Fatalf("symlinked settings content was read: %+v", r)
+		}
+		if r.Path == ".claude/settings.json" {
+			if r.Status != repogov.Warn || !strings.Contains(r.Message, "not a regular file") {
+				t.Errorf("symlinked settings should be refused with a Warn, got %+v", r)
+			}
+			refused = true
+		}
+	}
+	if !refused {
+		t.Error("expected a refusal finding for the symlinked settings.json")
+	}
+}
+
+// TestCheckClaudeSettings_NonRegularFileRefused exercises the regular-file
+// gate portably (symlink creation is privileged on Windows): a DIRECTORY
+// named settings.local.json must be refused with a Warn, not opened.
+func TestCheckClaudeSettings_NonRegularFileRefused(t *testing.T) {
+	root := writeTempDir(t, map[string]string{
+		".claude/settings.local.json/nested.txt": "not a settings file\n",
+	})
+	results := repogov.CheckClaudeSettings(root)
+	var refused bool
+	for _, r := range results {
+		if r.Path == ".claude/settings.local.json" {
+			if r.Status != repogov.Warn || !strings.Contains(r.Message, "not a regular file") {
+				t.Errorf("directory-as-settings should be refused with a Warn, got %+v", r)
+			}
+			refused = true
+		}
+	}
+	if !refused {
+		t.Error("expected a refusal finding for the directory named settings.local.json")
+	}
+}

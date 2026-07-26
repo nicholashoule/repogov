@@ -8,6 +8,10 @@ cd "$root"
 
 # Run repogov governance checks (line limits + layout) using the tagged release.
 # If the module cannot be fetched the check will fail with a descriptive error.
+# PIN POLICY: this must reference the latest PUBLISHED tag, never the version
+# being prepared in the current branch -- a not-yet-existing tag would fail
+# 'go run' and block every commit until release. Bump it in the pin sweep
+# that follows each release.
 repogov_ref="github.com/nicholashoule/repogov/cmd/repogov@v0.7.2"
 go run "$repogov_ref" -root "$root" -agent copilot
 repogov_exit=$?

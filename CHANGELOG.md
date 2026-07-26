@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gitignore guidance; its content is never opened under any circumstance
   (`TestCheckClaudeSettings_CredentialFilesNeverParsed` proves it with
   deliberately malformed content)
+- **Settings audit refuses non-regular files** (PR review): filenames are
+  checked with `Lstat`, so a symlink named `settings.json` pointing at a
+  credential file (or any other target) is never followed -- it is reported
+  as a Warn instead of being opened -- and permission errors surface as
+  findings rather than masquerading as absence
+  (`TestCheckClaudeSettings_SymlinkRefused`,
+  `TestCheckClaudeSettings_NonRegularFileRefused`)
 - **Binary and compiled files are never parsed**: the limits check sniffs
   the first 512 bytes for a NUL byte and reports binaries as Skip without
   reading any further content -- previously `-exts all` line-counted
