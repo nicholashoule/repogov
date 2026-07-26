@@ -8,7 +8,11 @@ cd "$root"
 
 # Run repogov governance checks (line limits + layout) using the tagged release.
 # If the module cannot be fetched the check will fail with a descriptive error.
-repogov_ref="github.com/nicholashoule/repogov/cmd/repogov@v0.7.0"
+# PIN POLICY: this must reference the latest PUBLISHED tag, never the version
+# being prepared in the current branch -- a not-yet-existing tag would fail
+# 'go run' and block every commit until release. Bump it in the pin sweep
+# that follows each release.
+repogov_ref="github.com/nicholashoule/repogov/cmd/repogov@v0.7.2"
 go run "$repogov_ref" -root "$root" -agent copilot
 repogov_exit=$?
 if [ "$repogov_exit" -ne 0 ]; then
@@ -19,7 +23,7 @@ fi
 # Run demojify-sanitize. If emoji are found, substitute them automatically,
 # re-stage the modified files, and abort the commit so the user can review
 # the substitutions before re-committing.
-demojify_ref="github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.7.3"
+demojify_ref="github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.10.0"
 go run "$demojify_ref" -root "$root"
 demojify_exit=$?
 if [ "$demojify_exit" -ne 0 ]; then

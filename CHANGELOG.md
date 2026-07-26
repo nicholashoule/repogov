@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.8.0] - 2026-07-26
+
+### Added
+
+- **`CheckClaudeSettings(root)`** (`settings.go`) — read-only audit of
+  `.claude/settings.json` and `.claude/settings.local.json`, appended to
+  `layout` runs for the claude agent. Reports an Info summary (line count,
+  allow/deny/ask rule counts) plus advisory findings: exact duplicate rules
+  (Warn), rules shadowed by a broader `:*` prefix rule (Warn, boundary-aware
+  so `Bash(go:*)` never claims `Bash(gofmt:*)`), allow rules overridden by
+  deny (Warn), consolidation suggestions when five or more literal rules
+  share a command prefix (Info), and malformed JSON (Fail — Claude Code
+  cannot load it). Every finding carries a `-- FIX:` hint so the output can
+  gate and guide AI agents directly, in text and `-json` alike
+- **Settings are never written**: repogov never creates, modifies, or seeds
+  `.claude/settings.json` or `.claude/settings.local.json` — they are user
+  and machine configuration owned by Claude Code. The invariant is pinned by
+  `TestInitNeverTouchesClaudeSettings` (byte-identical through init, even
+  with `init_always_create`)
+- **Credential files are never parsed**: `.claude/.credentials.json` is
+  detected by filename alone (stat only) and reported with rotation and
+  gitignore guidance; its content is never opened under any circumstance
+  (`TestCheckClaudeSettings_CredentialFilesNeverParsed` proves it with
+  deliberately malformed content)
+- **Settings audit refuses non-regular files** (PR review): filenames are
+  checked with `Lstat`, so a symlink named `settings.json` pointing at a
+  credential file (or any other target) is never followed -- it is reported
+  as a Warn instead of being opened -- and permission errors surface as
+  findings rather than masquerading as absence
+  (`TestCheckClaudeSettings_SymlinkRefused`,
+  `TestCheckClaudeSettings_NonRegularFileRefused`)
+- **Binary and compiled files are never parsed**: the limits check sniffs
+  the first 512 bytes for a NUL byte and reports binaries as Skip without
+  reading any further content -- previously `-exts all` line-counted
+  executables and images wholesale (`TestCheckFile_BinarySkipped`,
+  `TestCheckDir_BinarySkippedTextChecked`)
+- **Certificate and key material is never opened**: `.crt`, `.pem`, and
+  `.key` files (case-insensitive) are skipped before the file is opened, so
+  their content is never read, counted, or parsed
+  (`TestCheckFile_SensitiveExtensionsNeverOpened`)
+
+### Fixed
+
+- `check.go` (`CountLines`): rewritten as a chunked newline count with no
+  maximum line length. A single line over 64 KiB previously failed with
+  `bufio.ErrTooLong`, and `CheckDir`'s skip-unreadable policy then silently
+  dropped the file from results -- an over-limit file could pass CI
+  unreported. Line-count semantics are unchanged (regression tests
+  `TestCountLines_LongLine`, `TestCheckDir_LongLineFileNotSkipped`)
+- `cmd/repogov`: the unknown-subcommand error printed literal `\n` text on
+  one line (escaped `\\n` in the format strings); it now prints real
+  newlines (`TestRun_UnknownSubcommandRealNewlines`)
+- `layout.go`: the FIX hint for an `uppercase` naming rule suggested the
+  lowercase form of the name; it now suggests the case the rule expects
+  (`TestCheckLayout_UppercaseFixHint`)
+- `layout.go`: files listed in `Required` or `Optional` that live in a
+  managed directory with a `Frontmatter` requirement are now
+  frontmatter-validated; the required/optional classification previously
+  short-circuited past the check
+  (`TestCheckLayout_FrontmatterCheckedOnRequiredFiles`)
+- `config.go` (`ValidateConfig`): the files-vs-rules limit warning now uses
+  the same glob matching as `ResolveLimit` (shared `ruleGlobMatches`
+  helper), so warnings agree with resolution behavior across operating
+  systems and trailing-slash directory globs are recognized
+  (`TestValidateConfig_TrailingSlashRuleWarning`)
+- `cmd/repogov`: `-agent all,claude` style comma lists now honor `all` for
+  the absent-platform skip; previously only the exact value `all` did
+  (`TestRun_AgentAllCommaListSkipsAbsent`)
+
+### Changed
+
+- `cmd/repogov`: `-platform auto` with no detectable repository markers now
+  prints "No platforms detected -- nothing to check." instead of exiting
+  silently (`TestRun_PlatformAutoNoDetection`)
+- `cmd/repogov version`: falls back to the module version from the Go build
+  info when the `-ldflags` version is unset, so `go install ...@vX.Y.Z`
+  installs self-report their tag instead of "dev"
+- `layout.go`: collapsed the byte-identical `formatDirMinMessage` /
+  `formatDirPassMessage` pair into one `formatDirCountMessage` helper
+- `.github/workflows/ci.yml`: Go matrix refreshed to `1.22 / stable` so the
+  latest Go release is always exercised; coverage and lint steps key on
+  `stable` instead of a pinned minor version
+- `scripts/hooks/pre-commit`: tool pins bumped to `repogov@v0.7.2` and
+  `demojify-sanitize@v0.10.0`
+
+### Documentation
+
+- Corrected the documented `default` fallback from 300 to the actual
+  built-in 500 (`ResolveLimit` godoc, README, docs/design.md) and the
+  documented warning threshold default from 80 to the actual 85
+- `FindConfig` godoc no longer lists `repogov.json`/`repogov.yaml` names
+  that were never searched
+- `presets.go` and `doc.go` now enumerate all fifteen layout presets plus
+  `DetectPlatforms`, `StripFrontmatter`, `UpdateAgentsMdContextAll`, and
+  `FindAllConfigs`; repaired the truncated `initLayoutSingle` comment and
+  the stale `matchGlob`/`resolvePlatform`/`LayoutPassed` comments
+
+## [v0.7.2] - 2026-06-11
+
+### Changed
+
+- Cross-platform Makefile via the vendored `tools/xplat` helper: recipes
+  contain no shell-specific syntax, so `make` targets work identically
+  under cmd.exe, PowerShell, and POSIX sh (#14, #15)
+
 ## [v0.7.1] - 2026-03-23
 
 ### Changed
@@ -228,7 +333,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
 - Sorted keys in default config JSON for deterministic output (`init.go`)
 
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.8.0...HEAD
+[v0.8.0]: https://github.com/nicholashoule/repogov/compare/v0.7.2...v0.8.0
+[v0.7.2]: https://github.com/nicholashoule/repogov/compare/v0.7.1...v0.7.2
 [v0.7.1]: https://github.com/nicholashoule/repogov/compare/v0.7.0...v0.7.1
 [v0.7.0]: https://github.com/nicholashoule/repogov/compare/v0.6.1...v0.7.0
 [v0.6.1]: https://github.com/nicholashoule/repogov/compare/v0.6.0...v0.6.1

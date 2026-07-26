@@ -76,12 +76,10 @@ func LoadConfig(path string) (Config, error) {
 // FindConfig searches for a repogov configuration file relative to root.
 // It checks the repo root first, then .github/, returning the first file
 // found. Within each location it tries filenames in order:
-// repogov-config.json, repogov.json, repogov-config.yaml,
-// repogov-config.yml, repogov.yaml, repogov.yml.
+// repogov-config.json, repogov-config.yaml, repogov-config.yml.
 // Returns an empty string if no config file exists.
 //
-// Precedence: repo root over .github/, JSON over YAML,
-// repogov-config over repogov.
+// Precedence: repo root over .github/, JSON over YAML.
 func FindConfig(root string) string {
 	dirs := []string{
 		root,
@@ -275,10 +273,12 @@ func ValidateConfig(cfg Config) []Violation { //nolint:gocritic // hugeParam: st
 
 	// Warn on files with a less-restrictive limit than a matching rule.
 	// A stricter per-file limit (lower or zero/exempt) is fine, but a
-	// higher limit may indicate a misconfiguration.
+	// higher limit may indicate a misconfiguration. Matching uses the same
+	// implementation as [ResolveLimit] (ruleGlobMatches) so warnings agree
+	// with resolution behavior, including trailing-slash directory globs.
 	for path, limit := range cfg.Files {
 		for _, r := range cfg.Rules {
-			if ok, _ := filepath.Match(r.Glob, path); ok {
+			if ruleGlobMatches(r.Glob, path) {
 				if r.Limit != nil && *r.Limit > 0 && limit > *r.Limit {
 					vs = append(vs, Violation{
 						Field:    fmt.Sprintf("files[%q]", path),

@@ -55,6 +55,12 @@ repogov -root . -config .github/repogov-config.json limits
 Walks the repository, checks every matching file against its resolved limit, and prints
 a per-file summary. Exits `1` if any file exceeds its limit, `0` otherwise.
 
+Files that must never be parsed are skipped automatically: binaries and
+compiled files (NUL byte within the first 512 bytes -- only the sniff prefix
+is read) and certificate/key material (`.crt`, `.pem`, `.key` --
+skipped before the file is even opened). There is no maximum line length;
+minified or generated files with very long lines are counted normally.
+
 **Output columns:** `[STATUS]  path -- N/limit lines (pct% of limit)`
 
 ### `layout`
@@ -81,6 +87,17 @@ repogov -root . layout                  # defaults to all agents
 
 Checks for required files, optional files, unexpected files, and naming conventions
 (e.g., lowercase filenames inside `.cursor/rules/`). Exits `1` on any failure.
+
+For the `claude` agent, the layout run also performs a **read-only settings
+audit** of `.claude/settings.json` and `.claude/settings.local.json`: an Info
+summary (line and permission-rule counts) plus advisory findings for exact
+duplicate rules, rules shadowed by a broader `:*` prefix rule, allow rules
+overridden by deny, and consolidation suggestions when five or more literal
+rules share a command prefix. Malformed JSON is a Fail (Claude Code cannot
+load it). Every finding carries a `-- FIX:` hint so agents can act on it
+directly. repogov **never creates or modifies settings files**, and
+credential files (`.claude/.credentials.json`) are detected by filename only
+-- their content is never opened or parsed.
 
 > **Note:** `-agent all` skips platform directories that do not exist in the
 > repository (e.g., a Copilot-only repo will not fail for missing `.cursor/`).

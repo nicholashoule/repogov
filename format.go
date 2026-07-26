@@ -38,6 +38,10 @@ func Summary(results []Result) string {
 			skip++
 		}
 		if r.Limit > 0 {
+			// Recompute the percentage from Lines/Limit rather than trusting
+			// r.Pct: callers may construct Result literals by hand (see
+			// ExampleSummary) without populating Pct, and the summary must
+			// still render correctly for them.
 			pct := 100 * r.Lines / r.Limit
 			if r.Action != "" {
 				fmt.Fprintf(&b, "  [%s] %s (%d / %d, %d%%) -- %s\n",
@@ -56,8 +60,9 @@ func Summary(results []Result) string {
 	return b.String()
 }
 
-// LayoutPassed returns true when every [LayoutResult] has status [Pass],
-// [Info], or [Skip].
+// LayoutPassed returns true when no [LayoutResult] has status [Fail].
+// Warnings (e.g. unexpected files) and informational results do not fail
+// the layout check.
 func LayoutPassed(results []LayoutResult) bool {
 	for _, r := range results {
 		if r.Status == Fail {

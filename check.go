@@ -1,28 +1,82 @@
 package repogov
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// CountLines returns the number of lines in the file at path. It uses
-// buffered I/O and does not load the entire file into memory.
+// CountLines returns the number of lines in the file at path. It reads the
+// file in fixed-size chunks and counts newline bytes, so it uses constant
+// memory and -- unlike a bufio.Scanner -- has no maximum line length. A final
+// line without a trailing newline still counts as a line, matching the
+// semantics of [bufio.Scanner]. Files with lines longer than 64 KiB
+// (minified assets, long tables, generated Markdown) previously failed with
+// bufio.ErrTooLong and were silently dropped from directory checks; they are
+// now counted like any other file.
 func CountLines(path string) (int, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return 0, err
 	}
 	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	count := 0
-	for scanner.Scan() {
+	return countLinesFrom(f, nil)
+}
+
+// countLinesFrom counts lines in prefix followed by the remaining content
+// of r, using the same semantics as [CountLines]. It is the shared counting
+// core for CountLines (whole file) and checkFileAt (which has already
+// consumed a sniff prefix from the file).
+func countLinesFrom(r io.Reader, prefix []byte) (int, error) {
+	count := bytes.Count(prefix, []byte{'\n'})
+	lastByte := byte('\n') // empty input counts as 0 lines
+	if len(prefix) > 0 {
+		lastByte = prefix[len(prefix)-1]
+	}
+	buf := make([]byte, 64*1024)
+	for {
+		n, readErr := r.Read(buf)
+		if n > 0 {
+			count += bytes.Count(buf[:n], []byte{'\n'})
+			lastByte = buf[n-1]
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return 0, readErr
+		}
+	}
+	// A non-empty final line without a trailing newline is still a line.
+	if lastByte != '\n' {
 		count++
 	}
-	return count, scanner.Err()
+	return count, nil
+}
+
+// binarySniffSize is the number of leading bytes inspected for a NUL byte
+// when detecting binary files. This mirrors the heuristic used by Git and
+// other text-processing tools.
+const binarySniffSize = 512
+
+// sensitiveFileExts lists file extensions holding certificate and key
+// material that repogov must never open, line-count, or parse. Files with
+// these extensions are skipped before the file is opened, so their content
+// is never read at all. Matching is case-insensitive.
+var sensitiveFileExts = map[string]bool{
+	".crt": true,
+	".pem": true,
+	".key": true,
+}
+
+// isSensitivePath reports whether path has an extension listed in
+// [sensitiveFileExts].
+func isSensitivePath(path string) bool {
+	return sensitiveFileExts[strings.ToLower(filepath.Ext(path))]
 }
 
 // CheckFile checks a single file against its resolved line limit.
@@ -40,16 +94,42 @@ func CheckFile(path string, cfg Config) (Result, error) { //nolint:gocritic // h
 }
 
 // checkFileAt is the shared implementation for CheckFile and CheckDirContext.
-// fsPath is the filesystem path passed to CountLines; relPath is the
+// fsPath is the filesystem path read for counting; relPath is the
 // slash-normalized path key used for config lookups. When invoked from
 // CheckDir, relPath is computed as a repo-relative path from the walk root.
+//
+// Binary and compiled files (detected by a NUL byte within the first 512
+// bytes) are never line-counted or otherwise parsed: they produce a Skip
+// result, and only the sniff prefix is ever read from them.
 func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:gocritic // hugeParam: stable public API
+	// Certificate and key material is skipped before the file is opened:
+	// its content must never be read, counted, or parsed.
+	if isSensitivePath(fsPath) {
+		return Result{Path: relPath, Limit: 0, Status: Skip}, nil
+	}
+
 	limit := ResolveLimit(relPath, cfg)
 	if limit == 0 {
 		return Result{Path: relPath, Limit: 0, Status: Skip}, nil
 	}
 
-	count, err := CountLines(fsPath)
+	f, err := os.Open(fsPath)
+	if err != nil {
+		return Result{}, err
+	}
+	defer f.Close()
+
+	sniff := make([]byte, binarySniffSize)
+	n, readErr := io.ReadFull(f, sniff)
+	if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
+		return Result{}, readErr
+	}
+	if bytes.IndexByte(sniff[:n], 0) >= 0 {
+		// Binary file: report Skip without reading any further content.
+		return Result{Path: relPath, Limit: limit, Status: Skip}, nil
+	}
+
+	count, err := countLinesFrom(f, sniff[:n])
 	if err != nil {
 		return Result{}, err
 	}

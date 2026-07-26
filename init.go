@@ -134,11 +134,15 @@ func initLayoutAllWithOptions(root string, schemas []LayoutSchema, opts initOpti
 	return allCreated, nil
 }
 
-// [InitLayoutAll] handle config placement centrally. When opts.alwaysCreate is
-// true, default template files are seeded into existing non-empty directories
-// as well as empty or new ones; existing files are never overwritten.
-// opts.descriptive controls whether template files use the <name>.instructions.md
-// convention (true) or the plain <name>.md convention (false).
+// initLayoutSingle is the shared scaffolding implementation behind
+// [InitLayout] and [InitLayoutWithConfig]. It creates the layout for one
+// schema; multi-schema callers like [InitLayoutAll] invoke it per schema with
+// opts.skipConfig set and handle config placement centrally. When
+// opts.alwaysCreate is true, default template files are seeded into existing
+// non-empty directories as well as empty or new ones; existing files are
+// never overwritten. opts.descriptive controls whether template files use the
+// <name>.instructions.md convention (true) or the plain <name>.md convention
+// (false).
 func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
 	// Validate include/exclude stems before touching the filesystem.
 	// This prevents unsafe characters from JSON/YAML config values reaching

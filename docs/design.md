@@ -81,7 +81,7 @@ stems are created during init.
 
 1. Per-file override (`files` map, exact match)
 2. First matching glob rule (`rules` array, in order)
-3. `default` value (falls back to 300 if zero)
+3. `default` value (falls back to the built-in 500 if zero)
 
 A limit of 0 exempts the file from checking (status = SKIP).
 

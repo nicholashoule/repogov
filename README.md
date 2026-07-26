@@ -133,14 +133,15 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 
 1. Per-file override (`files` map, exact match)
 2. First matching glob rule (`rules` array, in order)
-3. `default` value (falls back to 300 if zero)
+3. `default` value (falls back to the built-in 500 if zero)
 4. A limit of 0 exempts the file (status = SKIP)
 
 ## Public API
 
 | Symbol | File | Purpose |
 |--------|------|---------|
-| `DefaultConfig()` | repogov.go | Sensible defaults (300 lines, 80% warn) |
+| `DefaultConfig()` | repogov.go | Sensible defaults (500 lines, 85% warn) |
+| `DetectPlatforms(root)` | detect.go | Detect repository platforms from markers (.github/, .gitlab/, bitbucket-pipelines.*) |
 | `ResolveLimit(path, cfg)` | repogov.go | Resolve effective limit for a path |
 | `CountLines(path)` | check.go | Count lines in a file |
 | `CheckFile(path, cfg)` | check.go | Check a single file |
@@ -169,8 +170,12 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `DefaultRooCodeLayout()` | presets.go | Roo Code `.roo/rules/` preset |
 | `DefaultJetBrainsLayout()` | presets.go | JetBrains AI Assistant `.aiassistant/rules/` preset |
 | `DefaultZedLayout()` | presets.go | Zed AI root-level `.rules` preset |
+| `DefaultGitHubLayout()` | presets.go | GitHub platform `.github/` preset |
 | `DefaultGitLabLayout()` | presets.go | GitLab `.gitlab/` preset |
+| `DefaultBitbucketLayout()` | presets.go | Bitbucket root-level preset |
 | `DefaultRootLayout()` | presets.go | Repository root layout preset |
+| `CheckClaudeSettings(root)` | settings.go | Read-only audit of `.claude/settings*.json` permission rules (duplicates, redundancy, conflicts, consolidation); never modifies settings, never parses credential files |
+| `UpdateAgentsMdContextAll(root, schemas)` | scaffold.go | Refresh AGENTS.md `## Context` with merged platform links |
 | `Passed(results)` | format.go | Check if all results pass |
 | `Summary(results)` | format.go | Human-readable limit summary |
 | `LayoutPassed(results)` | format.go | Check if all layout results pass |

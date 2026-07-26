@@ -34,6 +34,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/nicholashoule/repogov"
@@ -41,6 +42,23 @@ import (
 
 // version is set at build time via -ldflags.
 var version = "dev"
+
+// effectiveVersion returns the version string for the version subcommand.
+// The -ldflags value takes precedence when set; otherwise the module version
+// from the Go build info is used, so installs via `go install ...@vX.Y.Z`
+// self-report their tag without any build flags. Local source builds
+// (`go run`, `go build`) fall back to "dev".
+func effectiveVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			return v
+		}
+	}
+	return version
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -170,7 +188,7 @@ Examples:
 
 	switch sub {
 	case "version":
-		fmt.Fprintln(stdout, "repogov", version)
+		fmt.Fprintln(stdout, "repogov", effectiveVersion())
 		return 0
 	case "init":
 		return runInit(root, configPath, agent, platform, quiet, jsonOut, descriptive, seed, stdout, stderr)
@@ -206,8 +224,8 @@ Examples:
 		}
 		return code
 	default:
-		fmt.Fprintf(stderr, "unknown subcommand: %s\\n", sub)
-		fmt.Fprintf(stderr, "usage: repogov [flags] <limits|layout|init|validate|all|version>\\n")
+		fmt.Fprintf(stderr, "unknown subcommand: %s\n", sub)
+		fmt.Fprintf(stderr, "usage: repogov [flags] <limits|layout|init|validate|all|version>\n")
 		return 2
 	}
 }
@@ -392,6 +410,17 @@ func isKnownAgentName(s string) bool {
 	return false
 }
 
+// listContainsAll reports whether the comma-separated flag value contains
+// the entry "all" (case-insensitive, whitespace-tolerant).
+func listContainsAll(flagValue string) bool {
+	for _, raw := range strings.Split(flagValue, ",") {
+		if strings.EqualFold(strings.TrimSpace(raw), "all") {
+			return true
+		}
+	}
+	return false
+}
+
 // isKnownPlatformName reports whether s is a recognized repository platform name.
 func isKnownPlatformName(s string) bool {
 	switch strings.ToLower(s) {
@@ -429,7 +458,8 @@ func allRepoSchemas() []platformEntry {
 }
 
 // resolvePlatform returns the schema for a named agent or platform, or an
-// error message for unknown names. Returns nil schema and \"\" message for \"all\".
+// error message for unknown names. For "all" it returns a zero-value schema
+// and an empty message; callers expand "all" themselves.
 func resolvePlatform(name string) (repogov.LayoutSchema, string) {
 	switch strings.ToLower(name) {
 	case "copilot":
@@ -563,8 +593,18 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 		return code
 	}
 
+	// -platform auto can legitimately resolve to nothing (no repo markers).
+	// Say so instead of exiting silently, which reads like a passing check.
+	if len(entries) == 0 {
+		if !quiet && !jsonOut {
+			fmt.Fprintln(stdout, "No platforms detected -- nothing to check.")
+		}
+	}
+
 	// When -agent all (or default), skip absent platforms gracefully.
-	isAll := strings.EqualFold(agentFlag, "all") || (agentFlag == "" && platformFlag == "")
+	// "all" is honored anywhere in a comma-separated list (e.g.
+	// -agent all,claude), not just as the sole value.
+	isAll := listContainsAll(agentFlag) || (agentFlag == "" && platformFlag == "")
 
 	if jsonOut {
 		out := make(map[string]interface{})
@@ -590,6 +630,12 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 			if err != nil {
 				fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
 				return 2
+			}
+			// The Claude layout additionally gets a read-only settings audit
+			// (duplicate/redundant/conflicting permission rules). repogov
+			// never creates or modifies settings files.
+			if p.schema.Root == ".claude" {
+				results = append(results, repogov.CheckClaudeSettings(root)...)
 			}
 			out[p.name] = results
 			if !repogov.LayoutPassed(results) {
@@ -623,6 +669,12 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 		if err != nil {
 			fmt.Fprintf(stderr, "error checking %s layout: %v\n", p.name, err)
 			return 2
+		}
+		// The Claude layout additionally gets a read-only settings audit
+		// (duplicate/redundant/conflicting permission rules). repogov never
+		// creates or modifies settings files.
+		if p.schema.Root == ".claude" {
+			results = append(results, repogov.CheckClaudeSettings(root)...)
 		}
 		if !quiet {
 			fmt.Fprintf(stdout, "Checking layout (%s)...\n\n", p.name)
