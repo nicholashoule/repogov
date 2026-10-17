@@ -1,4 +1,4 @@
-.PHONY: test race coverage fmt vet build clean hooks
+.PHONY: test race coverage fmt vet lint build clean hooks
 
 # Run all tests
 test:
@@ -19,6 +19,10 @@ fmt:
 # Vet
 vet:
 	go vet ./...
+
+# Lint (requires golangci-lint on PATH)
+lint:
+	golangci-lint run ./...
 
 # Build CLI binary
 build:
