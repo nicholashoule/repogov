@@ -111,6 +111,9 @@ Create `.github/repogov-config.json` (or `repogov-config.json` at the repo root)
   "rules": [
     {"glob": "docs/*.md", "limit": 1000}
   ],
+  "max_bytes": [
+    {"glob": "AGENTS.md", "limit": 24000}
+  ],
   "files": {
     "docs/design.md": 500,
     "CHANGELOG.md": 0
@@ -128,6 +131,22 @@ Set to `[]` (empty array) to scan every file type. Add `.yaml`, `.txt`, or any e
 ```
 
 The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the filter.
+
+### Byte Limits
+
+`max_bytes` adds size limits (bytes, first matching glob wins) on top of the line
+limits. Some agents truncate or drop instruction files by size, not lines, so a file
+with few very long lines can pass the line check and still be cut off. Defaults cover
+`AGENTS.md`, `GEMINI.md` and `.agents/rules/*.md` at 24,000 bytes (Antigravity's
+per-file limit, applied after include expansion). A file over the limit is FAIL;
+at or above the warning threshold is WARN. Set `"max_bytes": []` to disable.
+
+### Agent Pitfalls
+
+`repogov layout` also reports configuration that an agent silently ignores: plain
+`.md` files in `.cursor/rules/` (Cursor requires `.mdc`), and `.agents/rules/*.md`
+files with missing or invalid frontmatter or nested below the flat rules directory
+(Antigravity discards them without any error).
 
 ### Limit Resolution Order
 
@@ -174,6 +193,8 @@ The `-exts` CLI flag overrides this at runtime; pass `-exts all` to bypass the f
 | `DefaultGitLabLayout()` | presets.go | GitLab `.gitlab/` preset |
 | `DefaultBitbucketLayout()` | presets.go | Bitbucket root-level preset |
 | `DefaultRootLayout()` | presets.go | Repository root layout preset |
+| `ResolveByteLimit(path, cfg)` | repogov.go | Resolve the byte-size limit for a path (0 = none) |
+| `CheckAgentPitfalls(root)` | pitfalls.go | Read-only detection of config an agent silently ignores (Cursor plain `.md` rules; Antigravity `.agents/rules` frontmatter and nesting) |
 | `CheckClaudeSettings(root)` | settings.go | Read-only audit of `.claude/settings*.json` permission rules (duplicates, redundancy, conflicts, consolidation); never modifies settings, never parses credential files |
 | `UpdateAgentsMdContextAll(root, schemas)` | scaffold.go | Refresh AGENTS.md `## Context` with merged platform links |
 | `Passed(results)` | format.go | Check if all results pass |

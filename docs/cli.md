@@ -105,6 +105,21 @@ credential files (`.claude/.credentials.json`) are detected by filename only
 > absent. Repository platform presets (`gitlab`, `root`) are separate from agents —
 > use `-platform gitlab` or `-platform root` explicitly.
 
+
+**Agent pitfalls.** With `-agent all` (the default), `cursor`, or `gemini`, `layout`
+also prints an "agent pitfalls" section (JSON key `pitfalls`) for configuration an agent
+silently ignores:
+
+| Finding | Meaning |
+|---------|---------|
+| WARN plain `.md` in `.cursor/rules/` | Cursor ignores it; project rules must be `.mdc` |
+| FAIL `.agents/rules/*.md` without frontmatter or `trigger` | Antigravity silently discards the rule |
+| FAIL unrecognized `trigger` (e.g. `alwaysOn`) | Must be `always_on`, `model_decision`, `glob`, or `manual` |
+| WARN `model_decision` without `description`; FAIL `glob` without `globs` | Rule cannot work as written |
+| WARN nested `.agents/rules/<dir>/*.md` | Scanned flat; ignored unless listed in `.agents/rules.json` |
+
+`README.md` files are never flagged. Each finding carries a `-- FIX:` hint.
+
 ### `init`
 
 Scaffold the platform directory structure under the repository root.
@@ -161,6 +176,25 @@ repogov -root . -json validate
 
 Exits `1` if any errors are found, `0` if the config is valid (warnings do not
 cause a non-zero exit).
+
+### `update-config`
+
+Add or refresh the `_agent_hints` block in an existing JSON or YAML config, so configs
+created before hints existed (or with older hint wording) pick up the current
+guidance for AI agents.
+
+```sh
+repogov -root . update-config
+repogov -root . -config .github/repogov-config.json update-config
+```
+
+The edit is textual: all other content (key order, compact arrays, indentation,
+line endings) is preserved byte-for-byte, and the effective configuration is
+verified unchanged before anything is written. Re-running is a no-op. In YAML
+configs the hints are a top-level `_agent_hints:` mapping of double-quoted
+strings, inserted after any leading comment header (and `---`); comments
+elsewhere are preserved. A UTF-8 BOM and CRLF line endings are kept. Exits `2`
+if no config is found or the file cannot be parsed.
 
 ### `all`
 
