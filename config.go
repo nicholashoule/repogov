@@ -1,12 +1,16 @@
 package repogov
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// utf8BOM is the UTF-8 byte order mark some editors prepend to text files.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 // configNames lists supported config filenames in search order.
 // JSON is preferred over YAML.
@@ -31,6 +35,9 @@ func LoadConfig(path string) (Config, error) {
 		}
 		return Config{}, err
 	}
+	// Windows editors and PowerShell often save a UTF-8 BOM, which
+	// encoding/json rejects; tolerate it.
+	data = bytes.TrimPrefix(data, utf8BOM)
 
 	var cfg Config
 	if isYAML(path) {
@@ -58,6 +65,9 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if cfg.Rules == nil {
 		cfg.Rules = def.Rules
+	}
+	if cfg.MaxBytes == nil {
+		cfg.MaxBytes = def.MaxBytes
 	}
 	// Merge default file entries; user entries take precedence.
 	if cfg.Files == nil {
@@ -195,6 +205,19 @@ func ValidateConfig(cfg Config) []Violation { //nolint:gocritic // hugeParam: st
 				Message:  fmt.Sprintf("must be >= 0, got %d", *r.Limit),
 				Severity: "error",
 			})
+		}
+	}
+
+	// MaxBytes validation.
+	for i, r := range cfg.MaxBytes {
+		field := fmt.Sprintf("max_bytes[%d]", i)
+		if r.Glob == "" {
+			vs = append(vs, Violation{Field: field + ".glob", Message: "glob pattern is empty", Severity: "error"})
+		} else if _, err := filepath.Match(r.Glob, "test"); err != nil {
+			vs = append(vs, Violation{Field: field + ".glob", Message: fmt.Sprintf("invalid glob pattern %q: %v", r.Glob, err), Severity: "error"})
+		}
+		if r.Limit != nil && *r.Limit < 0 {
+			vs = append(vs, Violation{Field: field + ".limit", Message: fmt.Sprintf("must be >= 0, got %d", *r.Limit), Severity: "error"})
 		}
 	}
 

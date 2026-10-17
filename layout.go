@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -19,6 +20,13 @@ type LayoutSchema struct {
 	// Required lists files that must exist within Root.
 	// Paths are relative to Root using forward slashes.
 	Required []string
+
+	// Alternatives maps a Required file to other files (paths relative to
+	// Root) that satisfy the requirement when the required file is absent.
+	// Layout checks accept any one of them; 'repogov init' still creates the
+	// required file itself. Example: Gemini requires GEMINI.md, but a repo
+	// that only has AGENTS.md is read by Antigravity and passes.
+	Alternatives map[string][]string
 
 	// Optional lists known files that may or may not exist.
 	// Their absence does not produce a warning or failure.
@@ -119,6 +127,14 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		for _, req := range schema.Required {
 			filePath := filepath.Join(root, filepath.FromSlash(req))
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				if alt := presentAlternative(root, "", schema.Alternatives[req]); alt != "" {
+					results = append(results, LayoutResult{
+						Path:    req,
+						Status:  Pass,
+						Message: "required file absent but satisfied by " + alt,
+					})
+					continue
+				}
 				results = append(results, LayoutResult{
 					Path:    req,
 					Status:  Fail,
@@ -231,6 +247,19 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 			}
 		}
 
+		// A NoCreate directory with no glob is "managed elsewhere" (e.g. .claude,
+		// .github/workflows, .opencode): its whole subtree is accepted, not just
+		// files directly inside it. Without this, ".claude/rules/a.md" was
+		// reported as an unexpected file under the root layout.
+		if !inManagedDir {
+			for p := path.Dir(filepath.ToSlash(dir)); p != "." && p != "/" && p != ""; p = path.Dir(p) {
+				if rule, ok := schema.Dirs[p]; ok && rule.NoCreate && rule.Glob == "" {
+					inManagedDir = true
+					break
+				}
+			}
+		}
+
 		// checkManagedFrontmatter validates frontmatter for files in managed
 		// directories with a Frontmatter requirement. It runs for every
 		// matching file -- including files that are also listed in Required
@@ -294,6 +323,14 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 	// Report missing required files.
 	for _, r := range schema.Required {
 		if !requiredFound[r] {
+			if alt := presentAlternative(root, schema.Root, schema.Alternatives[r]); alt != "" {
+				results = append(results, LayoutResult{
+					Path:    filepath.ToSlash(filepath.Join(schema.Root, r)),
+					Status:  Pass,
+					Message: "required file absent but satisfied by " + alt,
+				})
+				continue
+			}
 			results = append(results, LayoutResult{
 				Path:    filepath.ToSlash(filepath.Join(schema.Root, r)),
 				Status:  Fail,
@@ -319,6 +356,17 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 	}
 
 	return results, nil
+}
+
+// presentAlternative returns the first file in alts that exists under
+// root/base, or "" when none does.
+func presentAlternative(root, base string, alts []string) string {
+	for _, a := range alts {
+		if _, err := os.Stat(filepath.Join(root, base, filepath.FromSlash(a))); err == nil {
+			return a
+		}
+	}
+	return ""
 }
 
 // matchGlob wraps filepath.Match against a bare filename (no path

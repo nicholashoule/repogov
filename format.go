@@ -37,7 +37,8 @@ func Summary(results []Result) string {
 		case Skip:
 			skip++
 		}
-		if r.Limit > 0 {
+		switch {
+		case r.Limit > 0:
 			// Recompute the percentage from Lines/Limit rather than trusting
 			// r.Pct: callers may construct Result literals by hand (see
 			// ExampleSummary) without populating Pct, and the summary must
@@ -45,14 +46,18 @@ func Summary(results []Result) string {
 			pct := 100 * r.Lines / r.Limit
 			if r.Action != "" {
 				fmt.Fprintf(&b, "  [%s] %s (%d / %d, %d%%) -- %s\n",
-					r.Status, r.Path, r.Lines, r.Limit, pct, r.Action)
+					r.Status, cleanText(r.Path), r.Lines, r.Limit, pct, cleanText(r.Action))
 			} else {
 				fmt.Fprintf(&b, "  [%s] %s (%d / %d, %d%%)\n",
-					r.Status, r.Path, r.Lines, r.Limit, pct)
+					r.Status, cleanText(r.Path), r.Lines, r.Limit, pct)
 			}
-		} else {
+		case r.Action != "":
+			// Line-exempt files can still fail a byte limit; show why.
+			fmt.Fprintf(&b, "  [%s] %s (%d / %d) -- %s\n",
+				r.Status, cleanText(r.Path), r.Lines, r.Limit, cleanText(r.Action))
+		default:
 			fmt.Fprintf(&b, "  [%s] %s (%d / %d)\n",
-				r.Status, r.Path, r.Lines, r.Limit)
+				r.Status, cleanText(r.Path), r.Lines, r.Limit)
 		}
 	}
 	fmt.Fprintf(&b, "\nLimits: %d files | %d pass | %d warn | %d fail | %d skip\n\n",
@@ -92,9 +97,39 @@ func LayoutSummary(results []LayoutResult) string {
 		case Info:
 			info++
 		}
-		fmt.Fprintf(&b, "  [%s] %s -- %s\n", r.Status, r.Path, r.Message)
+		fmt.Fprintf(&b, "  [%s] %s -- %s\n", r.Status, cleanText(r.Path), cleanText(r.Message))
 	}
 	fmt.Fprintf(&b, "\nLayout: %d checks | %d pass | %d warn | %d fail | %d info\n\n",
 		len(results), pass, warn, fail, info)
 	return b.String()
+}
+
+// cleanText makes untrusted text (file names and values read from files)
+// safe to print to a terminal or CI log. Control characters (including ESC
+// and newline, which could forge extra log lines or GitHub Actions workflow
+// commands such as "::error::") and Unicode bidirectional overrides
+// ("Trojan Source") are replaced with '?'. JSON output is unaffected: the
+// encoder already escapes these.
+func cleanText(s string) string {
+	clean := true
+	for _, r := range s {
+		if isUnsafeRune(r) {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if isUnsafeRune(r) {
+			return '?'
+		}
+		return r
+	}, s)
+}
+
+func isUnsafeRune(r rune) bool {
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) ||
+		(r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }

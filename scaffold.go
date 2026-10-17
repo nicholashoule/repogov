@@ -21,7 +21,7 @@ func createCopilotInstructions(root, layoutDir string, schema LayoutSchema, desc
 	}
 
 	content := copilotInstructionsContent(schema, descriptive)
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{filepath.ToSlash(filepath.Join(schema.Root, "copilot-instructions.md"))}, nil
@@ -67,7 +67,7 @@ func createClaudeMd(layoutDir string, schema LayoutSchema) ([]string, error) { /
 		return nil, nil
 	}
 	content := claudeMdContent(schemaRootToAgent(schema.Root), schema.Root)
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{".claude/CLAUDE.md"}, nil
@@ -91,7 +91,7 @@ func createGeminiMd(root string) ([]string, error) {
 		return nil, nil
 	}
 	content := geminiMdContent()
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{"GEMINI.md"}, nil
@@ -113,7 +113,7 @@ func createZedRules(root string) ([]string, error) {
 		return nil, nil
 	}
 	content := zedRulesContent()
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{".rules"}, nil
@@ -295,6 +295,11 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 			continue
 		}
 		actualName := instructionFileName(templateName, opts.descriptive)
+		content := contentFn()
+		if schema.Root == ".cursor" {
+			// Cursor ignores plain .md rules; seed .mdc with Cursor frontmatter.
+			actualName, content = cursorRule(templateName, content)
+		}
 		filePath := filepath.Join(targetDir, actualName)
 		if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 			// File already exists; never overwrite.
@@ -303,7 +308,7 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			return created, err
 		}
-		if err := os.WriteFile(filePath, []byte(contentFn()), 0o644); err != nil {
+		if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 			return created, err
 		}
 		rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, actualName))
@@ -314,13 +319,22 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 	// repogov config file is present at init time.
 	if shouldSeedFile("governance", opts.include, opts.exclude) {
 		govName := instructionFileName("governance.instructions.md", opts.descriptive)
+		var cursorGov string
+		if schema.Root == ".cursor" {
+			govName = "governance.mdc"
+		}
 		govFile := filepath.Join(targetDir, govName)
 		if _, err := os.Stat(govFile); os.IsNotExist(err) {
 			cfgName, cfgRel := detectConfigRelFrom(root, targetDir)
 			if err := os.MkdirAll(targetDir, 0o755); err != nil {
 				return created, err
 			}
-			if err := os.WriteFile(govFile, []byte(governanceInstructionsContent(cfgName, cfgRel, schemaRootToAgent(schema.Root))), 0o644); err != nil {
+			govContent := governanceInstructionsContent(cfgName, cfgRel, schemaRootToAgent(schema.Root))
+			if schema.Root == ".cursor" {
+				_, cursorGov = cursorRule("governance.instructions.md", govContent)
+				govContent = cursorGov
+			}
+			if err := writeNewFile(govFile, []byte(govContent), 0o644); err != nil {
 				return created, err
 			}
 			rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, govName))
@@ -440,7 +454,7 @@ func createAgentsMd(root string, schema LayoutSchema) ([]string, error) { //noli
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		// File does not exist: create it with full generated content.
 		content := agentsMdContent(schema)
-		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+		if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 			return nil, err
 		}
 		return []string{"AGENTS.md"}, nil
@@ -674,7 +688,7 @@ func createDefaultConfigAll(root string) ([]string, error) {
 	filePath := filepath.Join(root, "repogov-config.json")
 	cfg := DefaultConfig()
 	data := defaultConfigJSON(cfg)
-	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
+	if err := writeNewFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{"repogov-config.json"}, nil
@@ -699,7 +713,7 @@ func createDefaultConfig(root, configDir string, schema LayoutSchema, descriptiv
 	baseCfg.DescriptiveNames = descriptive
 	cfg := schemaConfig(baseCfg, schema)
 	data := defaultConfigJSON(cfg)
-	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
+	if err := writeNewFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
 	}
 	rel, _ := filepath.Rel(root, filepath.Join(configDir, "repogov-config.json"))
@@ -727,6 +741,16 @@ func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic //
 	for _, r := range cfg.Rules {
 		if strings.HasPrefix(r.Glob, prefix) {
 			out.Rules = append(out.Rules, r)
+		}
+	}
+	for _, r := range cfg.MaxBytes {
+		switch {
+		case strings.HasPrefix(r.Glob, prefix):
+			out.MaxBytes = append(out.MaxBytes, r)
+		case !strings.Contains(r.Glob, "/") && crossAgentRootFile(r.Glob):
+			out.MaxBytes = append(out.MaxBytes, r)
+		case root == "." && isInRequired(r.Glob, schema.Required):
+			out.MaxBytes = append(out.MaxBytes, r)
 		}
 	}
 	for k, v := range cfg.Files {
@@ -810,6 +834,7 @@ func crossAgentRootFile(name string) bool {
 func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: intentional value semantics
 	var b strings.Builder
 	b.WriteString("{\n")
+	b.WriteString(defaultAgentHints)
 	b.WriteString("  \"default\": " + intStr(cfg.Default) + ",\n")
 	if cfg.DescriptiveNames {
 		b.WriteString("  \"descriptive_names\": true,\n")
@@ -857,6 +882,23 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 		b.WriteString("\n")
 	}
 	b.WriteString("  ],\n")
+
+	// max_bytes as compact single-line objects (omitted when empty).
+	if len(cfg.MaxBytes) > 0 {
+		b.WriteString("  \"max_bytes\": [\n")
+		for i, r := range cfg.MaxBytes {
+			if r.Limit != nil {
+				b.WriteString("    {\"glob\": \"" + r.Glob + "\", \"limit\": " + intStr(*r.Limit) + "}")
+			} else {
+				b.WriteString("    {\"glob\": \"" + r.Glob + "\"}")
+			}
+			if i < len(cfg.MaxBytes)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("  ],\n")
+	}
 
 	// files map — sorted for deterministic output.
 	b.WriteString("  \"files\": {\n")
@@ -969,7 +1011,7 @@ func createSubdirReadmes(layoutDir string, schema LayoutSchema) ([]string, error
 			return created, err
 		}
 		content := subdirReadmeContent(dirName, rule)
-		if err := os.WriteFile(readmePath, []byte(content), 0o644); err != nil {
+		if err := writeNewFile(readmePath, []byte(content), 0o644); err != nil {
 			return created, err
 		}
 		rel := filepath.ToSlash(filepath.Join(schema.Root, dirName, "README.md"))

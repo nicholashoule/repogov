@@ -71,6 +71,9 @@ var sensitiveFileExts = map[string]bool{
 	".crt": true,
 	".pem": true,
 	".key": true,
+	".p12": true,
+	".pfx": true,
+	".jks": true,
 }
 
 // isSensitivePath reports whether path has an extension listed in
@@ -109,8 +112,21 @@ func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:
 	}
 
 	limit := ResolveLimit(relPath, cfg)
-	if limit == 0 {
+	byteLimit := ResolveByteLimit(relPath, cfg)
+	if limit == 0 && byteLimit == 0 {
 		return Result{Path: relPath, Limit: 0, Status: Skip}, nil
+	}
+
+	// Only regular files are opened. A symlink could point at a secret
+	// outside the repo (its content would be read to count lines) and a FIFO
+	// or device would block the walk indefinitely.
+	if info, err := os.Lstat(fsPath); err == nil && !info.Mode().IsRegular() {
+		return Result{
+			Path:   relPath,
+			Limit:  limit,
+			Status: Skip,
+			Action: "not a regular file (symlink or special file); not opened",
+		}, nil
 	}
 
 	f, err := os.Open(fsPath)
@@ -129,37 +145,75 @@ func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:
 		return Result{Path: relPath, Limit: limit, Status: Skip}, nil
 	}
 
-	count, err := countLinesFrom(f, sniff[:n])
-	if err != nil {
-		return Result{}, err
-	}
-
-	pct := 100 * count / limit
 	status := Pass
+	action := ""
+	count, pct := 0, 0
 	warnThreshold := effectiveWarningThreshold(cfg)
-	switch {
-	case count > limit:
-		status = Fail
-	case pct >= warnThreshold:
-		status = Warn
+
+	// Line limit. A limit of 0 exempts the file from the line check only; a
+	// byte limit (below) may still apply.
+	if limit > 0 {
+		var err error
+		count, err = countLinesFrom(f, sniff[:n])
+		if err != nil {
+			return Result{}, err
+		}
+		pct = 100 * count / limit
+		switch {
+		case count > limit:
+			status = Fail
+			action = fmt.Sprintf("over limit by %d lines; reduce or exempt via repogov-config.json", count-limit)
+		case pct >= warnThreshold:
+			status = Warn
+			action = fmt.Sprintf("at %d%% of %d-line limit; consider refactoring", pct, limit)
+		}
 	}
 
-	action := ""
-	switch status {
-	case Fail:
-		over := count - limit
-		action = fmt.Sprintf("over limit by %d lines; reduce or exempt via repogov-config.json", over)
-	case Warn:
-		action = fmt.Sprintf("at %d%% of %d-line limit; consider refactoring", pct, limit)
+	// Byte limit: some agents truncate or drop instruction files by size, not
+	// by lines (e.g. Antigravity truncates rule files over 24,000 bytes), so a
+	// file inside its line limit can still be cut off.
+	size := 0
+	if byteLimit > 0 {
+		if fi, statErr := f.Stat(); statErr == nil {
+			size = clampInt(fi.Size())
+		}
+		bpct := int(100 * int64(size) / int64(byteLimit))
+		var bStatus Status
+		switch {
+		case size > byteLimit:
+			bStatus = Fail
+		case bpct >= warnThreshold:
+			bStatus = Warn
+		}
+		if bStatus != Pass {
+			msg := fmt.Sprintf("%d bytes is %d%% of the %d-byte limit; trim the file (agents truncate or ignore oversized instructions) or raise max_bytes in repogov-config.json", size, bpct, byteLimit)
+			if bStatus == Fail {
+				msg = fmt.Sprintf("over byte limit by %d bytes (%d / %d); trim the file (agents truncate or ignore oversized instructions) or raise max_bytes in repogov-config.json", size-byteLimit, size, byteLimit)
+			}
+			if action != "" {
+				action += "; "
+			}
+			action += msg
+			if bStatus > status {
+				status = bStatus
+			}
+		}
+	}
+
+	if limit == 0 && status == Pass {
+		// Line-exempt and within its byte limit: nothing to report.
+		return Result{Path: relPath, Status: Skip}, nil
 	}
 
 	return Result{
-		Path:   relPath,
-		Lines:  count,
-		Limit:  limit,
-		Pct:    pct,
-		Status: status,
-		Action: action,
+		Path:      relPath,
+		Lines:     count,
+		Limit:     limit,
+		Pct:       pct,
+		Bytes:     size,
+		ByteLimit: byteLimit,
+		Status:    status,
+		Action:    action,
 	}, nil
 }
 
@@ -230,7 +284,13 @@ func CheckDirContext(ctx context.Context, root string, exts []string, cfg Config
 
 		result, err := checkFileAt(path, relPath, cfg)
 		if err != nil {
-			// Skip unreadable files rather than aborting the walk.
+			// Do not abort the walk, but never drop the file silently: an
+			// unreadable file must surface so Passed() cannot be vacuously true.
+			results = append(results, Result{
+				Path:   relPath,
+				Status: Fail,
+				Action: fmt.Sprintf("unreadable: %v; fix permissions or add to skip_dirs/files with limit 0", err),
+			})
 			return nil
 		}
 		results = append(results, result)
@@ -238,4 +298,13 @@ func CheckDirContext(ctx context.Context, root string, exts []string, cfg Config
 	})
 
 	return results, err
+}
+
+// clampInt converts a file size to int without overflow on 32-bit platforms.
+func clampInt(n int64) int {
+	const maxInt = int64(^uint(0) >> 1)
+	if n > maxInt {
+		return int(maxInt)
+	}
+	return int(n)
 }

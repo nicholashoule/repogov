@@ -31,18 +31,22 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 		sFiles
 		sInitInclude
 		sInitExclude
+		sMaxBytes
 	)
 
 	var (
 		sec     section
 		curRule *Rule
+		// ruleDst is the rule list the section being parsed appends to
+		// (rules or max_bytes; both are lists of glob/limit objects).
+		ruleDst *[]Rule
 	)
 
 	flushRule := func() {
-		if curRule != nil {
-			cfg.Rules = append(cfg.Rules, *curRule)
-			curRule = nil
+		if curRule != nil && ruleDst != nil {
+			*ruleDst = append(*ruleDst, *curRule)
 		}
+		curRule = nil
 	}
 
 	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
@@ -87,6 +91,11 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 			case "rules":
 				sec = sRules
 				cfg.Rules = nil
+				ruleDst = &cfg.Rules
+			case "max_bytes":
+				sec = sMaxBytes
+				cfg.MaxBytes = []Rule{}
+				ruleDst = &cfg.MaxBytes
 			case "files":
 				sec = sFiles
 				cfg.Files = make(map[string]int)
@@ -134,7 +143,7 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 				cfg.IncludeExts = append(cfg.IncludeExts, val)
 			}
 
-		case sRules:
+		case sRules, sMaxBytes:
 			if strings.HasPrefix(trimmed, "- ") {
 				flushRule()
 				curRule = &Rule{}
@@ -209,6 +218,16 @@ func marshalYAML(cfg Config) ([]byte, error) { //nolint:gocritic // hugeParam: i
 	if len(cfg.Rules) > 0 {
 		fmt.Fprintln(&b, "rules:")
 		for _, r := range cfg.Rules {
+			fmt.Fprintf(&b, "  - glob: %s\n", yamlQuote(r.Glob))
+			if r.Limit != nil {
+				fmt.Fprintf(&b, "    limit: %d\n", *r.Limit)
+			}
+		}
+	}
+
+	if len(cfg.MaxBytes) > 0 {
+		fmt.Fprintln(&b, "max_bytes:")
+		for _, r := range cfg.MaxBytes {
 			fmt.Fprintf(&b, "  - glob: %s\n", yamlQuote(r.Glob))
 			if r.Limit != nil {
 				fmt.Fprintf(&b, "    limit: %d\n", *r.Limit)

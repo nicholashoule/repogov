@@ -134,6 +134,14 @@ type Config struct {
 	// limits. A limit of 0 exempts the file from checking.
 	Files map[string]int `json:"files"`
 
+	// MaxBytes are glob-based byte-size limits, evaluated in order (first
+	// match wins) and checked in addition to the line limits. Some agents
+	// truncate or drop instruction files by size rather than line count
+	// (e.g. Antigravity truncates rule files over 24,000 bytes), so a file
+	// inside its line limit can still be cut off. Rule.Limit is in bytes;
+	// 0 or nil means no byte limit. Exact paths work as globs.
+	MaxBytes []Rule `json:"max_bytes,omitempty"`
+
 	// InitAlwaysCreate controls whether [InitLayout] and [InitLayoutAll]
 	// seed default template files even when the target directory already
 	// exists and contains files. When false (the default), default files
@@ -199,6 +207,12 @@ type Result struct {
 	// Zero when the file is exempt (Limit = 0).
 	Pct int
 
+	// Bytes is the file size in bytes. Set only when a byte limit applies.
+	Bytes int `json:"Bytes,omitempty"`
+
+	// ByteLimit is the resolved byte limit (0 = none).
+	ByteLimit int `json:"ByteLimit,omitempty"`
+
 	// Status is the check outcome: Pass, Warn, Fail, or Skip.
 	Status Status
 
@@ -249,6 +263,15 @@ func DefaultConfig() Config {
 			{Glob: ".roo/rules/*.md", Limit: RuleLimit(300)},
 			{Glob: ".aiassistant/rules/*.md", Limit: RuleLimit(300)},
 		},
+		// Byte limits: Antigravity truncates each rule file (AGENTS.md,
+		// GEMINI.md, .agents/rules/*.md) over 24,000 bytes after include
+		// expansion; Codex caps combined project instructions at 32 KiB, so
+		// the stricter documented figure is used.
+		MaxBytes: []Rule{
+			{Glob: "AGENTS.md", Limit: RuleLimit(24000)},
+			{Glob: "GEMINI.md", Limit: RuleLimit(24000)},
+			{Glob: ".agents/rules/*.md", Limit: RuleLimit(24000)},
+		},
 		Files: map[string]int{
 			".github/copilot-instructions.md": 50,
 			".claude/CLAUDE.md":               200,
@@ -267,6 +290,7 @@ func DefaultConfig() Config {
 			".github/rules/memory.instructions.md":        200,
 			".github/instructions/memory.instructions.md": 200,
 			".cursor/rules/memory.md":                     200,
+			".cursor/rules/memory.mdc":                    200,
 			".cursor/rules/memory.instructions.md":        200,
 			".windsurf/rules/memory.md":                   200,
 			".windsurf/rules/memory.instructions.md":      200,
@@ -320,6 +344,22 @@ func ResolveLimit(path string, cfg Config) int { //nolint:gocritic // hugeParam:
 		return cfg.Default
 	}
 	return defaultLimit
+}
+
+// ResolveByteLimit returns the effective byte-size limit for a repo-relative
+// path (forward slashes): the Limit of the first matching [Config.MaxBytes]
+// rule, or 0 when no byte limit applies. Matching is identical to
+// [ResolveLimit]'s glob handling.
+func ResolveByteLimit(path string, cfg Config) int { //nolint:gocritic // hugeParam: stable public API
+	for _, r := range cfg.MaxBytes {
+		if ruleGlobMatches(r.Glob, path) {
+			if r.Limit == nil {
+				return 0
+			}
+			return *r.Limit
+		}
+	}
+	return 0
 }
 
 // ruleGlobMatches reports whether a [Rule.Glob] pattern matches a

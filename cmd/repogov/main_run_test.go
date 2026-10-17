@@ -552,3 +552,64 @@ func TestRun_LayoutClaudeIncludesSettingsAudit(t *testing.T) {
 		t.Error("layout run modified settings.json -- audit must be read-only")
 	}
 }
+
+func TestRun_UpdateConfig(t *testing.T) {
+	root := t.TempDir()
+	cfg := filepath.Join(root, "repogov-config.json")
+	orig := "{\n  \"default\": 500,\n  \"files\": {\"README.md\": 1200}\n}\n"
+	if err := os.WriteFile(cfg, []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr := bufs()
+	if code := run([]string{"-root", root, "update-config"}, stdout, stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	got, _ := os.ReadFile(cfg)
+	if !strings.Contains(string(got), "_agent_hints") || !strings.HasSuffix(string(got), orig[2:]) {
+		t.Fatalf("hints missing or original not preserved:\n%s", got)
+	}
+	stdout, stderr = bufs()
+	if code := run([]string{"-root", root, "update-config"}, stdout, stderr); code != 0 || !strings.Contains(stdout.String(), "already has") {
+		t.Fatalf("second run should be a no-op, got %d %q", code, stdout)
+	}
+	if code := run([]string{"-root", t.TempDir(), "update-config"}, stdout, stderr); code != 2 {
+		t.Fatalf("missing config should exit 2, got %d", code)
+	}
+}
+
+func TestRun_LayoutReportsAgentPitfalls(t *testing.T) {
+	root := t.TempDir()
+	rules := filepath.Join(root, ".agents", "rules")
+	if err := os.MkdirAll(rules, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rules, "bad.md"), []byte("no frontmatter\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr := bufs()
+	if code := run([]string{"-root", root, "layout"}, stdout, stderr); code != 1 {
+		t.Fatalf("a silently-discarded rule must fail the run, got %d (%s)", code, stderr)
+	}
+	if !strings.Contains(stdout.String(), "agent pitfalls") || !strings.Contains(stdout.String(), "FIX:") {
+		t.Errorf("text output missing pitfalls section:\n%s", stdout)
+	}
+
+	stdout, stderr = bufs()
+	if code := run([]string{"-root", root, "-json", "layout"}, stdout, stderr); code != 1 {
+		t.Fatalf("json: got %d", code)
+	}
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := out["pitfalls"]; !ok {
+		t.Errorf("json output missing pitfalls key: %v", out)
+	}
+
+	// A repo with no rule directories prints nothing extra.
+	stdout, _ = bufs()
+	if code := run([]string{"-root", t.TempDir(), "-quiet", "layout"}, stdout, stderr); code != 0 {
+		t.Errorf("clean repo should pass, got %d", code)
+	}
+}

@@ -203,7 +203,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		if rule.Min > 0 {
 			gitkeep := filepath.Join(dirPath, ".gitkeep")
 			if _, err := os.Stat(gitkeep); os.IsNotExist(err) {
-				if err := os.WriteFile(gitkeep, []byte(""), 0o644); err != nil {
+				if err := writeNewFile(gitkeep, []byte(""), 0o644); err != nil {
 					return created, err
 				}
 				rel := filepath.ToSlash(filepath.Join(schema.Root, dirName, ".gitkeep"))
@@ -243,7 +243,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			content := placeholderContent(req)
-			if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+			if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 				return created, err
 			}
 			rel := filepath.ToSlash(filepath.Join(schema.Root, req))

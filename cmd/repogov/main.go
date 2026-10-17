@@ -90,6 +90,7 @@ Subcommands:
   layout    Validate directory structure against a platform preset
   init      Scaffold the platform directory structure
   validate  Validate the configuration file and report issues
+  update-config  Add or refresh the _agent_hints block in the JSON config
   all       Run both limits and layout checks
   version   Print version and exit
 
@@ -192,6 +193,8 @@ Examples:
 		return 0
 	case "init":
 		return runInit(root, configPath, agent, platform, quiet, jsonOut, descriptive, seed, stdout, stderr)
+	case "update-config":
+		return runUpdateConfig(root, configPath, quiet, stdout, stderr)
 	case "validate":
 		return runValidate(root, configPath, quiet, jsonOut, stdout, stderr)
 	case "limits":
@@ -225,7 +228,7 @@ Examples:
 		return code
 	default:
 		fmt.Fprintf(stderr, "unknown subcommand: %s\n", sub)
-		fmt.Fprintf(stderr, "usage: repogov [flags] <limits|layout|init|validate|all|version>\n")
+		fmt.Fprintf(stderr, "usage: repogov [flags] <limits|layout|init|validate|update-config|all|version>\n")
 		return 2
 	}
 }
@@ -642,6 +645,15 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 				code = 1
 			}
 		}
+		// Agent-pitfall checks: configuration an agent silently ignores.
+		if wantPitfalls(agentFlag, isAll) {
+			if pf := repogov.CheckAgentPitfalls(root); len(pf) > 0 {
+				out["pitfalls"] = pf
+				if !repogov.LayoutPassed(pf) {
+					code = 1
+				}
+			}
+		}
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		enc.Encode(out) //nolint:errcheck
@@ -682,6 +694,22 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 		}
 		if !repogov.LayoutPassed(results) {
 			code = 1
+		}
+	}
+	// Agent-pitfall checks: configuration an agent silently ignores (e.g.
+	// Cursor drops plain .md rules; Antigravity drops rules with invalid
+	// frontmatter). Printed only when a relevant directory exists.
+	if wantPitfalls(agentFlag, isAll) {
+		if pf := repogov.CheckAgentPitfalls(root); len(pf) > 0 {
+			if !quiet {
+				fmt.Fprintln(stdout)
+				fmt.Fprintln(stdout, "Checking agent pitfalls (silently ignored config)...")
+				fmt.Fprintln(stdout)
+				fmt.Fprint(stdout, repogov.LayoutSummary(pf))
+			}
+			if !repogov.LayoutPassed(pf) {
+				code = 1
+			}
 		}
 	}
 	return code
@@ -949,6 +977,54 @@ func isAbsolute(path string) bool {
 	// Windows drive letter: C:\...
 	if len(path) >= 3 && path[1] == ':' && (path[2] == '/' || path[2] == '\\') {
 		return true
+	}
+	return false
+}
+
+// runUpdateConfig adds or refreshes the "_agent_hints" block in the active
+// JSON config, leaving every other byte of the file untouched.
+func runUpdateConfig(root, configPath string, quiet bool, stdout, stderr io.Writer) int {
+	cfgPath := configPath
+	if cfgPath == "" {
+		cfgPath = repogov.FindConfig(root)
+		if cfgPath == "" {
+			fmt.Fprintln(stderr, "No config file found. Run 'repogov init' to create one.")
+			return 2
+		}
+	} else if !isAbsolute(cfgPath) {
+		cfgPath = filepath.Join(root, cfgPath)
+	}
+	displayPath := cfgPath
+	if rel, err := filepath.Rel(root, cfgPath); err == nil {
+		displayPath = filepath.ToSlash(rel)
+	}
+	changed, err := repogov.UpgradeConfigHints(cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "error updating %s: %v\n", displayPath, err)
+		return 2
+	}
+	if !quiet {
+		if changed {
+			fmt.Fprintf(stdout, "Updated %s with the current _agent_hints.\n", displayPath)
+		} else {
+			fmt.Fprintf(stdout, "%s already has the current _agent_hints.\n", displayPath)
+		}
+	}
+	return 0
+}
+
+// wantPitfalls reports whether the agent-pitfall checks apply to a layout
+// run: always for "all", otherwise when an agent with a pitfall check
+// (cursor, gemini/antigravity) was requested.
+func wantPitfalls(agentFlag string, isAll bool) bool {
+	if isAll {
+		return true
+	}
+	for _, a := range strings.Split(agentFlag, ",") {
+		switch strings.TrimSpace(a) {
+		case "cursor", "gemini":
+			return true
+		}
 	}
 	return false
 }
