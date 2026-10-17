@@ -1,7 +1,8 @@
 # GitHub Platform Audit
 
 Source: https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions
-Verified: 2026-03-22
+Source: https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file
+Verified: 2026-10-17
 
 ## Overview
 
@@ -26,11 +27,17 @@ repogov auto-detects GitHub when:
 | File | Purpose |
 |------|---------|
 | `CODE_OF_CONDUCT.md` | Community code of conduct |
-| `CODEOWNERS` | Automatic reviewer assignment |
+| `ACCESSIBILITY.md` | Accessibility goals and reporting process (newly supported; not in preset) |
+| `CODEOWNERS` | Automatic reviewer assignment (`.github/`, root, or `docs/`; first found wins; under 3 MB) |
 | `CONTRIBUTING.md` | Contribution guidelines |
 | `FUNDING.yml` | Sponsor button configuration |
 | `SECURITY.md` | Security policy and vulnerability reporting |
 | `SUPPORT.md` | Support resources |
+| `VULNERABILITY_REPORT.yml`/`.yaml` | Private vulnerability report form (`.github/` only; not in preset) |
+
+Most files may live in `.github/`, the repo root, or `docs/` (checked in that order);
+`FUNDING.yml` and `VULNERABILITY_REPORT.yml` are `.github/` only. Org/user defaults come from a
+public `.github` repository; a repo's own `ISSUE_TEMPLATE/` fully replaces the defaults.
 
 ## Templates
 
@@ -41,6 +48,8 @@ repogov auto-detects GitHub when:
 | `.github/PULL_REQUEST_TEMPLATE/` | PR template directory |
 | `.github/PULL_REQUEST_TEMPLATE.md` | Single-file PR template |
 | `.github/pull_request_template.md` | Lowercase alternative PR template |
+| `.github/ISSUE_TEMPLATE/config.yml` | Issue chooser configuration |
+| `.github/DISCUSSION_TEMPLATE/` | Discussion category forms (not in preset) |
 
 ## CI/CD
 

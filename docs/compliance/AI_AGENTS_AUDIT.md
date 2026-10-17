@@ -1,5 +1,7 @@
 # AI Agent Setup Audit
 
+Verified: 2026-10-17
+
 Reference file for tracking supported AI agent configuration patterns.
 Consult and update this file when adding or modifying agent support in repogov.
 
@@ -16,8 +18,8 @@ The agent must load its instructions from files that live inside the repository
 Instructions managed exclusively through a web platform or IDE settings UI
 cannot be governed by repogov.
 
-*Disqualifies:* Devin (Knowledge/Repo Setup via app.devin.ai); any agent
-where the only instruction path is a platform-side database.
+*Disqualifies:* any agent whose only instruction path is a platform-side database.
+*Re-evaluate:* Devin -- its Knowledge feature was web-managed, but it now loads file-based `SKILL.md` skills.
 
 ### 2. Officially documented, stable config paths
 
@@ -26,9 +28,7 @@ and must have remained stable across at least one major release. Undocumented or
 community-reported paths create maintenance risk — if the agent changes the path,
 the preset silently breaks.
 
-*Disqualifies (currently):* Amazon Q Developer (docs inaccessible); Sourcegraph
-Cody (rules docs return 404). Both should be re-evaluated when docs become
-available.
+*Disqualifies (currently):* Amazon Q Developer (deprecated; docs inaccessible).
 
 ### 3. Markdown-compatible instruction files
 
@@ -47,11 +47,44 @@ rules or named `Required`/`Optional` files. The agent must "own" a directory
 (e.g. `.cursor/rules/`, `.windsurf/rules/`, `.claude/rules/`) or have a
 well-known filename (e.g. `CLAUDE.md`, `GEMINI.md`) that repogov can target
 with a glob. Agents that rely entirely on explicit per-invocation file
-enumeration (Aider's `read:` list; Plandex's manual `plandex load`) have no
-stable layout to validate.
+enumeration (Aider's `read:` list) have no stable layout to validate.
 
 *Disqualifies as preset (tracked-only):* Aider (instructions enumerated in
-`.aider.conf.yml`); Plandex (no auto-loaded instruction files confirmed).
+`.aider.conf.yml`).
+
+---
+
+
+## Status Review (2026-10-17)
+
+All per-agent audits were re-verified against current vendor documentation on
+2026-10-17. Lifecycle changes found, and the follow-ups they imply for presets:
+
+| Agent | Status | Follow-up for repogov |
+|-------|--------|-----------------------|
+| Roo Code | **Deprecated** -- repo archived and extension shut down 2026-05-15; Cline and the ZooCode fork named as targets | Keep the preset for existing repos; mark deprecated in docs/CLI help |
+| Windsurf | **Soft-deprecated** -- docs now served from docs.devin.ai; memories are legacy-Cascade only; `.devin/rules/` preferred, `.windsurf/rules/` still read | Add `.devin/rules/` support to the Windsurf preset or a Devin preset |
+| Gemini CLI | **Partly superseded** -- Antigravity CLI replaced it for unpaid-tier users (2026-06-18); `GEMINI.md` and `AGENTS.md` still work; Antigravity adds `.agents/rules/*.md` with `trigger:` frontmatter (invalid frontmatter silently discards the rule) | `-agent gemini` now accepts `AGENTS.md` in place of `GEMINI.md` (`LayoutSchema.Alternatives`); evaluate a shared `.agents/` layout |
+| Zed AI | **Changed** -- Rules Library replaced by Skills; `.rules` still supported; any of 9 files accepted | Fixed in v0.9.0: any of Zed's nine documented files satisfies the requirement |
+| Devin | **Deprecated Knowledge, now file-based** -- `SKILL.md` in `.agents/skills/`, `.devin/`, `.github/`, `.claude/`, `.cognition/`, `.windsurf/` | Re-evaluate C1; now a preset candidate |
+| Plandex, Sourcegraph Cody | Plandex Cloud wound down (2025); Cody Free/Pro discontinued 2025-07-23 | **Dropped** -- audit files removed (see Dropped Agents) |
+| Amazon Q Developer CLI | **Deprecated**, maintenance-only; Kiro CLI supersedes | None |
+| Cursor | Project rules must be `.mdc`; plain `.md` in `.cursor/rules` is ignored | Fixed in v0.9.0: `init` seeds `.mdc` with Cursor frontmatter and `layout` warns on plain `.md` rules |
+| Claude Code | Skills, `CLAUDE.local.md`, newer `Bash(x *)` permission syntax | Add `skills/` dir; settings audit handles only `:*` form |
+| Copilot | `excludeAgent` value now `cloud-agent`; reads root `CLAUDE.md`/`GEMINI.md`; `.github/prompts/`, `.github/skills/<name>/SKILL.md` and `.github/agents/` confirmed on the vendor cheat sheet | Preset lacks `agents/`, `skills/`, `prompts/` -- now safe to add as Optional |
+| Kiro CLI | `.kiro/agents/` and `.kiro/skills/` documented | Preset ignores them |
+| Cline | `.cline/rules/` current; `.clinerules/` legacy; workflows, skills, hooks | Preset covers `.clinerules/` only |
+| Continue, JetBrains, AGENTS.md, Aider | No lifecycle change | None |
+| OpenCode | **New (tracked 2026-10-17)** -- `AGENTS.md`, `opencode.json(c)`, `.opencode/{agents,commands,skills}/`; v2 reads `AGENTS.md` only (v1 also read `CLAUDE.md`) | Root layout now recognizes `opencode.json(c)` and `.opencode/`; `DefaultOpenCodeLayout()` is viable but not built |
+| Codex CLI | Not deprecated; `.codex/config.toml` added | `DefaultCodexLayout()` still unbuilt (Tier 2) |
+| Bitbucket | `.bitbucket/CODEOWNERS` confirmed from Atlassian's Cloud guide (read from the PR destination branch) | Add as Optional in `DefaultBitbucketLayout` |
+
+Platform audits: GitLab accepts CODEOWNERS at `./`, `docs/`, or `.gitlab/`; GitHub
+gained `ACCESSIBILITY.md`, `VULNERABILITY_REPORT.yml` and `DISCUSSION_TEMPLATE/`. The
+GitLab and GitHub presets do not yet reflect these.
+
+Audit hygiene: every audit file now carries a `Verified:` date. Re-verify at
+least quarterly; dates older than about 90 days should be treated as stale.
 
 ---
 
@@ -68,6 +101,7 @@ Legend: Pass / Warn (partial) / Fail
 | Claude Code | Pass | Pass | Pass | Pass | **Yes** | Yes |
 | AGENTS.md (cross-agent) | Pass | Pass | Pass | Pass | **Yes** | N/A — cross-platform seed |
 | OpenAI Codex CLI | Pass | Pass | Pass | Pass | **Yes** | Pending — not yet built |
+| OpenCode | Pass | Pass | Pass | Pass | **Yes** | Pending — not yet built |
 | Aider | Pass | Pass | Warn | Fail | **No** | No (correct) |
 | Amazon Q Developer CLI | Pass | Fail | Pass | Warn | **No** | No — deprecated; Kiro CLI supersedes |
 | Kiro CLI | Pass | Pass | Pass | Pass | **Yes** | Yes |
@@ -145,6 +179,7 @@ Agents documented for awareness but not implemented in repogov:
 |-------|-----------|--------|
 | Aider | [AIDER_AUDIT.md](AIDER_AUDIT.md) | Does not qualify — fails C3 and C4; no preset planned |
 | OpenAI Codex CLI | [CODEX_AUDIT.md](CODEX_AUDIT.md) | Qualifies (Tier 2) — preset not yet built; see action items in audit file |
+| OpenCode | [OPENCODE_AUDIT.md](OPENCODE_AUDIT.md) | Qualifies (Tier 2) — preset not yet built; v2 reads `AGENTS.md` only |
 | Amazon Q Developer CLI | [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) | Deprecated — superseded by Kiro CLI; no preset planned |
 
 ## Planned Support Backlog
@@ -156,10 +191,21 @@ row to the Per-Agent Files table above.
 | # | Agent | Audit File | Verified Config Path(s) | Notes |
 |---|-------|-----------|-------------------------|-------|
 | 1 | Amazon Q Developer CLI | [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) | **Deprecated** — superseded by Kiro CLI. `.amazonq/rules/*.md` was unverified and is now moot. | CLI is maintenance-only; no preset planned; see AMAZONQ_AUDIT.md |
-| 2 | Sourcegraph Cody | [SOURCEGRAPH_AUDIT.md](SOURCEGRAPH_AUDIT.md) | Unverified — no file-based instructions found in official docs | Rules docs pages return 404; see audit file for action items |
-| 3 | Devin | [DEVIN_AUDIT.md](DEVIN_AUDIT.md) | None (web-platform managed) | Instructions via Knowledge/Repo Setup in app.devin.ai; not file-based |
-| 4 | Plandex | [PLANDEX_AUDIT.md](PLANDEX_AUDIT.md) | `.plandex/` (state dir, not instructions); explicit `plandex load` for context | No auto-loaded instruction file confirmed; docs unavailable |
+| 2 | Devin | [DEVIN_AUDIT.md](DEVIN_AUDIT.md) | File-based `SKILL.md` in `.agents/skills/` (recommended), `.devin/`, `.github/`, `.claude/`, `.cognition/`, `.windsurf/` skills dirs; Knowledge feature deprecated | Re-evaluate against C1; see Status Review |
 
+
+## Dropped Agents
+
+Removed from tracking on 2026-10-17 because they fail the support criteria with no path to
+qualifying, so an audit file would only go stale:
+
+- **Plandex** -- Plandex Cloud wound down (announced 2025-10-03; cloud service ended after
+  2025-11-07 per the project's blog as summarized by search results). The open-source repo is not
+  archived, but it documents no auto-loaded instruction file (fails C4).
+- **Sourcegraph Cody** -- Free and Pro plans were discontinued 2025-07-23; only Cody Enterprise
+  remains and its docs describe no file-based instructions (fails C2 and C4).
+
+Re-add an audit file only if either project documents a stable, repo-scoped instruction path.
 
 ## Implementation Priority Tiers
 
@@ -188,15 +234,14 @@ Criteria met but implementation is more complex or docs have minor gaps.
 | Agent | Root / Single File | Multi-file Dir | Caveat |
 |-------|-------------------|----------------|--------|
 | OpenAI Codex CLI | `AGENTS.md` (directory walkup) | `.agents/skills/` (per-skill `SKILL.md`) | Skills sub-dir structure is more complex than a flat glob |
+| OpenCode | `AGENTS.md`; `opencode.json(c)` | `.opencode/agents/*.md`, `.opencode/commands/*.md`, `.opencode/skills/` | v2 reads `AGENTS.md` only; pin major version (v1 differs) |
 
 ### Tier 3 — Tracked only, no preset planned
 
 | Agent | Reason |
 |-------|--------|
 | Amazon Q Developer CLI | Deprecated; maintenance-only; superseded by Kiro CLI |
-| Devin | Web-platform managed; no repo files (fails C1) |
-| Plandex | No auto-loaded instruction files confirmed (fails C4) |
-| Sourcegraph Cody | No confirmed file-based instruction pattern (fails C2 and C4) |
+| Devin | Knowledge deprecated; file-based skills now exist -- re-evaluate for a preset (see Status Review) |
 | Aider | No auto-scanned directory; explicit `--read` enumeration (fails C4) |
 
 ## Support Matrix
@@ -242,7 +287,7 @@ Extensions recognized by each agent for instruction/config files in a git repo.
 | Gemini CLI | `.md` | `GEMINI.md`; hierarchical walkup from CWD to `$HOME` |
 | Continue.dev | `.md` | `.continue/rules/*.md`; YAML frontmatter: `globs`, `alwaysApply`, `description` |
 | Cline | `.md` | `.clinerules/*.md`; also accepts `.cursorrules`, `.windsurfrules`; YAML `paths:` frontmatter for conditional rules |
-| Roo Code | `.md` | `.roo/rules/*.md`; fallback `.roorules`; YAML frontmatter supported |
+| Roo Code (deprecated) | `.md` | `.roo/rules/*.md`; fallback `.roorules`; YAML frontmatter supported |
 | JetBrains AI Assistant | `.md` | `.aiassistant/rules/*.md`; rule types: Always / Manually / By model decision / By file patterns |
 | Aider | `.yml`, `.md` (any) | `.aider.conf.yml` (tool config); `--read` / `read:` accepts any file as instruction context |
 | OpenAI Codex CLI | `.md`, `.toml`, `.yaml` | `AGENTS.md` (directory walkup); `.agents/skills/<name>/SKILL.md`; `~/.codex/config.toml` (global config); `agents/openai.yaml` (skill UI metadata) |

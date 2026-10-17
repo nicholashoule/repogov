@@ -1,7 +1,8 @@
 # Claude Code (Anthropic) Audit
 
 Source: https://code.claude.com/docs/en/settings and https://code.claude.com/docs/en/memory
-Verified: 2026-03-13
+Verified: 2026-10-17
+(settings, memory, permissions, skills pages fetched 2026-10-17)
 
 ## Configuration Files
 
@@ -14,6 +15,13 @@ Verified: 2026-03-13
   Hooks are defined here under the `hooks` key — NOT as a separate directory.
 - `.claude/settings.local.json` — personal overrides; gitignored.
   `claudeMdExcludes` key here can suppress specific `CLAUDE.md` files in monorepos.
+- `CLAUDE.local.md` at repo root - personal per-project instructions, loaded after `CLAUDE.md`
+  at the same level; should be gitignored. NOT governed by repogov (outside `.claude/`).
+- `.claude/skills/<name>/SKILL.md` - skills (frontmatter: `description`, `when_to_use`,
+  `allowed-tools`, `paths`, `context`, etc.; keep `SKILL.md` under 500 lines). Nested
+  `<subdir>/.claude/skills/` also supported.
+- `.claude/commands/*.md` - legacy custom commands, now merged into skills (still work;
+  docs recommend skills for new work).
 - `.mcp.json` at repo root — project-scoped MCP server configuration (outside `.claude/`).
 
 ### User-level rules
@@ -63,7 +71,7 @@ This is **machine-local and git-repo-scoped** — never committed to version con
 | Item | Detail |
 |------|---------|
 | Storage location | `~/.claude/projects/<project-hash>/memory/` |
-| Index file | `MEMORY.md` — first 200 lines loaded at every session start |
+| Index file | `MEMORY.md` — first 200 lines or 25KB (whichever first) loaded at every session start |
 | Topic files | e.g. `debugging.md`, `testing.md` — loaded on demand when relevant |
 | Trigger | Claude writes to memory when it learns something useful for future sessions |
 | Toggle | `autoMemoryEnabled` in settings (default: on), or env `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` |
@@ -74,6 +82,33 @@ instruction files in the repo remain the authoritative team-shared context layer
 
 Claude Code uses `@path` import syntax inside `CLAUDE.md` to compose larger context
 from smaller focused files.
+
+## AGENTS.md Interop
+
+Claude Code reads a repo's `AGENTS.md` only when no `CLAUDE.md` / `.claude/CLAUDE.md` /
+`CLAUDE.local.md` exists in the working directory or above (default `claude-md-or-agents-md`).
+The `claudeMd` key in `managed-settings.json` can also embed managed instructions.
+
+## Settings Precedence and Permission Syntax
+
+Settings precedence (highest first): managed settings, `claude --settings`,
+`.claude/settings.local.json`, `.claude/settings.json`, `~/.claude/settings.json`.
+Permission rules evaluate deny, then ask, then allow; first match wins, so an allow rule
+cannot carve an exception out of a deny rule.
+
+Bash rule syntax: the current form is `Bash(npm run *)` (space + wildcard; `*` may appear at
+any position). The legacy `Bash(npm run:*)` suffix is documented as equivalent and is only
+recognized at the end of a pattern; it is not formally deprecated.
+
+## CheckClaudeSettings (repogov)
+
+`CheckClaudeSettings(root)` in `settings.go` is a read-only audit of `.claude/settings.json`
+and `.claude/settings.local.json` (strict allowlist; symlinks and non-regular files are not
+followed). It reports line/rule counts, invalid JSON (Fail), duplicate rules, rules made
+redundant by a broader `:*` prefix rule, and allow entries overridden by deny (Warn), each
+with a `-- FIX:` hint. `.claude/.credentials.json` is NEVER opened or parsed; its presence is
+reported by filename only. Repogov never creates or modifies settings files. Redundancy
+detection targets the `:*` form, not the space-wildcard `Bash(x *)` form.
 
 ## Seeded Files
 

@@ -1,13 +1,19 @@
 # Cline Audit
 
-Source: https://docs.cline.bot/features/cline-rules — verified 2026-03-07.
+Sources: https://docs.cline.bot/customization/cline-rules and
+https://docs.cline.bot/customization/overview — Verified: 2026-10-17.
+(The old URL `/features/cline-rules` was not re-fetched.) Cline is active; it is also
+the migration target named by the shut-down Roo Code project.
 
 ## Configuration Files
 
 ### Workspace Rules
 
-- `.clinerules/` — primary multi-file rules directory. Cline loads all `.md`
-  and `.txt` files in this directory. Files support YAML frontmatter with a
+- `.cline/rules/` — also searched by current Cline (not governed by repogov).
+- `.clinerules/` — multi-file rules directory; current docs treat it as a still-read
+  legacy layout alongside `.cline/rules/`, and the VS Code Rules panel still creates
+  rules here. Current docs list `.md` files (`.txt` support is carried over from the
+  earlier audit, not re-confirmed). Files support YAML frontmatter with a
   `paths:` field for glob-based conditional application.
 
   Example frontmatter for a conditional rule:
@@ -17,22 +23,34 @@ Source: https://docs.cline.bot/features/cline-rules — verified 2026-03-07.
     - "**/*.go"
   ---
   ```
-  A rule file without a `paths:` key applies globally to all interactions.
+  A rule file without frontmatter is always active; `paths: []` never activates;
+  unparseable YAML activates the rule with raw content shown. Glob syntax: `*`, `**`,
+  `?`, `[abc]`, `{a,b}`.
 
 ### Cross-Tool Compatibility
 
-Cline also automatically detects and loads rules from other agents' config files
-when a `.clinerules/` directory is not present:
+Cline also auto-detects rules from other agents' files (all appear in the Rules
+panel and can be toggled):
 
 - `.cursorrules` — Cursor legacy single-file format
 - `.windsurfrules` — Windsurf legacy single-file format
-- `AGENTS.md` — AGENTS.md cross-agent standard
+- `AGENTS.md` and `~/.agents/AGENTS.md` — AGENTS.md cross-agent standard
 
 ### Global Rules
 
-- `~/Documents/Cline/Rules/` (macOS/Windows) — global rules directory loaded
-  for all projects. Same `.md`/`.txt` format as workspace rules.
-  Linux equivalent follows XDG base dir convention.
+- `~/Documents/Cline/Rules/` (`Documents\Cline\Rules` on Windows; same path on
+  macOS/Linux/WSL) — global rules directory. Cline also checks `~/.cline/rules` and
+  `~/Cline/Rules`. Global and workspace rules combine; workspace wins conflicts.
+
+### Other Surfaces (not governed by repogov)
+
+| Surface | Project path | Global path |
+|---------|--------------|-------------|
+| Workflows | `.cline/workflows/` | `~/.cline/workflows/` |
+| Skills | `.cline/skills/`, `.agents/skills/` | `~/.cline/skills/`, `~/.agents/skills/` |
+| Hooks | `.cline/hooks/` | `~/.cline/hooks/` (or `CLINE_HOOKS_DIR`) |
+
+Legacy `.clinerules/` may also contain `workflows/`, `skills/`, `hooks/` folders.
 
 ## File Extensions
 

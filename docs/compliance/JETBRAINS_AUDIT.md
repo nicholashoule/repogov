@@ -1,6 +1,30 @@
 # JetBrains AI Assistant Audit
 
-Source: https://www.jetbrains.com/help/ai-assistant/configure-project-rules.html — verified 2026-03-07.
+Source: https://www.jetbrains.com/help/ai-assistant/configure-project-rules.html — Verified: 2026-10-17
+(page dated AI Assistant 2026.2 docs, 27 May 2026). No deprecation of Project Rules
+found; the rule types table below was re-confirmed unchanged. The page does not
+mention `AGENTS.md`.
+
+## Related Agent Surfaces
+
+Per https://www.jetbrains.com/help/ai-assistant/agents.html (fetched 2026-10-17),
+JetBrains agents read their own instruction files: Junie respects `AGENTS.md`, Claude
+Agent uses `CLAUDE.md`, Codex uses `AGENTS.md`. That page does not mention
+`.aiassistant/rules`, which applies to AI Assistant chat. Junie's own docs (https://junie.jetbrains.com/docs/guidelines-and-memory.html, fetched
+2026-10-17) give this lookup order:
+
+1. `.junie/AGENTS.md` -- preferred; per maintainer guidance, when present it is used exclusively.
+2. Root `AGENTS.md`, combined with `.junie/playbook.md` and every `.junie/rules/*.md`, if present.
+3. Legacy `.junie/guidelines.md` or `.junie/guidelines/` (still supported).
+
+Global `~/.junie/AGENTS.md` is included alongside project guidelines. The page does not say
+whether the search stops at the first match, so the exclusive-use rule in (1) is unconfirmed on
+the vendor page. Because step 2 merges several hidden files, the result can differ between
+repos; an audit that needs one source of truth should keep a single `.junie/AGENTS.md`. Older
+IDE help pages (https://www.jetbrains.com/help/ai-assistant/junie-agent.html) describe a
+"Guidelines path" setting (Settings | Tools | Junie | Project Settings) that overrides the
+lookup and still show `.junie/guidelines.md` as the default; that setting is not on the Junie
+page above. Junie is not governed by repogov.
 
 ## Configuration Files
 

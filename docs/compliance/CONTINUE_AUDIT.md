@@ -1,6 +1,11 @@
 # Continue.dev Audit
 
-Source: https://docs.continue.dev/customize/deep-dives/rules — verified 2026-03-07.
+Source: https://docs.continue.dev/customize/deep-dives/rules — Verified: 2026-10-17.
+
+No deprecation found. Markdown is now the recommended rule format; YAML rules remain
+supported. Files must live in `.continue/rules/` (not `.continue/rule/`) and need valid
+YAML frontmatter or they may not appear in the rules toolbar. Rules are not used for
+autocomplete or apply requests.
 
 ## Configuration Files
 
@@ -18,7 +23,7 @@ Source: https://docs.continue.dev/customize/deep-dives/rules — verified 2026-0
   | `name` | string | Display name shown in the rules toolbar |
   | `globs` | string or array | Apply rule only when matched files are in context |
   | `regex` | string or array | Apply rule only when matched content is in context files |
-  | `alwaysApply` | boolean | `true` = always include; `false` = include only when globs/regex match |
+  | `alwaysApply` | boolean | `true` = always include; `false` = only when globs/regex match or the agent picks it via `description`; unset = included if no globs, or globs match |
   | `description` | string | Agent reads this to decide relevance when `alwaysApply: false` |
 
   Example:
@@ -33,7 +38,10 @@ Source: https://docs.continue.dev/customize/deep-dives/rules — verified 2026-0
 ### Global Rules
 
 - `~/.continue/rules/` — global rules applied to all projects. Same format as
-  local workspace rules.
+  local workspace rules. (The 2026-10-17 fetch of the rules page did not cover global
+  rules; this is carried over from the earlier audit and third-party guides.)
+- A third-party report says root `AGENTS.md`/`CLAUDE.md` may be read as an always-on
+  rule; undocumented and unverified.
 
 ### Hub Rules (remote)
 
