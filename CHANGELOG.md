@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Generated configs quote every value** (CodeQL go/unsafe-quoting). `init`'s JSON writer built each string by concatenation, so a `skip_dirs` entry, glob or `files` path holding a quote or ending in a backslash closed its string early and could inject keys into the generated config; every value now goes through `encoding/json`. The YAML writer escaped only quotes, so a value ending in a backslash escaped its own closing quote; it now escapes backslashes, quotes and control characters, and the reader reverses exactly those escapes, so values round-trip.
 - `CheckDir`/`CheckFile` no longer open symlinks or special files (reported as SKIP); unreadable files now FAIL instead of vanishing
 - Scaffolding creates files with `O_EXCL` (`writeNewFile`), so it never writes through a symlink or races a creator
 - `init` no longer writes through a symlinked `AGENTS.md`: the Context update `Lstat`s the file, refuses symlinks and special files with a reason, caps it at 4 MiB, and writes atomically (temp file + `fsync` + rename); `SaveConfig` likewise refuses symlinks and writes atomically, keeping an existing file's permissions

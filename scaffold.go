@@ -1,6 +1,7 @@
 package repogov
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -928,7 +929,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	b.WriteString("{\n")
 	b.WriteString(agentHints())
 	if tag, ok := NormalizeLanguage(effectiveLanguage(cfg.Language)); ok {
-		b.WriteString("  \"language\": \"" + tag + "\",\n")
+		b.WriteString("  \"language\": " + jsonString(tag) + ",\n")
 	}
 	b.WriteString("  \"default\": " + intStr(cfg.Default) + ",\n")
 	if cfg.DescriptiveNames {
@@ -949,7 +950,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString("\"" + d + "\"")
+		b.WriteString(jsonString(d))
 	}
 	b.WriteString("],\n")
 
@@ -959,7 +960,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString("\"" + e + "\"")
+		b.WriteString(jsonString(e))
 	}
 	b.WriteString("],\n")
 
@@ -967,9 +968,9 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	b.WriteString("  \"rules\": [\n")
 	for i, r := range cfg.Rules {
 		if r.Limit != nil {
-			b.WriteString("    {\"glob\": \"" + r.Glob + "\", \"limit\": " + intStr(*r.Limit) + "}")
+			b.WriteString("    {\"glob\": " + jsonString(r.Glob) + ", \"limit\": " + intStr(*r.Limit) + "}")
 		} else {
-			b.WriteString("    {\"glob\": \"" + r.Glob + "\"}")
+			b.WriteString("    {\"glob\": " + jsonString(r.Glob) + "}")
 		}
 		if i < len(cfg.Rules)-1 {
 			b.WriteString(",")
@@ -983,9 +984,9 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 		b.WriteString("  \"max_bytes\": [\n")
 		for i, r := range cfg.MaxBytes {
 			if r.Limit != nil {
-				b.WriteString("    {\"glob\": \"" + r.Glob + "\", \"limit\": " + intStr(*r.Limit) + "}")
+				b.WriteString("    {\"glob\": " + jsonString(r.Glob) + ", \"limit\": " + intStr(*r.Limit) + "}")
 			} else {
-				b.WriteString("    {\"glob\": \"" + r.Glob + "\"}")
+				b.WriteString("    {\"glob\": " + jsonString(r.Glob) + "}")
 			}
 			if i < len(cfg.MaxBytes)-1 {
 				b.WriteString(",")
@@ -1003,7 +1004,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	}
 	sort.Strings(fileKeys)
 	for i, k := range fileKeys {
-		b.WriteString("    \"" + k + "\": " + intStr(cfg.Files[k]))
+		b.WriteString("    " + jsonString(k) + ": " + intStr(cfg.Files[k]))
 		if i < len(fileKeys)-1 {
 			b.WriteString(",")
 		}
@@ -1012,6 +1013,23 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	b.WriteString("  }\n")
 	b.WriteString("}\n")
 	return b.String()
+}
+
+// jsonString is s as a JSON string literal, quotes and all. Every string
+// defaultConfigJSON writes goes through it: a value from the user's config
+// (a skip_dirs entry, a glob, a files path) holding a quote, a backslash or
+// a control character must never close its string early and inject keys
+// into the generated file. HTML escaping is off so a glob reads as written.
+func jsonString(s string) string {
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(s); err != nil {
+		// Encoding a Go string cannot fail; strconv.Quote is still a valid
+		// JSON string for any input that reaches here.
+		return strconv.Quote(s)
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // intStr converts an int to its string representation.

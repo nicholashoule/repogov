@@ -390,27 +390,81 @@ func yamlCountIndent(s string) int {
 	return len(s)
 }
 
-// yamlUnquote removes surrounding single or double quotes from s.
+// yamlUnquote removes surrounding quotes from s and reverses their escapes:
+// a double-quoted scalar's \\, \", \n, \r, \t and \xHH (exactly what
+// [yamlDoubleQuote] writes), a single-quoted scalar's doubled ”. An unknown
+// escape is kept as written rather than guessed at.
 func yamlUnquote(s string) string {
-	if len(s) >= 2 {
-		if (s[0] == '"' && s[len(s)-1] == '"') ||
-			(s[0] == '\'' && s[len(s)-1] == '\'') {
-			return s[1 : len(s)-1]
-		}
+	if len(s) < 2 {
+		return s
+	}
+	switch {
+	case s[0] == '\'' && s[len(s)-1] == '\'':
+		return strings.ReplaceAll(s[1:len(s)-1], "''", "'")
+	case s[0] == '"' && s[len(s)-1] == '"':
+		return yamlUnescapeDouble(s[1 : len(s)-1])
 	}
 	return s
 }
 
-// yamlQuote returns s quoted if it contains YAML-special characters. The
-// empty string is quoted ("") so that a list item or value holding it
-// round-trips instead of reading back as a bare "-" or a missing value.
+// yamlUnescapeDouble reverses the escapes of a double-quoted scalar's body.
+func yamlUnescapeDouble(body string) string {
+	if !strings.Contains(body, `\`) {
+		return body
+	}
+	var b strings.Builder
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if c != '\\' || i+1 >= len(body) {
+			b.WriteByte(c)
+			continue
+		}
+		switch next := body[i+1]; next {
+		case '\\', '"':
+			b.WriteByte(next)
+			i++
+		case 'n':
+			b.WriteByte('\n')
+			i++
+		case 'r':
+			b.WriteByte('\r')
+			i++
+		case 't':
+			b.WriteByte('\t')
+			i++
+		case 'x':
+			if i+3 < len(body) {
+				if v, err := strconv.ParseUint(body[i+2:i+4], 16, 8); err == nil {
+					b.WriteByte(byte(v))
+					i += 3
+					continue
+				}
+			}
+			b.WriteByte(c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// yamlQuote returns s as a YAML scalar: bare when it holds nothing YAML
+// reads specially, otherwise double-quoted through [yamlDoubleQuote], which
+// escapes backslashes, quotes and control characters. Escaping only the
+// quote let a value ending in a backslash escape its own closing quote and
+// break out of the scalar. The empty string is quoted ("") so that a list
+// item or value holding it round-trips instead of reading back as a bare
+// "-" or a missing value.
 func yamlQuote(s string) string {
-	if s == "" || strings.ContainsAny(s, ":{}[]#&*!|>'\"%@`,?") ||
-		strings.ContainsAny(s, " \t") {
-		return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
+	if s == "" || strings.ContainsAny(s, ":{}[]#&*!|>'\"%@`,?\\ \t") || strings.IndexFunc(s, isYAMLControl) >= 0 {
+		return yamlDoubleQuote(s)
 	}
 	return s
 }
+
+// isYAMLControl reports a control character, which a bare scalar cannot
+// carry.
+func isYAMLControl(r rune) bool { return r < 0x20 || r == 0x7f }
 
 // yamlSetRuleField sets a field on a Rule by key name.
 func yamlSetRuleField(r *Rule, key, val string) error {
