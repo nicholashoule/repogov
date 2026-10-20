@@ -1,7 +1,8 @@
 # GitLab Platform Audit
 
-Source: https://docs.gitlab.com/ee/user/project/description_templates.html
-Verified: 2026-03-22
+Source: https://docs.gitlab.com/user/project/description_templates/
+Source: https://docs.gitlab.com/user/project/codeowners/
+Verified: 2026-10-17
 
 ## Overview
 
@@ -26,13 +27,16 @@ repogov auto-detects GitLab when either:
 | Path | Purpose |
 |------|---------|
 | `.gitlab/issue_templates/` | Issue description templates (Markdown) |
-| `.gitlab/merge_request_templates/` | Merge request description templates (Markdown) |
+| `.gitlab/merge_request_templates/` | Merge request description templates (`.md` only) |
+
+Templates must be on the default branch. A `Default.md` (case-insensitive) in either directory
+is the default; project settings override it. Group/instance template repositories also exist.
 
 ## Community Health Files
 
 | File | Purpose |
 |------|---------|
-| `.gitlab/CODEOWNERS` | Code ownership and automatic reviewer assignment |
+| `CODEOWNERS` | Code ownership. GitLab checks `./CODEOWNERS`, `./docs/CODEOWNERS`, then `./.gitlab/CODEOWNERS`; first found is used |
 
 ## CI/CD
 

@@ -109,10 +109,11 @@ func TestResolveRoot_ExplicitPath(t *testing.T) {
 	}
 }
 
-func TestResolveRoot_ExplicitAgentSubdir(t *testing.T) {
-	// An explicit path that points at an agent subdirectory inside a git repo
-	// (e.g. -root .cursor or -root .github/rules) must be resolved up to the
-	// git root, preventing double-nested scaffolding.
+func TestResolveRoot_WalksUpFromAgentSubdir(t *testing.T) {
+	// resolveRoot (used only when -root is NOT given) resolves a path inside
+	// an agent subdirectory of a git repo up to the git root, preventing
+	// double-nested scaffolding. An explicit -root is never walked up (see
+	// TestRun_ExplicitRootNotWalkedUp).
 	repoRoot := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
 		t.Fatal(err)

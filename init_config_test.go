@@ -46,12 +46,12 @@ func TestInitLayoutWithConfig_AlwaysCreate(t *testing.T) {
 	}
 	found := false
 	for _, p := range created2 {
-		if p == ".cursor/rules/general.md" {
+		if p == ".cursor/rules/general.mdc" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("InitLayoutWithConfig with InitAlwaysCreate should seed general.md into non-empty rules dir")
+		t.Error("InitLayoutWithConfig with InitAlwaysCreate should seed general.mdc into non-empty rules dir")
 	}
 
 	// The pre-existing file must not be overwritten.
@@ -110,12 +110,12 @@ func TestInitLayoutAllWithConfig_AlwaysCreate(t *testing.T) {
 	}
 	found := false
 	for _, p := range created {
-		if p == ".cursor/rules/general.md" {
+		if p == ".cursor/rules/general.mdc" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("InitLayoutAllWithConfig with InitAlwaysCreate should seed general.md")
+		t.Error("InitLayoutAllWithConfig with InitAlwaysCreate should seed general.mdc")
 	}
 }
 
@@ -234,10 +234,10 @@ func TestInitLayoutWithConfig_Descriptive_True(t *testing.T) {
 }
 
 // TestInitLayoutWithConfig_Descriptive_Cursor verifies that .cursor/rules/ receives
-// the full template set. With descriptive=false files use plain <name>.md; with
-// descriptive=true files use <name>.instructions.md.
+// the full template set as .mdc files (Cursor ignores plain .md rules), regardless
+// of descriptive_names.
 func TestInitLayoutWithConfig_Descriptive_Cursor(t *testing.T) {
-	// descriptive=false: files use plain .md
+	// descriptive=false: Cursor rules are .mdc
 	root := t.TempDir()
 	schema := repogov.DefaultCursorLayout()
 	cfg := repogov.Config{DescriptiveNames: false}
@@ -247,14 +247,14 @@ func TestInitLayoutWithConfig_Descriptive_Cursor(t *testing.T) {
 	}
 	found := false
 	for _, p := range created {
-		if p == ".cursor/rules/general.md" {
+		if p == ".cursor/rules/general.mdc" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("descriptive=false: expected .cursor/rules/general.md; created: %v", created)
+		t.Errorf("descriptive=false: expected .cursor/rules/general.mdc; created: %v", created)
 	}
-	assertExists(t, filepath.Join(root, ".cursor", "rules", "general.md"))
+	assertExists(t, filepath.Join(root, ".cursor", "rules", "general.mdc"))
 
 	// descriptive=true: files use .instructions.md
 	root2 := t.TempDir()
@@ -265,12 +265,12 @@ func TestInitLayoutWithConfig_Descriptive_Cursor(t *testing.T) {
 	}
 	found2 := false
 	for _, p := range created2 {
-		if p == ".cursor/rules/general.instructions.md" {
+		if p == ".cursor/rules/general.mdc" {
 			found2 = true
 		}
 	}
 	if !found2 {
-		t.Errorf("descriptive=true: expected .cursor/rules/general.instructions.md; created: %v", created2)
+		t.Errorf("descriptive=true: expected .cursor/rules/general.mdc; created: %v", created2)
 	}
 }
 

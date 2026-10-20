@@ -20,6 +20,12 @@ type initOptions struct {
 	include []string
 	// exclude is a blocklist of template stems; listed stems are skipped (ignored when include is set).
 	exclude []string
+	// language is the canonical prose-language tag stated in scaffolded agent
+	// files and the generated config; empty for none (see languageDirective).
+	language string
+	// skipAgentsContext leaves an existing AGENTS.md alone (all-agent init
+	// refreshes its Context section once, with merged links, at the end).
+	skipAgentsContext bool
 }
 
 // templateStem strips any ".instructions.md", ".mdc", or ".md" suffix from
@@ -60,7 +66,18 @@ func shouldSeedFile(stem string, include, exclude []string) bool {
 //   - A copilot-instructions.md linking to the instructions/ directory
 //     (GitHub schemas only, when no existing file is present)
 //
-// Existing files and directories are never overwritten or modified.
+// Existing files are never overwritten, with one exception: when a root
+// AGENTS.md already exists, the text between its
+// "<!-- repogov:context:begin -->" and "<!-- repogov:context:end -->"
+// markers (and only that text) is regenerated to link the scaffolded
+// platform; every other byte of the file is preserved. Section bounds are
+// never guessed from Markdown headings: when the file lacks exactly one
+// begin marker followed by exactly one end marker it is left byte-for-byte
+// unchanged and no error is returned; [AgentsMdContextStatus] reports why
+// and how to opt in (add the markers around the Context section). A
+// symlinked, unreadable or unwritable AGENTS.md is an error. No config file
+// is created when one already exists at the repo root or in .github/ (see
+// [FindConfig]).
 // Default template files are only seeded when their target directory is
 // empty or newly created. Use [InitLayoutWithConfig] with
 // [Config.InitAlwaysCreate] set to true to seed missing files into existing
@@ -73,13 +90,18 @@ func InitLayout(root string, schema LayoutSchema) ([]string, error) { //nolint:g
 // InitLayoutWithConfig is like [InitLayout] but honors configuration options
 // that influence scaffolding behavior, in particular [Config.InitAlwaysCreate].
 // When cfg.InitAlwaysCreate is true, default template files are seeded into
-// existing non-empty directories whenever an individual file is absent.
+// existing non-empty directories whenever an individual file is absent. A
+// known [Config.Language] is stated in every scaffolded agent instruction
+// file, in the refreshed Context section of an existing marked AGENTS.md,
+// and in a generated config; an unknown tag is ignored here (reported by
+// [ValidateConfig]).
 func InitLayoutWithConfig(root string, schema LayoutSchema, cfg Config) ([]string, error) { //nolint:gocritic // hugeParam: LayoutSchema is part of the public API; changing to pointer would be a breaking change
 	return initLayoutSingle(root, schema, initOptions{
 		alwaysCreate: cfg.InitAlwaysCreate,
 		descriptive:  cfg.DescriptiveNames,
 		include:      cfg.InitIncludeFiles,
 		exclude:      cfg.InitExcludeFiles,
+		language:     effectiveLanguage(cfg.Language),
 	})
 }
 
@@ -88,8 +110,11 @@ func InitLayoutWithConfig(root string, schema LayoutSchema, cfg Config) ([]strin
 // It is the preferred entry point when scaffolding multiple platforms at once.
 // Use [InitLayout] for a single-platform init.
 //
-// InitLayoutAll also updates AGENTS.md with a merged ## Context section that
-// references every scaffolded platform directory.
+// InitLayoutAll also refreshes the marked Context section of an existing
+// AGENTS.md with merged links to every scaffolded platform directory (see
+// [InitLayout] and [AgentsMdContextStatus] for the marker rules).
+// The config is not created when one already exists at the repo root or in
+// .github/.
 func InitLayoutAll(root string, schemas []LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	return initLayoutAllWithOptions(root, schemas, initOptions{})
 }
@@ -103,32 +128,35 @@ func InitLayoutAllWithConfig(root string, schemas []LayoutSchema, cfg Config) ([
 		descriptive:  cfg.DescriptiveNames,
 		include:      cfg.InitIncludeFiles,
 		exclude:      cfg.InitExcludeFiles,
+		language:     effectiveLanguage(cfg.Language),
 	})
 }
 
 // initLayoutAllWithOptions is the shared implementation for [InitLayoutAll]
 // and [InitLayoutAllWithConfig].
-func initLayoutAllWithOptions(root string, schemas []LayoutSchema, opts initOptions) ([]string, error) {
+func initLayoutAllWithOptions(root string, schemas []LayoutSchema, opts initOptions) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics, mirrors initLayoutSingle
 	var allCreated []string
 	for i := range schemas {
 		created, err := initLayoutSingle(root, schemas[i], initOptions{
-			skipConfig:   true,
-			alwaysCreate: opts.alwaysCreate,
-			descriptive:  opts.descriptive,
-			include:      opts.include,
-			exclude:      opts.exclude,
+			skipConfig:        true,
+			skipAgentsContext: true,
+			alwaysCreate:      opts.alwaysCreate,
+			descriptive:       opts.descriptive,
+			include:           opts.include,
+			exclude:           opts.exclude,
+			language:          opts.language,
 		})
 		if err != nil {
 			return allCreated, err
 		}
 		allCreated = append(allCreated, created...)
 	}
-	paths, err := createDefaultConfigAll(root)
+	paths, err := createDefaultConfigAll(root, opts.language)
 	if err != nil {
 		return allCreated, err
 	}
 	allCreated = append(allCreated, paths...)
-	if err := UpdateAgentsMdContextAll(root, schemas); err != nil {
+	if err := updateAgentsMdContextAll(root, schemas, opts.language); err != nil {
 		return allCreated, err
 	}
 	return allCreated, nil
@@ -203,7 +231,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		if rule.Min > 0 {
 			gitkeep := filepath.Join(dirPath, ".gitkeep")
 			if _, err := os.Stat(gitkeep); os.IsNotExist(err) {
-				if err := os.WriteFile(gitkeep, []byte(""), 0o644); err != nil {
+				if err := writeNewFile(gitkeep, []byte(""), 0o644); err != nil {
 					return created, err
 				}
 				rel := filepath.ToSlash(filepath.Join(schema.Root, dirName, ".gitkeep"))
@@ -243,7 +271,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			content := placeholderContent(req)
-			if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+			if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 				return created, err
 			}
 			rel := filepath.ToSlash(filepath.Join(schema.Root, req))
@@ -254,7 +282,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	// Create copilot-instructions.md for GitHub schemas when it doesn't
 	// already exist. References whichever scoped-rule directory is in schema.Dirs.
 	if schema.Root == ".github" {
-		paths, err := createCopilotInstructions(root, layoutDir, schema, opts.descriptive)
+		paths, err := createCopilotInstructions(layoutDir, schema, opts.descriptive, opts.language)
 		if err != nil {
 			return created, err
 		}
@@ -263,7 +291,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 
 	// Create CLAUDE.md for Claude schemas when it doesn't already exist.
 	if schema.Root == ".claude" {
-		paths, err := createClaudeMd(layoutDir, schema)
+		paths, err := createClaudeMd(layoutDir, schema, opts.language)
 		if err != nil {
 			return created, err
 		}
@@ -274,7 +302,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	if schema.Root == "." {
 		for _, req := range schema.Required {
 			if req == "GEMINI.md" {
-				paths, err := createGeminiMd(root)
+				paths, err := createGeminiMd(root, opts.language)
 				if err != nil {
 					return created, err
 				}
@@ -288,7 +316,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	if schema.Root == "." {
 		for _, req := range schema.Required {
 			if req == ".rules" {
-				paths, err := createZedRules(root)
+				paths, err := createZedRules(root, opts.language)
 				if err != nil {
 					return created, err
 				}
@@ -298,10 +326,12 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 		}
 	}
 
-	// Create repogov-config.json with sensible defaults when it doesn't
-	// already exist. Prefer .github/ if it already exists (FindConfig checks
-	// there first); otherwise write it at the repo root so FindConfig can
-	// discover it without an explicit -config flag. Skipped when called from
+	// Create repogov-config.json with sensible defaults when no config exists
+	// yet at the repo root or in .github/ (createDefaultConfig checks with
+	// FindConfig, so init never adds a second, shadowed config). Placement:
+	// Copilot writes into .github/; other agents write into .github/ when that
+	// directory exists, otherwise at the repo root. FindConfig discovers both
+	// locations (root first, then .github/). Skipped when called from
 	// InitLayoutAll, which writes a single root-level config covering all
 	// platforms instead.
 	if !opts.skipConfig {
@@ -315,7 +345,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 				configDir = root
 			}
 		}
-		paths, err := createDefaultConfig(root, configDir, schema, opts.descriptive)
+		paths, err := createDefaultConfig(root, configDir, schema, opts.descriptive, opts.language)
 		if err != nil {
 			return created, err
 		}
@@ -364,7 +394,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	// Create AGENTS.md at the repo root when it doesn't already exist.
 	// AGENTS.md is a cross-agent open standard (https://agents.md) and is
 	// recognized by GitHub Copilot, Cursor, Claude Code, and OpenAI Codex.
-	agentsPaths, agentsErr := createAgentsMd(root, schema)
+	agentsPaths, agentsErr := createAgentsMd(root, schema, opts.language, !opts.skipAgentsContext)
 	if agentsErr != nil {
 		return created, agentsErr
 	}

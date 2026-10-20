@@ -1,6 +1,7 @@
 package repogov_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -233,7 +234,13 @@ func TestInitLayout_SeededConfigOnlyContainsPlatformRules(t *testing.T) {
 	if err != nil {
 		t.Fatal("repogov-config.json was not created")
 	}
-	content := string(data)
+	// Inspect only the functional keys: the "_agent_hints" guidance block is
+	// free text and may legitimately mention other platforms' paths.
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	content := string(parsed["rules"]) + string(parsed["files"])
 
 	// Only .github/ rules should be present.
 	for _, foreign := range []string{".cursor/", ".windsurf/", ".claude/"} {

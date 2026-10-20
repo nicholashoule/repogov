@@ -1,12 +1,16 @@
 package repogov
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// utf8BOM is the UTF-8 byte order mark some editors prepend to text files.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 // configNames lists supported config filenames in search order.
 // JSON is preferred over YAML.
@@ -31,6 +35,9 @@ func LoadConfig(path string) (Config, error) {
 		}
 		return Config{}, err
 	}
+	// Windows editors and PowerShell often save a UTF-8 BOM, which
+	// encoding/json rejects; tolerate it.
+	data = bytes.TrimPrefix(data, utf8BOM)
 
 	var cfg Config
 	if isYAML(path) {
@@ -38,10 +45,14 @@ func LoadConfig(path string) (Config, error) {
 			return Config{}, err
 		}
 	} else {
-		if err := json.Unmarshal(data, &cfg); err != nil {
+		if err := decodeConfigJSON(data, &cfg); err != nil {
 			return Config{}, err
 		}
 	}
+	// Canonicalize a known prose language tag ("en" -> "en-US"); an unknown
+	// tag is kept verbatim so ValidateConfig can report it, and a missing or
+	// empty one is the default (en-US).
+	cfg.Language = effectiveLanguage(cfg.Language)
 
 	// Merge missing fields from defaults.
 	if cfg.Default == 0 {
@@ -59,6 +70,9 @@ func LoadConfig(path string) (Config, error) {
 	if cfg.Rules == nil {
 		cfg.Rules = def.Rules
 	}
+	if cfg.MaxBytes == nil {
+		cfg.MaxBytes = def.MaxBytes
+	}
 	// Merge default file entries; user entries take precedence.
 	if cfg.Files == nil {
 		cfg.Files = def.Files
@@ -71,6 +85,33 @@ func LoadConfig(path string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// decodeConfigJSON decodes a JSON config into cfg strictly: an unknown
+// top-level or nested key (e.g. a "warning_treshold" typo) is an error rather
+// than a silent fall-back to defaults. Top-level keys starting with "_" are
+// metadata (e.g. "_agent_hints") and are ignored, as is a top-level
+// "$schema" key (an editor's JSON Schema reference).
+func decodeConfigJSON(data []byte, cfg *Config) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for k := range raw {
+		if strings.HasPrefix(k, "_") || k == "$schema" {
+			delete(raw, k)
+		}
+	}
+	stripped, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	dec := json.NewDecoder(bytes.NewReader(stripped))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(cfg); err != nil {
+		return fmt.Errorf("%w; fix the key name (see the documented config keys) or prefix metadata keys with _", err)
+	}
+	return nil
 }
 
 // FindConfig searches for a repogov configuration file relative to root.
@@ -119,8 +160,19 @@ func FindAllConfigs(root string) []string {
 
 // SaveConfig writes cfg to the given path. The format is determined by
 // file extension: .yaml/.yml produces YAML, everything else produces
-// indented JSON. The file is created with mode 0644.
+// indented JSON. A new file is created with mode 0644; an existing file
+// keeps its permission bits. The write is atomic (temporary file plus
+// rename), and a path that is a symlink or special file is refused.
 func SaveConfig(path string, cfg Config) error { //nolint:gocritic // hugeParam: stable public API
+	perm := os.FileMode(0o644)
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s is not a regular file (symlink or special file); refusing to write -- replace it with a regular file", path)
+		}
+		perm = info.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	var data []byte
 	var err error
 	if isYAML(path) {
@@ -134,7 +186,7 @@ func SaveConfig(path string, cfg Config) error { //nolint:gocritic // hugeParam:
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return writeFileAtomic(path, data, perm)
 }
 
 // Violation describes a single config validation issue.
@@ -173,6 +225,20 @@ func ValidateConfig(cfg Config) []Violation { //nolint:gocritic // hugeParam: st
 		})
 	}
 
+	// language must be a known prose-language tag; an unknown one is only a
+	// warning because it merely leaves agents without a language directive.
+	if cfg.Language != "" {
+		if _, ok := LookupLanguage(cfg.Language); !ok {
+			msg := fmt.Sprintf("unknown prose language tag %q; scaffolded agent files will not state a language", cfg.Language)
+			if near := closestLanguages(cfg.Language); len(near) > 0 {
+				msg += "; closest known tags: " + strings.Join(near, ", ")
+			} else {
+				msg += "; use a BCP 47 tag such as en-US, en-GB, es-419 or pt-BR (full list: repogov.KnownLanguages and the README language table)"
+			}
+			vs = append(vs, Violation{Field: "language", Message: msg, Severity: "warning"})
+		}
+	}
+
 	// Rules validation.
 	for i, r := range cfg.Rules {
 		field := fmt.Sprintf("rules[%d]", i)
@@ -195,6 +261,19 @@ func ValidateConfig(cfg Config) []Violation { //nolint:gocritic // hugeParam: st
 				Message:  fmt.Sprintf("must be >= 0, got %d", *r.Limit),
 				Severity: "error",
 			})
+		}
+	}
+
+	// MaxBytes validation.
+	for i, r := range cfg.MaxBytes {
+		field := fmt.Sprintf("max_bytes[%d]", i)
+		if r.Glob == "" {
+			vs = append(vs, Violation{Field: field + ".glob", Message: "glob pattern is empty", Severity: "error"})
+		} else if _, err := filepath.Match(r.Glob, "test"); err != nil {
+			vs = append(vs, Violation{Field: field + ".glob", Message: fmt.Sprintf("invalid glob pattern %q: %v", r.Glob, err), Severity: "error"})
+		}
+		if r.Limit != nil && *r.Limit < 0 {
+			vs = append(vs, Violation{Field: field + ".limit", Message: fmt.Sprintf("must be >= 0, got %d", *r.Limit), Severity: "error"})
 		}
 	}
 

@@ -1,6 +1,17 @@
 # Zed AI Audit
 
-Source: https://zed.dev/docs/ai/rules — verified 2026-03-07.
+Sources:
+- https://zed.dev/docs/ai/instructions.md — verified 2026-10-17
+- https://zed.dev/docs/ai/rules — returns HTTP 404 as of 2026-10-17; superseded by the instructions page
+
+## Deprecation Notice (verified 2026-10-17)
+
+> **Zed "Rules" and the Rules Library have been replaced.** The current docs
+> state reusable on-demand Rules are now **Skills**, and default always-on
+> Rules are now a personal `AGENTS.md` (`~/.config/zed/AGENTS.md`; Windows
+> `%APPDATA%\Zed\AGENTS.md`). Project instructions override the personal file
+> on conflict. Project `.rules` files remain supported as compatibility
+> instruction files. Source: https://zed.dev/docs/ai/instructions.md.
 
 ## Configuration Files
 
@@ -24,9 +35,9 @@ file found from the following list (in priority order) is used:
 The matched file is auto-included in all Agent Panel interactions (always-on).
 Only one file is loaded — the first match wins.
 
-### Rules Library (editor-managed)
+### Rules Library (editor-managed) — DEPRECATED
 
-Zed provides an in-IDE Rules Library for creating and managing reusable rules:
+Historical (pre-2026-10-17 docs; replaced by Skills and personal `AGENTS.md`). Zed provided an in-IDE Rules Library for creating and managing reusable rules:
 
 - Rules are stored locally by Zed (not in the project directory).
 - Any rule in the library can be set as a **default rule** (auto-inserted into
@@ -60,8 +71,8 @@ the sole persistent, repo-tracked context mechanism.
 | Scope | File | Auto-loaded |
 |-------|------|-------------|
 | Project | `.rules` | Yes — first match wins |
-| Editor (local) | Rules Library (Zed app data) | Yes — if set as default |
-| Global | None | — |
+| Editor (local) | Rules Library (Zed app data) | Deprecated — replaced by Skills |
+| Global | `~/.config/zed/AGENTS.md` (personal) | Yes |
 
 ## Seeded Files
 

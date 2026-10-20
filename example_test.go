@@ -172,3 +172,51 @@ func ExampleValidateConfig() {
 	// default
 	// error
 }
+
+// ExampleNormalizeLanguage shows the prose-language tag a config may carry:
+// case and "_" are tolerated, and a bare tag resolves to its documented
+// default variant. The default for a config that sets none is
+// repogov.DefaultLanguage.
+func ExampleNormalizeLanguage() {
+	for _, in := range []string{"en_us", "pt", "zh-TW", "tlh"} {
+		tag, ok := repogov.NormalizeLanguage(in)
+		fmt.Println(in, "->", tag, ok)
+	}
+	fmt.Println(repogov.DefaultLanguage)
+	// Output:
+	// en_us -> en-US true
+	// pt -> pt-BR true
+	// zh-TW -> zh-Hant true
+	// tlh -> tlh false
+	// en-US
+}
+
+// ExampleLookupLanguage reads a known language's display name and whether
+// it is written right to left.
+func ExampleLookupLanguage() {
+	lang, ok := repogov.LookupLanguage("ar")
+	fmt.Println(ok, lang.Tag, lang.RTL)
+	// Output:
+	// true ar-SA true
+}
+
+// ExampleAgentsMdContextStatus shows when init may refresh AGENTS.md's
+// generated Context section: only between the repogov:context markers. An
+// unmarked file is never touched, and the reason says how to opt in.
+func ExampleAgentsMdContextStatus() {
+	dir, _ := os.MkdirTemp("", "repo-*")
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "AGENTS.md")
+
+	_ = os.WriteFile(path, []byte("# Agents\n\n## Context\n\nHand-written.\n"), 0644)
+	ok, _ := repogov.AgentsMdContextStatus(dir)
+	fmt.Println("unmarked refreshable:", ok)
+
+	marked := "# Agents\n\n<!-- repogov:context:begin -->\n## Context\n<!-- repogov:context:end -->\n"
+	_ = os.WriteFile(path, []byte(marked), 0644)
+	ok, _ = repogov.AgentsMdContextStatus(dir)
+	fmt.Println("marked refreshable:", ok)
+	// Output:
+	// unmarked refreshable: false
+	// marked refreshable: true
+}

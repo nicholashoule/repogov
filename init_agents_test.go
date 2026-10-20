@@ -45,9 +45,11 @@ func TestInitLayout_AgentsMdNotOverwritten(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := repogov.InitLayout(root, repogov.DefaultCopilotLayout())
-	if err != nil {
-		t.Fatal(err)
+	if _, err := repogov.InitLayout(root, repogov.DefaultCopilotLayout()); err != nil {
+		t.Fatalf("an unmarked AGENTS.md is a notice, not an error: %v", err)
+	}
+	if ok, reason := repogov.AgentsMdContextStatus(root); ok || reason == "" {
+		t.Errorf("status must report the unmarked AGENTS.md: %v %q", ok, reason)
 	}
 
 	data, _ := os.ReadFile(filepath.Join(root, "AGENTS.md"))
@@ -611,7 +613,7 @@ func TestUpdateAgentsMdContextAll_MergedLinksForAllPlatforms(t *testing.T) {
 }
 
 // TestUpdateAgentsMdContextAll_NoContextSection verifies that a file without
-// a ## Context heading is left unchanged.
+// the Context markers is left unchanged and reported as not refreshed.
 func TestUpdateAgentsMdContextAll_NoContextSection(t *testing.T) {
 	root := t.TempDir()
 	original := "# AGENTS.md\n\nNo context section here.\n"
@@ -621,7 +623,10 @@ func TestUpdateAgentsMdContextAll_NoContextSection(t *testing.T) {
 	}
 
 	if err := repogov.UpdateAgentsMdContextAll(root, []repogov.LayoutSchema{repogov.DefaultCopilotLayout()}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("an unmarked AGENTS.md is a notice, not an error: %v", err)
+	}
+	if ok, _ := repogov.AgentsMdContextStatus(root); ok {
+		t.Error("status must report the unmarked AGENTS.md")
 	}
 
 	data, _ := os.ReadFile(agentsPath)

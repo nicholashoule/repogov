@@ -12,7 +12,7 @@ cd "$root"
 # being prepared in the current branch -- a not-yet-existing tag would fail
 # 'go run' and block every commit until release. Bump it in the pin sweep
 # that follows each release.
-repogov_ref="github.com/nicholashoule/repogov/cmd/repogov@v0.7.2"
+repogov_ref="github.com/nicholashoule/repogov/cmd/repogov@v0.8.0"
 go run "$repogov_ref" -root "$root" -agent copilot
 repogov_exit=$?
 if [ "$repogov_exit" -ne 0 ]; then
@@ -20,17 +20,65 @@ if [ "$repogov_exit" -ne 0 ]; then
   echo "  go run $repogov_ref -root \"$root\" -agent copilot"
 fi
 
+# BEGIN restage_changed
+# restage_changed runs the substitution command given as its arguments, then
+# re-stages only the staged files the substitution changed. Files with
+# unstaged edits (partial staging) and files that were not staged are never
+# added: they are listed for the user to stage by hand.
+# Path names never pass through a shell variable or a newline-split list:
+# git lists them NUL-delimited (-z, unquoted), the lists live in temp files,
+# and xargs -0 hands them to sh as "$@" arguments, so names with quotes, tabs,
+# newlines, backslashes or non-ASCII characters arrive intact. Every git
+# command on a captured name uses --literal-pathspecs, so pathspec magic
+# (":(glob)**") and wildcards ("a[b].md") in a name match only that file.
+restage_changed() {
+  rs_tmp="$(mktemp -d "${TMPDIR:-/tmp}/repogov-hook.XXXXXX")" || {
+    echo "ERROR: cannot create a temp directory; nothing was re-staged -- stage the substitutions by hand"
+    "$@"
+    return 1
+  }
+  : > "$rs_tmp/clean"
+  : > "$rs_tmp/partial"
+  # Classify each staged file before the substitution: clean (index matches
+  # the work tree) or partially staged. git diff --quiet exits 1 on a
+  # difference; any other failure also counts as partial, so it is never added.
+  git diff --cached --name-only -z --diff-filter=ACMR | xargs -0 sh -c '
+    out=$1; shift
+    for f in "$@"; do
+      if git --literal-pathspecs diff --quiet -- "$f"; then
+        printf "%s\000" "$f" >> "$out/clean"
+      else
+        printf "%s\000" "$f" >> "$out/partial"
+      fi
+    done' sh "$rs_tmp"
+  "$@"
+  # A clean file that now differs from the index was changed by the
+  # substitution: re-stage it. Only exit status 1 (a difference) re-stages.
+  xargs -0 sh -c '
+    for f in "$@"; do
+      git --literal-pathspecs diff --quiet -- "$f"
+      [ $? -eq 1 ] || continue
+      git --literal-pathspecs add -- "$f" && printf "  re-staged %s\n" "$f"
+    done' sh < "$rs_tmp/clean"
+  xargs -0 sh -c '
+    for f in "$@"; do
+      printf "  NOTE: %s is partially staged; review and stage the substitution by hand\n" "$f"
+    done' sh < "$rs_tmp/partial"
+  rm -rf "$rs_tmp"
+}
+# END restage_changed
+
 # Run demojify-sanitize. If emoji are found, substitute them automatically,
-# re-stage the modified files, and abort the commit so the user can review
-# the substitutions before re-committing.
+# re-stage only the staged files the substitution changed (restage_changed),
+# and abort the commit so the user can review the substitutions before
+# re-committing.
 demojify_ref="github.com/nicholashoule/demojify-sanitize/cmd/demojify@v0.10.0"
 go run "$demojify_ref" -root "$root"
 demojify_exit=$?
 if [ "$demojify_exit" -ne 0 ]; then
-  echo "INFO: emoji found -- running -sub to substitute and re-staging changes..."
-  go run "$demojify_ref" -root "$root" -sub
-  git add -u
-  echo "ERROR: emoji were substituted and re-staged. Review the changes and re-commit."
+  echo "INFO: emoji found -- running -sub to substitute..."
+  restage_changed go run "$demojify_ref" -root "$root" -sub
+  echo "ERROR: emoji were substituted (staged files re-staged as listed). Review the changes and re-commit."
 fi
 
 # precommit_exit covers gofmt, go vet, go test, and golangci-lint (via checkLint in pre-commit.go).

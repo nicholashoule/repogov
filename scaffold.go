@@ -1,8 +1,11 @@
 package repogov
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,15 +16,15 @@ import (
 // createCopilotInstructions creates .github/copilot-instructions.md with
 // references to the instructions/ directory. If the file already exists,
 // nothing is created. Returns the list of created paths.
-func createCopilotInstructions(root, layoutDir string, schema LayoutSchema, descriptive bool) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+func createCopilotInstructions(layoutDir string, schema LayoutSchema, descriptive bool, lang string) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	filePath := filepath.Join(layoutDir, "copilot-instructions.md")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		// File exists or stat failed for another reason; either way skip.
 		return nil, nil
 	}
 
-	content := copilotInstructionsContent(schema, descriptive)
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	content := copilotInstructionsContent(schema, descriptive, lang)
+	if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{filepath.ToSlash(filepath.Join(schema.Root, "copilot-instructions.md"))}, nil
@@ -32,7 +35,7 @@ func createCopilotInstructions(root, layoutDir string, schema LayoutSchema, desc
 // whichever of instructions/ or rules/ is present in schema.Dirs. descriptive
 // controls whether the naming-convention hint references *.instructions.md
 // (true) or plain *.md (false).
-func copilotInstructionsContent(schema LayoutSchema, descriptive bool) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+func copilotInstructionsContent(schema LayoutSchema, descriptive bool, lang string) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	instrDir := ""
 	if _, ok := schema.Dirs["instructions"]; ok {
 		instrDir = "instructions"
@@ -50,24 +53,26 @@ func copilotInstructionsContent(schema LayoutSchema, descriptive bool) string { 
 		InstructionsDir string
 		NamingHint      string
 		Agent           string
+		LanguageLine    string
 	}{
 		Root:            schema.Root,
 		InstructionsDir: instrDir,
 		NamingHint:      namingHint,
 		Agent:           schemaRootToAgent(schema.Root),
+		LanguageLine:    languageDirective(lang),
 	}
 	return mustRenderTemplate("agents/copilot-instructions.md.tmpl", data)
 }
 
 // createClaudeMd creates .claude/CLAUDE.md with a default template when it
 // doesn't already exist. Returns the list of created paths.
-func createClaudeMd(layoutDir string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
+func createClaudeMd(layoutDir string, schema LayoutSchema, lang string) ([]string, error) { //nolint:gocritic // hugeParam: intentional value semantics
 	filePath := filepath.Join(layoutDir, "CLAUDE.md")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		return nil, nil
 	}
-	content := claudeMdContent(schemaRootToAgent(schema.Root), schema.Root)
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	content := claudeMdContent(schemaRootToAgent(schema.Root), schema.Root, lang)
+	if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{".claude/CLAUDE.md"}, nil
@@ -76,22 +81,23 @@ func createClaudeMd(layoutDir string, schema LayoutSchema) ([]string, error) { /
 // claudeMdContent returns the default content for .claude/CLAUDE.md rendered
 // from the embedded template. agent is the CLI agent name (e.g. "claude").
 // root is the schema root directory (e.g. ".claude").
-func claudeMdContent(agent, root string) string {
+func claudeMdContent(agent, root, lang string) string {
 	return mustRenderTemplate("agents/CLAUDE.md.tmpl", struct {
-		Agent string
-		Root  string
-	}{agent, root})
+		Agent        string
+		Root         string
+		LanguageLine string
+	}{agent, root, languageDirective(lang)})
 }
 
 // createGeminiMd creates GEMINI.md at the repository root with a default
 // template when it doesn't already exist. Returns the list of created paths.
-func createGeminiMd(root string) ([]string, error) {
+func createGeminiMd(root, lang string) ([]string, error) {
 	filePath := filepath.Join(root, "GEMINI.md")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		return nil, nil
 	}
-	content := geminiMdContent()
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	content := geminiMdContent(lang)
+	if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{"GEMINI.md"}, nil
@@ -99,21 +105,22 @@ func createGeminiMd(root string) ([]string, error) {
 
 // geminiMdContent returns the default content for GEMINI.md rendered from
 // the embedded template.
-func geminiMdContent() string {
+func geminiMdContent(lang string) string {
 	return mustRenderTemplate("agents/GEMINI.md.tmpl", struct {
-		Agent string
-	}{"gemini"})
+		Agent        string
+		LanguageLine string
+	}{"gemini", languageDirective(lang)})
 }
 
 // createZedRules creates .rules at the repository root with a default template
 // when it doesn't already exist. Returns the list of created paths.
-func createZedRules(root string) ([]string, error) {
+func createZedRules(root, lang string) ([]string, error) {
 	filePath := filepath.Join(root, ".rules")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		return nil, nil
 	}
-	content := zedRulesContent()
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	content := zedRulesContent(lang)
+	if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{".rules"}, nil
@@ -121,10 +128,11 @@ func createZedRules(root string) ([]string, error) {
 
 // zedRulesContent returns the default content for .rules rendered from
 // the embedded template.
-func zedRulesContent() string {
+func zedRulesContent(lang string) string {
 	return mustRenderTemplate("agents/zed-rules.tmpl", struct {
-		Agent string
-	}{"zed"})
+		Agent        string
+		LanguageLine string
+	}{"zed", languageDirective(lang)})
 }
 
 // dirIsNew returns true if the directory does not yet exist.
@@ -201,26 +209,19 @@ func copilotNarrowSchema(ghDir string, schema LayoutSchema) LayoutSchema { //nol
 }
 
 // detectConfigRelFrom returns the basename and the relative path (from fromDir)
-// of the first repogov config file found at root or inside root/.github/.
-// If no config file exists yet, it returns the default JSON name so that
-// governance links are always valid after a fresh init (which will create
-// repogov-config.json at the repository root).
+// of the active repogov config file, found with [FindConfig] precedence (repo
+// root before .github/, JSON before YAML) so governance links point at the
+// file repogov actually reads, never a shadowed one. If no config file exists
+// yet, it returns the default JSON name so that governance links are always
+// valid after a fresh multi-agent init (which creates repogov-config.json at
+// the repository root after seeding).
 func detectConfigRelFrom(root, fromDir string) (name, relPath string) {
-	candidates := []string{
-		filepath.Join(root, ".github"),
-		root,
-	}
-	for _, dir := range candidates {
-		for _, n := range configNames {
-			configPath := filepath.Join(dir, n)
-			if _, err := os.Stat(configPath); err == nil {
-				rel, err := filepath.Rel(fromDir, configPath)
-				if err != nil {
-					rel = configPath
-				}
-				return n, filepath.ToSlash(rel)
-			}
+	if configPath := FindConfig(root); configPath != "" {
+		rel, err := filepath.Rel(fromDir, configPath)
+		if err != nil {
+			rel = configPath
 		}
+		return filepath.Base(configPath), filepath.ToSlash(rel)
 	}
 	// Default: init will create repogov-config.json at the repository root.
 	defaultPath := filepath.Join(root, "repogov-config.json")
@@ -235,9 +236,9 @@ func detectConfigRelFrom(root, fromDir string) (name, relPath string) {
 // functions for the given schema root (e.g. ".github", ".claude"). root is
 // passed to templates that need it (e.g. general.md.tmpl). subdir is the
 // target subdirectory being seeded ("rules", "instructions", or "steering").
-func defaultInstructionFilesFor(root, subdir string) map[string]func() string {
+func defaultInstructionFilesFor(root, subdir, lang string) map[string]func() string {
 	return map[string]func() string{
-		"general.instructions.md":          func() string { return generalInstructionsContent(root, subdir) },
+		"general.instructions.md":          func() string { return generalInstructionsContent(root, subdir, lang) },
 		"memory.instructions.md":           memoryInstructionsContent,
 		"codereview.instructions.md":       codereviewInstructionsContent,
 		"library.instructions.md":          libraryInstructionsContent,
@@ -289,12 +290,17 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 	}
 
 	var created []string
-	for templateName, contentFn := range defaultInstructionFilesFor(schema.Root, subdir) {
+	for templateName, contentFn := range defaultInstructionFilesFor(schema.Root, subdir, opts.language) {
 		stem := templateStem(templateName)
 		if !shouldSeedFile(stem, opts.include, opts.exclude) {
 			continue
 		}
 		actualName := instructionFileName(templateName, opts.descriptive)
+		content := contentFn()
+		if schema.Root == ".cursor" {
+			// Cursor ignores plain .md rules; seed .mdc with Cursor frontmatter.
+			actualName, content = cursorRule(templateName, content)
+		}
 		filePath := filepath.Join(targetDir, actualName)
 		if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 			// File already exists; never overwrite.
@@ -303,7 +309,7 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			return created, err
 		}
-		if err := os.WriteFile(filePath, []byte(contentFn()), 0o644); err != nil {
+		if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 			return created, err
 		}
 		rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, actualName))
@@ -314,13 +320,22 @@ func createDefaultInstructions(root, layoutDir string, schema LayoutSchema, opts
 	// repogov config file is present at init time.
 	if shouldSeedFile("governance", opts.include, opts.exclude) {
 		govName := instructionFileName("governance.instructions.md", opts.descriptive)
+		var cursorGov string
+		if schema.Root == ".cursor" {
+			govName = "governance.mdc"
+		}
 		govFile := filepath.Join(targetDir, govName)
 		if _, err := os.Stat(govFile); os.IsNotExist(err) {
 			cfgName, cfgRel := detectConfigRelFrom(root, targetDir)
 			if err := os.MkdirAll(targetDir, 0o755); err != nil {
 				return created, err
 			}
-			if err := os.WriteFile(govFile, []byte(governanceInstructionsContent(cfgName, cfgRel, schemaRootToAgent(schema.Root))), 0o644); err != nil {
+			govContent := governanceInstructionsContent(cfgName, cfgRel, schemaRootToAgent(schema.Root))
+			if schema.Root == ".cursor" {
+				_, cursorGov = cursorRule("governance.instructions.md", govContent)
+				govContent = cursorGov
+			}
+			if err := writeNewFile(govFile, []byte(govContent), 0o644); err != nil {
 				return created, err
 			}
 			rel := filepath.ToSlash(filepath.Join(schema.Root, subdir, govName))
@@ -340,11 +355,12 @@ func repoInstructionsContent() string {
 // root is the schema root directory (e.g. ".github") and rulesDir is the
 // subdirectory being seeded (e.g. "rules", "instructions", "steering", or "." for
 // layouts that place files directly under schema.Root).
-func generalInstructionsContent(root, rulesDir string) string {
+func generalInstructionsContent(root, rulesDir, lang string) string {
 	return mustRenderTemplate("rules/general.md.tmpl", struct {
-		Root      string
-		RulesPath string
-	}{root, filepath.ToSlash(filepath.Join(root, rulesDir))})
+		Root         string
+		RulesPath    string
+		LanguageLine string
+	}{root, filepath.ToSlash(filepath.Join(root, rulesDir)), languageDirective(lang)})
 }
 
 // codereviewInstructionsContent returns default content for codereview.instructions.md.
@@ -431,79 +447,170 @@ func frontendInstructionsContent() string {
 }
 
 // createAgentsMd creates AGENTS.md at the repository root when it does not
-// already exist, or updates only its ## Context section when it does. The file
-// is cross-agent (GitHub Copilot, Cursor, Claude Code, OpenAI Codex) and
-// provides agent-readable instructions with links to project documentation and
-// platform-specific instruction directories.
-func createAgentsMd(root string, schema LayoutSchema) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+// already exist, or refreshes only its marked Context section when it does
+// (see [AgentsMdContextStatus]). The file is cross-agent (GitHub
+// Copilot, Cursor, Claude Code, OpenAI Codex) and provides agent-readable
+// instructions with links to project documentation and platform-specific
+// instruction directories. refresh false skips the update of an existing
+// file (multi-schema init refreshes it once, with merged links, at the end).
+func createAgentsMd(root string, schema LayoutSchema, lang string, refresh bool) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	filePath := filepath.Join(root, "AGENTS.md")
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	if _, err := os.Lstat(filePath); os.IsNotExist(err) {
 		// File does not exist: create it with full generated content.
-		content := agentsMdContent(schema)
-		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+		content := agentsMdContent(schema, lang)
+		if err := writeNewFile(filePath, []byte(content), 0o644); err != nil {
 			return nil, err
 		}
 		return []string{"AGENTS.md"}, nil
 	}
-	// File exists: update only the ## Context section so it reflects the
+	if !refresh {
+		return nil, nil
+	}
+	// File exists: update only the marked Context section so it reflects the
 	// currently selected agent/platform without overwriting user content.
-	if err := updateAgentsMdContext(filePath, schema); err != nil {
+	if err := spliceContextSection(filePath, agentsMdMergedContextSection([]LayoutSchema{schema}, lang)); err != nil {
 		return nil, err
 	}
 	return nil, nil
 }
 
-// spliceContextSection replaces the "## Context" section in filePath with
-// newSection, preserving all other content. If no "## Context" heading is
-// found the file is left unchanged.
+// maxAgentsMdBytes bounds the AGENTS.md files repogov will rewrite.
+const maxAgentsMdBytes = 4 << 20
+
+// The marker comments that delimit the generated Context section of
+// AGENTS.md. Only the text between one begin and one end marker is ever
+// rewritten; Markdown structure is never parsed to guess the section bounds.
+const (
+	agentsMdContextBegin = "<!-- repogov:context:begin -->"
+	agentsMdContextEnd   = "<!-- repogov:context:end -->"
+)
+
+// AgentsMdContextStatus reports whether init can refresh the Context section
+// of the AGENTS.md at root: refreshable is true when the file holds exactly
+// one "<!-- repogov:context:begin -->" marker followed by exactly one
+// "<!-- repogov:context:end -->" marker. Otherwise reason says why (no file,
+// markers missing, duplicated or out of order, not a regular file, or
+// unreadable) and, for marker problems, how to opt in. Init leaves an
+// unrefreshable AGENTS.md byte-for-byte unchanged without returning an
+// error, so callers use this to tell the user.
+func AgentsMdContextStatus(root string) (refreshable bool, reason string) {
+	filePath := filepath.Join(root, "AGENTS.md")
+	info, err := os.Lstat(filePath)
+	switch {
+	case os.IsNotExist(err):
+		return false, "AGENTS.md does not exist; 'repogov init' creates it with the Context markers"
+	case err != nil:
+		return false, fmt.Sprintf("AGENTS.md cannot be read: %v", err)
+	case !info.Mode().IsRegular():
+		return false, "AGENTS.md is not a regular file (symlink or special file); repogov never follows or rewrites it -- replace it with a regular file"
+	case info.Size() > maxAgentsMdBytes:
+		return false, fmt.Sprintf("AGENTS.md is %d bytes; repogov refuses to rewrite a file over %d bytes", info.Size(), maxAgentsMdBytes)
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return false, fmt.Sprintf("AGENTS.md cannot be read: %v", err)
+	}
+	if _, _, why := contextMarkerBounds(string(data)); why != "" {
+		return false, contextNotRefreshedReason(why)
+	}
+	return true, ""
+}
+
+// contextNotRefreshedReason explains a marker problem and how to opt in.
+func contextNotRefreshedReason(why string) string {
+	return fmt.Sprintf("AGENTS.md Context section not refreshed: the file %s, so it was left unchanged -- to opt in, put %s on the line before \"## Context\" and %s after the section, then re-run 'repogov init'",
+		why, agentsMdContextBegin, agentsMdContextEnd)
+}
+
+// spliceContextSection replaces the text between the Context markers in
+// filePath with a newline and newSection, preserving every byte outside the
+// markers. Missing, duplicated or out-of-order markers leave the file
+// untouched and are not an error: [AgentsMdContextStatus] reports them. An
+// unchanged section is not rewritten. A symlink or special file, an
+// oversized or unreadable file and a failed write are errors, and the write
+// is atomic.
 func spliceContextSection(filePath, newSection string) error {
+	info, err := os.Lstat(filePath)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file (symlink or special file); refusing to update its Context section -- replace it with a regular file", filePath)
+	}
+	if info.Size() > maxAgentsMdBytes {
+		return fmt.Errorf("%s is %d bytes; refusing to rewrite a file over %d bytes", filePath, info.Size(), maxAgentsMdBytes)
+	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
 	content := string(data)
 
-	const sectionMarker = "## Context\n"
-	startIdx := strings.Index(content, sectionMarker)
-	if startIdx == -1 {
+	start, end, why := contextMarkerBounds(content)
+	if why != "" {
+		return nil // unmarked: left untouched; AgentsMdContextStatus says why
+	}
+
+	// Line endings follow the line the begin marker ends; a marker that does
+	// not end its line falls back to the file's dominant style.
+	nl := "\n"
+	if rest := content[start:]; strings.HasPrefix(rest, "\r\n") || (!strings.HasPrefix(rest, "\n") && strings.Contains(content, "\r\n")) {
+		nl = "\r\n"
+	}
+	inner := nl + strings.ReplaceAll(newSection, "\n", nl)
+	if content[start:end] == inner {
 		return nil
 	}
+	updated := content[:start] + inner + content[end:]
+	return writeFileAtomic(filePath, []byte(updated), info.Mode().Perm())
+}
 
-	afterSection := startIdx + len(sectionMarker)
-	nextHeadingOffset := strings.Index(content[afterSection:], "\n## ")
-
-	var updated string
-	if nextHeadingOffset == -1 {
-		updated = content[:startIdx] + newSection
-	} else {
-		splitIdx := afterSection + nextHeadingOffset
-		updated = content[:startIdx] + newSection + content[splitIdx:]
+// contextMarkerBounds returns the byte range [start, end) between the
+// Context begin and end markers in content. reason is non-empty, naming the
+// problem, unless content holds exactly one begin marker followed by exactly
+// one end marker.
+func contextMarkerBounds(content string) (start, end int, reason string) {
+	nb, ne := strings.Count(content, agentsMdContextBegin), strings.Count(content, agentsMdContextEnd)
+	switch {
+	case nb == 0 && ne == 0:
+		return 0, 0, "has no repogov:context markers"
+	case nb != 1:
+		return 0, 0, fmt.Sprintf("has %d begin markers (want exactly one)", nb)
+	case ne != 1:
+		return 0, 0, fmt.Sprintf("has %d end markers (want exactly one)", ne)
 	}
-
-	return os.WriteFile(filePath, []byte(updated), 0o644)
+	start = strings.Index(content, agentsMdContextBegin) + len(agentsMdContextBegin)
+	end = strings.Index(content, agentsMdContextEnd)
+	if end < start {
+		return 0, 0, "has its end marker before its begin marker"
+	}
+	return start, end, ""
 }
 
-// updateAgentsMdContext rewrites the "## Context" section of an existing
-// AGENTS.md file using links derived from schema. All other sections are
-// preserved exactly. If no "## Context" heading is found the file is left
-// unchanged.
-func updateAgentsMdContext(filePath string, schema LayoutSchema) error { //nolint:gocritic // hugeParam: intentional value semantics
-	return spliceContextSection(filePath, agentsMdContextSection(schema))
-}
-
-// UpdateAgentsMdContextAll updates the "## Context" section of an existing
-// AGENTS.md at the given root with merged links from all provided schemas.
-// It is intended for use after initializing multiple agents in one command
-// (e.g., -agent all) so that the Context section reflects every agent
-// that was scaffolded rather than only the last one processed.
+// UpdateAgentsMdContextAll refreshes the marked Context section of an
+// existing AGENTS.md at the given root with merged links from all provided
+// schemas. It is intended for use after initializing multiple agents in one
+// command (e.g., -agent all) so that the Context section reflects every
+// agent that was scaffolded rather than only the last one processed. The
+// section states the default prose language, [DefaultLanguage]; use
+// [InitLayoutAllWithConfig] with [Config.Language] to state another.
 //
 // For GitHub Copilot schemas (.github), the active scoped-rule directory
 // (instructions/ or rules/) is detected from the filesystem so the link
 // matches what was actually created during init.
 //
-// If AGENTS.md does not exist, or has no ## Context section, it is left
-// unchanged and no error is returned.
+// Only the text between the "<!-- repogov:context:begin -->" and
+// "<!-- repogov:context:end -->" markers is replaced. If AGENTS.md does not
+// exist, or lacks a single, ordered marker pair, it is left byte-for-byte
+// unchanged and no error is returned; [AgentsMdContextStatus] reports why.
+// A symlinked, unreadable or unwritable AGENTS.md is an error.
 func UpdateAgentsMdContextAll(root string, schemas []LayoutSchema) error { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	return updateAgentsMdContextAll(root, schemas, "")
+}
+
+// updateAgentsMdContextAll is [UpdateAgentsMdContextAll] with the prose
+// language tag stated in the regenerated section (en-US when lang is empty).
+func updateAgentsMdContextAll(root string, schemas []LayoutSchema, lang string) error { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	// Narrow any Copilot schema to the directory that was actually created.
 	narrowed := make([]LayoutSchema, len(schemas))
 	copy(narrowed, schemas)
@@ -514,10 +621,10 @@ func UpdateAgentsMdContextAll(root string, schemas []LayoutSchema) error { //nol
 	}
 
 	filePath := filepath.Join(root, "AGENTS.md")
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	if _, err := os.Lstat(filePath); os.IsNotExist(err) {
 		return nil
 	}
-	return spliceContextSection(filePath, agentsMdMergedContextSection(narrowed))
+	return spliceContextSection(filePath, agentsMdMergedContextSection(narrowed, lang))
 }
 
 // rulesLabel returns a human-readable label for the rules directory link based
@@ -547,13 +654,19 @@ func rulesLabel(root string) string {
 	}
 }
 
-// agentsMdMergedContextSection generates a "## Context" section that includes
-// links for all provided schemas, deduplicated and in stable order. It is used
-// when multiple platforms are initialized together so that the Context section
-// references every scaffolded platform directory.
-func agentsMdMergedContextSection(schemas []LayoutSchema) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+// agentsMdMergedContextSection generates the "## Context" section that goes
+// between the AGENTS.md Context markers: links for all provided schemas,
+// deduplicated and in stable order, preceded by the prose-language directive
+// (en-US when lang is empty; none for an unknown tag). It starts with the
+// "## Context" heading and ends with the last list item followed by "\n",
+// byte-for-byte what agents/AGENTS.md.tmpl renders between its markers.
+func agentsMdMergedContextSection(schemas []LayoutSchema, lang string) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	var b strings.Builder
 	b.WriteString("## Context\n\n")
+	if d := languageDirective(lang); d != "" {
+		b.WriteString(d) // from the fixed language table, never config text
+		b.WriteString("\n\n")
+	}
 	b.WriteString("- Project overview: [README.md](README.md)\n")
 	b.WriteString("- Extended documentation: [docs/](docs/)\n")
 
@@ -601,15 +714,6 @@ func agentsMdMergedContextSection(schemas []LayoutSchema) string { //nolint:gocr
 	return b.String()
 }
 
-// agentsMdContextSection generates the "## Context" section for AGENTS.md
-// with links appropriate to the given schema. The returned string starts with
-// the "## Context" heading and ends with the last list item followed by "\n";
-// the blank-line separator before the next section is NOT included so that
-// spliceContextSection can splice it in without introducing extra blank lines.
-func agentsMdContextSection(schema LayoutSchema) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
-	return agentsMdMergedContextSection([]LayoutSchema{schema})
-}
-
 // agentsMdTemplateData is the template data passed to agents/AGENTS.md.tmpl.
 type agentsMdTemplateData struct {
 	Root            string
@@ -623,13 +727,14 @@ type agentsMdTemplateData struct {
 	HasRootRules    bool
 	IsGemini        bool
 	IsZed           bool
+	LanguageLine    string
 }
 
 // agentsMdContent generates the content for AGENTS.md from the embedded
 // agents/AGENTS.md.tmpl template. It links to the project's docs/ directory
 // and to platform-specific instruction directories present in the schema.
 // The output must stay within the 200-line limit.
-func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+func agentsMdContent(schema LayoutSchema, lang string) string { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	_, hasInstructions := schema.Dirs["instructions"]
 	_, hasRules := schema.Dirs["rules"]
 	_, hasAgents := schema.Dirs["agents"]
@@ -658,23 +763,25 @@ func agentsMdContent(schema LayoutSchema) string { //nolint:gocritic // hugePara
 		HasRootRules:    schema.Root == ".clinerules",
 		IsGemini:        isGemini,
 		IsZed:           isZed,
+		LanguageLine:    languageDirective(lang),
 	}
 	return mustRenderTemplate("agents/AGENTS.md.tmpl", data)
 }
 
 // createDefaultConfigAll creates repogov-config.json at root with the full
 // default configuration covering all agent platforms. The file is not created
-// when any supported repogov config file already exists at root.
-func createDefaultConfigAll(root string) ([]string, error) {
-	for _, n := range configNames {
-		if _, err := os.Stat(filepath.Join(root, n)); err == nil {
-			return nil, nil
-		}
+// when any supported repogov config file already exists at root or in
+// .github/ (see [FindConfig]): a second config would shadow or be shadowed
+// by the first. lang, when a known tag, is written as the language key.
+func createDefaultConfigAll(root, lang string) ([]string, error) {
+	if FindConfig(root) != "" {
+		return nil, nil
 	}
 	filePath := filepath.Join(root, "repogov-config.json")
 	cfg := DefaultConfig()
+	cfg.Language = lang
 	data := defaultConfigJSON(cfg)
-	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
+	if err := writeNewFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
 	}
 	return []string{"repogov-config.json"}, nil
@@ -682,24 +789,25 @@ func createDefaultConfigAll(root string) ([]string, error) {
 
 // createDefaultConfig creates repogov-config.json in configDir with config
 // values filtered to the schema's root. The file is not created when any
-// repogov config file already exists in configDir (JSON or YAML). The
-// reported relative path is derived from configDir relative to root.
-// descriptive mirrors opts.descriptive: when true, descriptive_names is set
-// in the generated config and only *.instructions.md file entries are emitted.
-func createDefaultConfig(root, configDir string, schema LayoutSchema, descriptive bool) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
-	// Skip if any supported config filename already exists in configDir.
-	for _, n := range configNames {
-		if _, err := os.Stat(filepath.Join(configDir, n)); err == nil {
-			return nil, nil
-		}
+// repogov config file already exists at the repo root or in .github/ (JSON
+// or YAML; see [FindConfig]), so init never adds a config that shadows, or
+// is shadowed by, the active one. The reported relative path is derived
+// from configDir relative to root. descriptive mirrors opts.descriptive:
+// when true, descriptive_names is set in the generated config and only
+// *.instructions.md file entries are emitted. lang, when a known tag, is
+// written as the language key.
+func createDefaultConfig(root, configDir string, schema LayoutSchema, descriptive bool, lang string) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+	if FindConfig(root) != "" {
+		return nil, nil
 	}
 
 	filePath := filepath.Join(configDir, "repogov-config.json")
 	baseCfg := DefaultConfig()
 	baseCfg.DescriptiveNames = descriptive
+	baseCfg.Language = lang
 	cfg := schemaConfig(baseCfg, schema)
 	data := defaultConfigJSON(cfg)
-	if err := os.WriteFile(filePath, []byte(data), 0o644); err != nil {
+	if err := writeNewFile(filePath, []byte(data), 0o644); err != nil {
 		return nil, err
 	}
 	rel, _ := filepath.Rel(root, filepath.Join(configDir, "repogov-config.json"))
@@ -723,10 +831,21 @@ func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic //
 		WarningThreshold: cfg.WarningThreshold,
 		IncludeExts:      cfg.IncludeExts,
 		SkipDirs:         cfg.SkipDirs,
+		Language:         cfg.Language,
 	}
 	for _, r := range cfg.Rules {
 		if strings.HasPrefix(r.Glob, prefix) {
 			out.Rules = append(out.Rules, r)
+		}
+	}
+	for _, r := range cfg.MaxBytes {
+		switch {
+		case strings.HasPrefix(r.Glob, prefix):
+			out.MaxBytes = append(out.MaxBytes, r)
+		case !strings.Contains(r.Glob, "/") && crossAgentRootFile(r.Glob):
+			out.MaxBytes = append(out.MaxBytes, r)
+		case root == "." && isInRequired(r.Glob, schema.Required):
+			out.MaxBytes = append(out.MaxBytes, r)
 		}
 	}
 	for k, v := range cfg.Files {
@@ -777,20 +896,15 @@ func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic //
 
 // isInRequired reports whether name appears in the schema's Required list.
 func isInRequired(name string, required []string) bool {
-	for _, r := range required {
-		if r == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(required, name)
 }
 
 // firstSegment returns the first path segment of rel (the text before the
 // first "/"). If rel contains no slash it returns "" — the path is a direct
 // child of the schema root, not inside a subdirectory.
 func firstSegment(rel string) string {
-	if idx := strings.Index(rel, "/"); idx >= 0 {
-		return rel[:idx]
+	if before, _, found := strings.Cut(rel, "/"); found {
+		return before
 	}
 	return ""
 }
@@ -810,7 +924,11 @@ func crossAgentRootFile(name string) bool {
 func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: intentional value semantics
 	var b strings.Builder
 	b.WriteString("{\n")
-	b.WriteString("  \"default\": " + intStr(cfg.Default) + ",\n")
+	b.WriteString(agentHints())
+	if tag, ok := NormalizeLanguage(effectiveLanguage(cfg.Language)); ok {
+		fmt.Fprintf(&b, "  \"language\": %s,\n", jsonString(tag))
+	}
+	fmt.Fprintf(&b, "  \"default\": %d,\n", cfg.Default)
 	if cfg.DescriptiveNames {
 		b.WriteString("  \"descriptive_names\": true,\n")
 	} else {
@@ -821,7 +939,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	} else {
 		b.WriteString("  \"skip_frontmatter\": false,\n")
 	}
-	b.WriteString("  \"warning_threshold\": \"" + intStr(int(cfg.WarningThreshold)) + "%\",\n")
+	fmt.Fprintf(&b, "  \"warning_threshold\": \"%d%%\",\n", int(cfg.WarningThreshold))
 
 	// skip_dirs as compact array.
 	b.WriteString("  \"skip_dirs\": [")
@@ -829,7 +947,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString("\"" + d + "\"")
+		b.WriteString(jsonString(d))
 	}
 	b.WriteString("],\n")
 
@@ -839,24 +957,33 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString("\"" + e + "\"")
+		b.WriteString(jsonString(e))
 	}
 	b.WriteString("],\n")
 
 	// rules as compact single-line objects.
 	b.WriteString("  \"rules\": [\n")
 	for i, r := range cfg.Rules {
-		if r.Limit != nil {
-			b.WriteString("    {\"glob\": \"" + r.Glob + "\", \"limit\": " + intStr(*r.Limit) + "}")
-		} else {
-			b.WriteString("    {\"glob\": \"" + r.Glob + "\"}")
-		}
+		writeRuleJSON(&b, r)
 		if i < len(cfg.Rules)-1 {
 			b.WriteString(",")
 		}
 		b.WriteString("\n")
 	}
 	b.WriteString("  ],\n")
+
+	// max_bytes as compact single-line objects (omitted when empty).
+	if len(cfg.MaxBytes) > 0 {
+		b.WriteString("  \"max_bytes\": [\n")
+		for i, r := range cfg.MaxBytes {
+			writeRuleJSON(&b, r)
+			if i < len(cfg.MaxBytes)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("  ],\n")
+	}
 
 	// files map — sorted for deterministic output.
 	b.WriteString("  \"files\": {\n")
@@ -866,7 +993,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	}
 	sort.Strings(fileKeys)
 	for i, k := range fileKeys {
-		b.WriteString("    \"" + k + "\": " + intStr(cfg.Files[k]))
+		fmt.Fprintf(&b, "    %s: %d", jsonString(k), cfg.Files[k])
 		if i < len(fileKeys)-1 {
 			b.WriteString(",")
 		}
@@ -875,6 +1002,33 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	b.WriteString("  }\n")
 	b.WriteString("}\n")
 	return b.String()
+}
+
+// writeRuleJSON writes one rule as a compact single-line JSON object, its
+// glob encoded by jsonString.
+func writeRuleJSON(b *strings.Builder, r Rule) {
+	if r.Limit != nil {
+		fmt.Fprintf(b, "    {\"glob\": %s, \"limit\": %d}", jsonString(r.Glob), *r.Limit)
+		return
+	}
+	fmt.Fprintf(b, "    {\"glob\": %s}", jsonString(r.Glob))
+}
+
+// jsonString is s as a JSON string literal, quotes and all. Every string
+// defaultConfigJSON writes goes through it: a value from the user's config
+// (a skip_dirs entry, a glob, a files path) holding a quote, a backslash or
+// a control character must never close its string early and inject keys
+// into the generated file. HTML escaping is off so a glob reads as written.
+func jsonString(s string) string {
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(s); err != nil {
+		// Encoding a Go string cannot fail; strconv.Quote is still a valid
+		// JSON string for any input that reaches here.
+		return strconv.Quote(s)
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // intStr converts an int to its string representation.
@@ -969,7 +1123,7 @@ func createSubdirReadmes(layoutDir string, schema LayoutSchema) ([]string, error
 			return created, err
 		}
 		content := subdirReadmeContent(dirName, rule)
-		if err := os.WriteFile(readmePath, []byte(content), 0o644); err != nil {
+		if err := writeNewFile(readmePath, []byte(content), 0o644); err != nil {
 			return created, err
 		}
 		rel := filepath.ToSlash(filepath.Join(schema.Root, dirName, "README.md"))

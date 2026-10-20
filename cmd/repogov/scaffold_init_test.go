@@ -224,14 +224,16 @@ func TestScaffold_Cursor_Init(t *testing.T) {
 	assertDirExists(t, filepath.Join(root, ".cursor"))
 	assertDirExists(t, filepath.Join(root, ".cursor", "rules"))
 
-	// general.md and memory.md must exist with standard instruction frontmatter.
-	mdPath := filepath.Join(root, ".cursor", "rules", "general.md")
+	// general.mdc and memory.mdc must exist with Cursor frontmatter (Cursor
+	// ignores plain .md rules and does not read applyTo).
+	mdPath := filepath.Join(root, ".cursor", "rules", "general.mdc")
 	assertFileExists(t, mdPath)
 	assertFileContains(t, mdPath, "---")
-	assertFileContains(t, mdPath, "applyTo:")
+	assertFileContains(t, mdPath, "alwaysApply: true")
+	assertFileContains(t, mdPath, "description: \"General Instructions\"")
 	assertFileContains(t, mdPath, "# General Instructions")
 
-	memPath := filepath.Join(root, ".cursor", "rules", "memory.md")
+	memPath := filepath.Join(root, ".cursor", "rules", "memory.mdc")
 	assertFileExists(t, memPath)
 	assertFileContains(t, memPath, "# Project Memory")
 
@@ -658,8 +660,8 @@ func TestScaffold_All_Init(t *testing.T) {
 
 	// Spot-check one artifact per platform.
 	assertFileExists(t, filepath.Join(root, ".github", "copilot-instructions.md"))
-	assertFileExists(t, filepath.Join(root, ".cursor", "rules", "general.md"))
-	assertFileExists(t, filepath.Join(root, ".cursor", "rules", "memory.md"))
+	assertFileExists(t, filepath.Join(root, ".cursor", "rules", "general.mdc"))
+	assertFileExists(t, filepath.Join(root, ".cursor", "rules", "memory.mdc"))
 	assertFileExists(t, filepath.Join(root, ".windsurf", "rules", "general.md"))
 	assertFileExists(t, filepath.Join(root, ".windsurf", "rules", "memory.md"))
 	assertFileExists(t, filepath.Join(root, ".claude", "CLAUDE.md"))

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -19,6 +20,16 @@ type LayoutSchema struct {
 	// Required lists files that must exist within Root.
 	// Paths are relative to Root using forward slashes.
 	Required []string
+
+	// Alternatives maps a Required file to other files (paths relative to
+	// Root) that satisfy the requirement when the required file is absent.
+	// Layout checks accept any one of them that is a regular file (never a
+	// directory, symlink or special file); 'repogov init' still creates the
+	// required file itself. Example: Gemini requires GEMINI.md; AGENTS.md
+	// satisfies it only when .gemini/settings.json lists AGENTS.md in
+	// context.fileName, because Gemini CLI does not read AGENTS.md by
+	// default (Antigravity does).
+	Alternatives map[string][]string
 
 	// Optional lists known files that may or may not exist.
 	// Their absence does not produce a warning or failure.
@@ -78,7 +89,8 @@ type LayoutResult struct {
 	// Path is the repo-relative path using forward slashes.
 	Path string
 
-	// Status is the check outcome: Pass, Warn, Fail, or Info.
+	// Status is the check outcome: Pass, Warn, Fail, or Info; Skip for a
+	// file that is not opened (a symlink or special file).
 	Status Status
 
 	// Message is a human-readable explanation of the result.
@@ -119,10 +131,19 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		for _, req := range schema.Required {
 			filePath := filepath.Join(root, filepath.FromSlash(req))
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				alt, why := presentAlternative(root, "", req, schema.Alternatives[req])
+				if alt != "" {
+					results = append(results, LayoutResult{
+						Path:    req,
+						Status:  Pass,
+						Message: "required file absent but satisfied by " + alt,
+					})
+					continue
+				}
 				results = append(results, LayoutResult{
 					Path:    req,
 					Status:  Fail,
-					Message: "missing required file -- FIX: create " + req + " or run 'repogov init'",
+					Message: "missing required file" + why + " -- FIX: create " + req + " or run 'repogov init'",
 				})
 			} else {
 				results = append(results, LayoutResult{
@@ -231,6 +252,19 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 			}
 		}
 
+		// A NoCreate directory with no glob is "managed elsewhere" (e.g. .claude,
+		// .github/workflows, .opencode): its whole subtree is accepted, not just
+		// files directly inside it. Without this, ".claude/rules/a.md" was
+		// reported as an unexpected file under the root layout.
+		if !inManagedDir {
+			for p := path.Dir(filepath.ToSlash(dir)); p != "." && p != "/" && p != ""; p = path.Dir(p) {
+				if rule, ok := schema.Dirs[p]; ok && rule.NoCreate && rule.Glob == "" {
+					inManagedDir = true
+					break
+				}
+			}
+		}
+
 		// checkManagedFrontmatter validates frontmatter for files in managed
 		// directories with a Frontmatter requirement. It runs for every
 		// matching file -- including files that are also listed in Required
@@ -294,10 +328,19 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 	// Report missing required files.
 	for _, r := range schema.Required {
 		if !requiredFound[r] {
+			alt, why := presentAlternative(root, schema.Root, r, schema.Alternatives[r])
+			if alt != "" {
+				results = append(results, LayoutResult{
+					Path:    filepath.ToSlash(filepath.Join(schema.Root, r)),
+					Status:  Pass,
+					Message: "required file absent but satisfied by " + alt,
+				})
+				continue
+			}
 			results = append(results, LayoutResult{
 				Path:    filepath.ToSlash(filepath.Join(schema.Root, r)),
 				Status:  Fail,
-				Message: "missing required file -- FIX: create " + filepath.ToSlash(filepath.Join(schema.Root, r)) + " or run 'repogov init'",
+				Message: "missing required file" + why + " -- FIX: create " + filepath.ToSlash(filepath.Join(schema.Root, r)) + " or run 'repogov init'",
 			})
 		}
 	}
@@ -319,6 +362,32 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 	}
 
 	return results, nil
+}
+
+// presentAlternative returns the first file in alts that is a regular file
+// under root/base, or "" when none is. A directory, symlink or special file
+// with an alternative's name is not an instruction file the agent reads, so
+// it never satisfies the requirement. A pairing listed in
+// [conditionalAlternatives] counts only when its condition holds; when it
+// does not, why explains the rejection (for the missing-file message).
+func presentAlternative(root, base, required string, alts []string) (alt, why string) {
+	for _, a := range alts {
+		info, err := os.Lstat(filepath.Join(root, base, filepath.FromSlash(a)))
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		key := [2]string{path.Join(filepath.ToSlash(base), required), path.Join(filepath.ToSlash(base), a)}
+		if cond := conditionalAlternatives[key]; cond != nil {
+			if reason := cond(root); reason != "" {
+				if why == "" {
+					why = " (" + a + " is present, but " + reason + ")"
+				}
+				continue
+			}
+		}
+		return a, ""
+	}
+	return "", why
 }
 
 // matchGlob wraps filepath.Match against a bare filename (no path
@@ -390,10 +459,31 @@ func StripFrontmatter(schema LayoutSchema) LayoutSchema { //nolint:gocritic // h
 // checkFrontmatter validates that the file at absPath contains a YAML
 // frontmatter block (delimited by "---") with all requiredKeys present.
 // It returns zero or more LayoutResult entries (PASS for valid, FAIL for
-// missing delimiter or missing keys). displayPath is used in results.
+// missing delimiter or missing keys, SKIP for a symlink or special file).
+// displayPath is used in results.
 func checkFrontmatter(absPath, displayPath string, requiredKeys []string) []LayoutResult {
 	if len(requiredKeys) == 0 {
 		return nil
+	}
+
+	// Only regular files are opened: a symlink could expose a file outside
+	// the repo and a FIFO or device would block the check indefinitely. Such
+	// a file is reported as Skip, never followed, consistent with the line
+	// limit check ([CheckDir]).
+	info, err := os.Lstat(absPath)
+	if err != nil {
+		return []LayoutResult{{
+			Path:    displayPath,
+			Status:  Fail,
+			Message: fmt.Sprintf("frontmatter: unable to read file: %v", err),
+		}}
+	}
+	if !info.Mode().IsRegular() {
+		return []LayoutResult{{
+			Path:    displayPath,
+			Status:  Skip,
+			Message: "frontmatter not checked: not a regular file (symlink or special file); not followed",
+		}}
 	}
 
 	f, err := os.Open(absPath)
@@ -408,8 +498,9 @@ func checkFrontmatter(absPath, displayPath string, requiredKeys []string) []Layo
 
 	scanner := bufio.NewScanner(f)
 
-	// First line must be "---".
-	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
+	// First line must be "---" (after a UTF-8 BOM, which Windows editors
+	// often prepend).
+	if !scanner.Scan() || strings.TrimSpace(strings.TrimPrefix(scanner.Text(), string(utf8BOM))) != "---" {
 		return []LayoutResult{{
 			Path:    displayPath,
 			Status:  Fail,

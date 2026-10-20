@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   build:
@@ -17,14 +16,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # 1.24 is the go.mod floor; "stable" is the latest Go release.
+        go-version: ["1.24", "1.25", "stable"]
         os: [ubuntu-latest, macos-latest, windows-latest]
-        # 1.22 is the go.mod floor; "stable" is the latest Go release, so
-        # the matrix does not go stale as new Go versions ship.
-        go-version: ["1.22", "stable"]
 
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.go-version == 'stable'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-report
           path: coverage.out
@@ -64,13 +64,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          # Keep the lint toolchain compatible with the pinned golangci-lint.
-          go-version: "1.26"
+          # golangci-lint v2.11.4 is built with Go 1.26 and cannot analyze
+          # standard-library files from a newer Go toolchain.
+          go-version: "1.26.x"
           cache: false
 
       - name: Check formatting

@@ -7,333 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v0.8.0] - 2026-07-26
+## [v0.9.0] - 2026-10-20
 
-### Added
+### Breaking
 
-- **`CheckClaudeSettings(root)`** (`settings.go`) — read-only audit of
-  `.claude/settings.json` and `.claude/settings.local.json`, appended to
-  `layout` runs for the claude agent. Reports an Info summary (line count,
-  allow/deny/ask rule counts) plus advisory findings: exact duplicate rules
-  (Warn), rules shadowed by a broader `:*` prefix rule (Warn, boundary-aware
-  so `Bash(go:*)` never claims `Bash(gofmt:*)`), allow rules overridden by
-  deny (Warn), consolidation suggestions when five or more literal rules
-  share a command prefix (Info), and malformed JSON (Fail — Claude Code
-  cannot load it). Every finding carries a `-- FIX:` hint so the output can
-  gate and guide AI agents directly, in text and `-json` alike
-- **Settings are never written**: repogov never creates, modifies, or seeds
-  `.claude/settings.json` or `.claude/settings.local.json` — they are user
-  and machine configuration owned by Claude Code. The invariant is pinned by
-  `TestInitNeverTouchesClaudeSettings` (byte-identical through init, even
-  with `init_always_create`)
-- **Credential files are never parsed**: `.claude/.credentials.json` is
-  detected by filename alone (stat only) and reported with rotation and
-  gitignore guidance; its content is never opened under any circumstance
-  (`TestCheckClaudeSettings_CredentialFilesNeverParsed` proves it with
-  deliberately malformed content)
-- **Settings audit refuses non-regular files** (PR review): filenames are
-  checked with `Lstat`, so a symlink named `settings.json` pointing at a
-  credential file (or any other target) is never followed -- it is reported
-  as a Warn instead of being opened -- and permission errors surface as
-  findings rather than masquerading as absence
-  (`TestCheckClaudeSettings_SymlinkRefused`,
-  `TestCheckClaudeSettings_NonRegularFileRefused`)
-- **Binary and compiled files are never parsed**: the limits check sniffs
-  the first 512 bytes for a NUL byte and reports binaries as Skip without
-  reading any further content -- previously `-exts all` line-counted
-  executables and images wholesale (`TestCheckFile_BinarySkipped`,
-  `TestCheckDir_BinarySkippedTextChecked`)
-- **Certificate and key material is never opened**: `.crt`, `.pem`, and
-  `.key` files (case-insensitive) are skipped before the file is opened, so
-  their content is never read, counted, or parsed
-  (`TestCheckFile_SensitiveExtensionsNeverOpened`)
+- **Config parsing is strict.** v0.8.0 silently ignored what now fails with the offending key or line named: unknown keys in JSON (top-level or inside a rule) and YAML (e.g. a `warning_treshold` typo, a `limt` rule key); YAML tab indentation; YAML inline flow collections (`skip_dirs: [vendor, dist]`, `files: {README.md: 10}`; an empty `[]`, or `{}` for `files`, is still allowed); a scalar where a list belongs (`skip_dirs: vendor`); and stray indented lines. To fix: correct the key name (`repogov validate` names it), put metadata under a key starting with `_` (a top-level `$schema` key in JSON is also accepted), indent with spaces, and write lists as one `- value` per line. YAML `skip_dirs: []` / `rules: []` now mean an explicit empty list (as in JSON) rather than "use the defaults", and indentless block lists (`skip_dirs:` followed by `- vendor` at column 0) are read instead of ignored. YAML keys may be quoted (`"default": 300`)
+- **An explicit `-root` is used as given**; only an omitted `-root` (`.`) is walked up to the nearest git root. v0.8.0 walked an explicit subdirectory such as `-root .github` up to the repository root; pass the repository root itself instead
+- **`init` refreshes only a marked Context section in an existing `AGENTS.md`.** Section bounds are no longer guessed from Markdown headings (setext, indented or tab-separated headings, backtick fences whose info string contains a backtick, and `## Context` inside an HTML comment all made the old splice delete user text). Only the text between `<!-- repogov:context:begin -->` and `<!-- repogov:context:end -->` is replaced; generated `AGENTS.md` files carry the markers. A file without exactly one begin marker followed by exactly one end marker -- every hand-written `AGENTS.md` until the markers are added -- is left byte-for-byte unchanged: `init` prints a `note:` that its Context section was not refreshed (a `notice` field with `-json`; exit `0`), and `layout` lists it as INFO. To opt in, put the begin marker on the line before `## Context` and the end marker after the section, then re-run `init`. Library calls still return `nil` in that case; the new `AgentsMdContextStatus(root)` reports whether the section is refreshable and, if not, why
+- **The prose language defaults to `en-US`** (`DefaultLanguage`): `DefaultConfig().Language` is `en-US`, `LoadConfig` fills a missing or empty `language` with it, and every scaffolded agent file states it; there is no opt-out. To use another language, set `language` (or pass `-language <tag>` to `init` or `update-config`)
 
-### Fixed
+### Security
 
-- `check.go` (`CountLines`): rewritten as a chunked newline count with no
-  maximum line length. A single line over 64 KiB previously failed with
-  `bufio.ErrTooLong`, and `CheckDir`'s skip-unreadable policy then silently
-  dropped the file from results -- an over-limit file could pass CI
-  unreported. Line-count semantics are unchanged (regression tests
-  `TestCountLines_LongLine`, `TestCheckDir_LongLineFileNotSkipped`)
-- `cmd/repogov`: the unknown-subcommand error printed literal `\n` text on
-  one line (escaped `\\n` in the format strings); it now prints real
-  newlines (`TestRun_UnknownSubcommandRealNewlines`)
-- `layout.go`: the FIX hint for an `uppercase` naming rule suggested the
-  lowercase form of the name; it now suggests the case the rule expects
-  (`TestCheckLayout_UppercaseFixHint`)
-- `layout.go`: files listed in `Required` or `Optional` that live in a
-  managed directory with a `Frontmatter` requirement are now
-  frontmatter-validated; the required/optional classification previously
-  short-circuited past the check
-  (`TestCheckLayout_FrontmatterCheckedOnRequiredFiles`)
-- `config.go` (`ValidateConfig`): the files-vs-rules limit warning now uses
-  the same glob matching as `ResolveLimit` (shared `ruleGlobMatches`
-  helper), so warnings agree with resolution behavior across operating
-  systems and trailing-slash directory globs are recognized
-  (`TestValidateConfig_TrailingSlashRuleWarning`)
-- `cmd/repogov`: `-agent all,claude` style comma lists now honor `all` for
-  the absent-platform skip; previously only the exact value `all` did
-  (`TestRun_AgentAllCommaListSkipsAbsent`)
+- **Generated configs quote every value** (CodeQL go/unsafe-quoting). `init`'s JSON writer built each string by concatenation, so a `skip_dirs` entry, glob or `files` path holding a quote or ending in a backslash closed its string early and could inject keys into the generated config; every value now goes through `encoding/json`. The YAML writer escaped only quotes, so a value ending in a backslash escaped its own closing quote; it now escapes backslashes, quotes and control characters, and the reader reverses exactly those escapes, so values round-trip.
+- `CheckDir`/`CheckFile` no longer open symlinks or special files (reported as SKIP); unreadable files now FAIL instead of vanishing
+- Scaffolding creates files with `O_EXCL` (`writeNewFile`), so it never writes through a symlink or races a creator
+- `init` no longer writes through a symlinked `AGENTS.md`: the Context update `Lstat`s the file, refuses symlinks and special files with a reason, caps it at 4 MiB, and writes atomically (temp file + `fsync` + rename); `SaveConfig` likewise refuses symlinks and writes atomically, keeping an existing file's permissions
+- Frontmatter checks `Lstat` each rule file and report a symlink or special file as SKIP, never followed or opened, consistent with the limits check (a FIFO previously hung the check; a symlink was followed)
+- Sensitive-extension skip list gains `.p12`, `.pfx`, `.jks`
+- CI: `upload-artifact` pinned to a SHA; the unused workflow-level `pull-requests: write` permission removed (only `contents: read` remains); every `actions/checkout` step sets `persist-credentials: false`
+- Text output neutralizes control characters, ANSI escapes and Unicode bidi overrides in file names and messages (`Summary`, `LayoutSummary`), so a crafted file name cannot forge log lines or GitHub Actions workflow commands (`::error::`); JSON output was already escaped
+- Agent-pitfall checks never open symlinks or special files, cap reads at 1 MiB, skip dependency/build trees (`node_modules`, `dist`, `build`, `target`, `.venv`, ...) and stop at depth 8
+- `update-config` writes atomically (temp file + rename, permissions preserved) and refuses configs over 4 MiB
+- Line-exempt files that fail a byte limit now show the reason in the text summary
+- **A negative line or byte limit FAILs** the files it matches, naming the entry (`files["doc.md"]`, `rules[0] (glob ...)`, `max_bytes[0] (glob ...)`); only `0` exempts. The byte-limit rework had made `{"files": {"doc.md": -1}}` skip the line count and pass, turning a typo into a silent exemption (v0.8.0 failed it)
+- **Antigravity `.agents/rules.json` is parsed as JSON** and nested rule files are matched exactly against its `entries` (`path` relative to `.agents/`, narrowed by `include_only`, minus `exclude`; literal paths, no globs). Registration was a substring search of the file's text, so `rules/frontend/react.md.disabled`, a path under `exclude`, or a path in malformed JSON suppressed the warning for `frontend/react.md`. A registry that is malformed, has a key repogov does not know, or is not a regular file registers nothing and gets its own WARN saying why; `inherits` is not followed
+- **A registered nested Antigravity rule is still validated**: registration waives only the "scanned flat" location warning, so a registered rule with no frontmatter or an invalid trigger FAILs like a top-level rule (it was exempt from every check)
+- **`scripts/hooks/pre-commit` handles every file name literally.** The demojify re-stage (`restage_changed`) lists names NUL-delimited (`git diff -z`), keeps the lists in temp files and passes names through `xargs -0` as arguments, so names git quotes even with `core.quotePath=false` (`"`, tab, newline, backslash) are re-staged instead of handed to `git add` in quoted form. Every `git diff`/`git add` on a captured name uses `--literal-pathspecs`: `--` does not disable pathspec magic or wildcards, so a staged file named `:(glob)**` or `a[b].md` staged the user's other unstaged work. `pre-commit.go` re-stages gofmt'd files the same way (`git --literal-pathspecs add -- <name>`; it passed the bare name, which a leading `-` turned into an option)
 
 ### Changed
 
-- `cmd/repogov`: `-platform auto` with no detectable repository markers now
-  prints "No platforms detected -- nothing to check." instead of exiting
-  silently (`TestRun_PlatformAutoNoDetection`)
-- `cmd/repogov version`: falls back to the module version from the Go build
-  info when the `-ldflags` version is unset, so `go install ...@vX.Y.Z`
-  installs self-report their tag instead of "dev"
-- `layout.go`: collapsed the byte-identical `formatDirMinMessage` /
-  `formatDirPassMessage` pair into one `formatDirCountMessage` helper
-- `.github/workflows/ci.yml`: Go matrix refreshed to `1.22 / stable` so the
-  latest Go release is always exercised; coverage and lint steps key on
-  `stable` instead of a pinned minor version
-- `scripts/hooks/pre-commit`: tool pins bumped to `repogov@v0.7.2` and
-  `demojify-sanitize@v0.10.0`
+- `_agent_hints` is redesigned as short, agent-neutral decision hints: one actionable line per situation (`on_fail`, `on_warn`, `on_pitfall`, `on_settings`, `exempt`, `never`, `verify`) and one per config key, the `language` key included. The block is the same for every config and names no specific agent. `never` holds two agent rules (edit no files outside the repo; never read or paste secrets), and a settings finding is reported to the user without widening permissions. `update-config` refreshes an existing config to the new block.
+- Minimum Go version raised from 1.22 to 1.24 (`go.mod`, CI matrix, `docs/design.md`)
+- CI matrix now covers Go 1.24, 1.25, and stable
+- `scripts/hooks/pre-commit` — bumped the self-governance pin from
+  `repogov@v0.7.2` to the released `repogov@v0.8.0` (post-release pin
+  sweep per the PIN POLICY comment at the pin site)
+- Every config `init` generates writes `"language"` right after `_agent_hints` (`en-US` unless `-language` gives another tag), and `update-config` adds `"language": "en-US"` there when the key is absent; an existing value is never overwritten without `-language`
+- `LayoutSummary` counts SKIP results (shown as `| N skip` only when present)
+- CLI: flags are accepted after the subcommand (`repogov limits -json`, `repogov validate -config x.json`); a stray argument after the subcommand exits `2` with a reason instead of being ignored
+- `init` creates no config when one already exists at the repo root or in `.github/` (it previously added a second, shadowed or shadowing, config)
+
+### Fixed
+
+- **`init -agent cursor` now seeds `.mdc` rules with Cursor frontmatter** (`description`, `globs`, `alwaysApply`) instead of plain `.md` files with Copilot `applyTo` frontmatter, which Cursor ignores. `descriptive_names` no longer affects Cursor. Existing `.md` rules are not renamed (init never overwrites); `layout` warns about them with a rename hint. `.cursor/rules/memory.mdc` gets the 200-line limit
+- `-agent zed` layout accepts any of Zed's documented rules files (`.cursorrules`, `.windsurfrules`, `.clinerules`, `.github/copilot-instructions.md`, `AGENT.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) in place of `.rules`
+- Root layout no longer reports files nested inside managed directories (`.claude/rules/a.md`, `.github/workflows/ci.yml`, `docs/sub/b.md`, `.opencode/agents/a.md`) as unexpected: a `NoCreate` directory with no glob now covers its whole subtree. Files outside managed directories are still flagged
+- Root layout recognizes `opencode.json`/`opencode.jsonc` (optional) and `.gemini/`, `.opencode/`, `.agents/`, `.codex/` (managed directories)
+- `-agent gemini` layout accepts `AGENTS.md` in place of `GEMINI.md` (new `LayoutSchema.Alternatives`) only when the project's `.gemini/settings.json` lists `"AGENTS.md"` in `context.fileName` (a string or a list): Antigravity reads `AGENTS.md` by default, but Gemini CLI reads only `GEMINI.md` unless configured. A missing, unreadable or malformed settings file means no fallback, and the FAIL says which. `init` still creates `GEMINI.md`
+- Layout alternatives count only as regular files: a `.clinerules/` directory (Cline's rules directory) no longer satisfies Zed's `.rules`, and a directory or symlink named `AGENTS.md` no longer satisfies `GEMINI.md`
+- An Antigravity rule whose frontmatter cannot be read to the end (a read error partway) FAILs with the cause ("the rule was not checked"), instead of reading as "no frontmatter" and telling the author to add frontmatter the file has; the scanner loop never checked `Err()`
+- Antigravity frontmatter keys are unquoted like values: `"trigger": always_on` is a valid rule, not one missing its trigger
+- An explicit empty `max_bytes` (no byte limits) survives `SaveConfig`: JSON no longer drops it (`omitempty` removed; `null` still reloads as the defaults) and YAML writes `max_bytes: []`, so a reload no longer restores the default 24,000-byte limits
+- The scaffolded `general` rule states no language for an unknown `language` tag (e.g. `en-NZ`, kept and reported by `validate`); it fell back to "Use US English spelling", contradicting the configured tag. The other agent files already omitted the line
+- `LoadConfig` now accepts configs saved with a UTF-8 BOM (common from Windows editors/PowerShell); previously JSON/YAML parsing failed with "invalid character"
+- **`init` no longer corrupts an existing `AGENTS.md`.** The `## Context` update matched `## Context` anywhere (including `### Context` and mid-line) and, without a following `## ` heading, replaced everything to end of file. It now replaces only the text between the Context markers (see Breaking), keeps CRLF line endings, and skips the write when nothing changed. Docs no longer claim init never modifies existing files
+- Atomic writes (`SaveConfig`, `update-config`, the AGENTS.md refresh) failed on Windows with "Access is denied" when an editor, indexer or antivirus scanner held the file open (`os.WriteFile` had succeeded). The rename is now retried for `ERROR_ACCESS_DENIED`/`ERROR_SHARING_VIOLATION` with a doubling backoff bounded at 1 s, then fails naming the cause and the next step; the temp file is `fsync`ed before the rename, so a crash can never leave a truncated config
+- `SaveConfig` YAML round-trips an empty string (`yamlQuote("")` is `""`, so `skip_dirs: [""]` no longer writes a bare `-` that fails to load) and writes `rules: []` for an explicit empty rule list (it was dropped, so the defaults came back on load)
+- A file starting `FF FE 00 00` is read as UTF-32LE only when its length is a multiple of 4, and otherwise as UTF-16LE (a UTF-16LE BOM followed by U+0000)
+- **An explicit `-config` that does not exist is an error** (exit `2`, "config file ... not found") for every subcommand; previously all checks silently ran against defaults. Auto-discovery still falls back to defaults
+- **Flags after the subcommand were silently dropped** (`repogov limits -config x` used the auto-discovered config; `repogov validate -json` printed text)
+- **UTF-16/UTF-32 files were skipped as binary.** A UTF-16 or UTF-32 byte order mark is recognized before the NUL-byte sniff and lines are counted in the decoded text; binary files remain unparsed but are now held to their `max_bytes` limit (from the file size). A failed `Stat` during a byte check is now an error rather than a pass
+- Frontmatter validation accepts a UTF-8 BOM before the opening `---`
+- `init` linked `governance.md` to a shadowed config and checked `.github/` before the repo root; the link now follows `FindConfig` precedence (root, then `.github/`; JSON, then YAML)
+- `_agent_hints` carried a duplicate, mis-indented `max_bytes` key; removed. The pinning test now compares the repository config's hints byte-for-byte and rejects duplicate keys
+- YAML `_agent_hints` values now escape backslashes, newlines and control characters (the backslash replacement was a no-op)
+- Agent-pitfall checks run for `-agent Cursor` / `-agent GEMINI` (agent names are now matched case-insensitively)
+- `scripts/hooks/pre-commit` no longer runs `git add -u` after demojify substitutions (which staged every modified tracked file and broke partial staging); it re-stages only the staged files the substitution changed and lists partially staged ones for manual review
+- CLI help: `update-config` described as editing the JSON or YAML config; subcommand list, `-platform all`, flag placement and exit codes documented
+
+### Added
+
+- **Prose language key** (`language`, `Config.Language`): the BCP 47 tag of the natural language the repository's prose (Markdown, text files, code comments, commit messages) is written in -- not a programming language. A closed set of 63 tags covers English, Spanish and Portuguese regional variants, major European, Middle Eastern, South Asian, East and Southeast Asian and African languages (`KnownLanguages`, with display name, spelling/script convention and right-to-left flag for `he`, `ar`, `fa`, `ur`); `NormalizeLanguage`/`LookupLanguage` match case-insensitively, accept `_`, and resolve aliases and bare tags to documented defaults (`en` -> `en-US`, `pt` -> `pt-BR`, `zh`/`zh-CN` -> `zh-Hans`, `zh-TW`/`zh-HK` -> `zh-Hant`). Every scaffolded agent instruction file (`AGENTS.md`, `CLAUDE.md`, `copilot-instructions.md`, `GEMINI.md`, Zed `.rules`, the `general` rule) carries a directive telling agents to write in that language and spelling (`Language.Directive`); the default is `en-US` (see Breaking). `validate` warns on an unknown tag and names the closest known ones. No detection: `init -language <tag>` writes it into a new config, and `update-config -language <tag>` (`UpgradeConfigWithLanguage`) adds or replaces it in an existing JSON/YAML config; without the flag an existing value is never touched. `.github/repogov-config.json` sets `en-US`
+- The language reaches existing repos, which `init` never re-scaffolds: the marked `AGENTS.md` Context section carries the language line, and `layout` WARNs (`CheckAgentsMdLanguage`) when `AGENTS.md` does not state the configured language as its tag in parentheses, e.g. `(en-US)`, with a FIX hint (add the Context markers and re-run `init`, or state it by hand)
+
+- **Byte limits** (`max_bytes`, `ResolveByteLimit`; `Result.Bytes`/`ByteLimit`): size limits checked in addition to line limits, because some agents truncate by bytes (Antigravity: 24,000 per rule file). Defaults cover `AGENTS.md`, `GEMINI.md`, `.agents/rules/*.md`; supported in JSON and YAML, validated, and written into generated configs. A line-exempt file is still byte-checked
+- **Agent pitfall checks** (`CheckAgentPitfalls`, `pitfalls.go`), reported by `layout`/`all` (text and JSON `pitfalls` key): Cursor plain `.md` rules (ignored by Cursor) and Antigravity `.agents/rules` files with missing/invalid frontmatter or trigger (silently discarded), `model_decision` without description, `glob` without globs, and unregistered nested rule files
+- `_agent_hints` block (ignored by the loader) guiding AI agents: written by the config generator (`config_hints.go`) into every new `repogov-config.json` and mirrored in `.github/repogov-config.json`, pinned by a test
+- `make lint` target
+- **`repogov update-config`** (`UpgradeConfigHints`, `config_upgrade.go`) -- adds or refreshes the `_agent_hints` block in an existing JSON config as a textual edit: all other bytes (key order, compact arrays, indentation, CRLF) are preserved, the effective config is verified unchanged before writing, and re-running is a no-op. Works on JSON and YAML configs (YAML hints are a top-level `_agent_hints:` mapping of double-quoted strings, generated from the same source as the JSON block and skipped by repogov's YAML reader); a UTF-8 BOM and CRLF endings are preserved. Configs written before hints existed keep working unchanged
 
 ### Documentation
 
-- Corrected the documented `default` fallback from 300 to the actual
-  built-in 500 (`ResolveLimit` godoc, README, docs/design.md) and the
-  documented warning threshold default from 80 to the actual 85
-- `FindConfig` godoc no longer lists `repogov.json`/`repogov.yaml` names
-  that were never searched
-- `presets.go` and `doc.go` now enumerate all fifteen layout presets plus
-  `DetectPlatforms`, `StripFrontmatter`, `UpdateAgentsMdContextAll`, and
-  `FindAllConfigs`; repaired the truncated `initLayoutSingle` comment and
-  the stale `matchGlob`/`resolvePlatform`/`LayoutPassed` comments
+- `docs/compliance/*`: every audit re-verified against current vendor docs (2026-10-17). New deprecation notices: Roo Code (archived 2026-05-15), Windsurf (moving to Devin docs), Gemini CLI (partly superseded by Antigravity CLI), Zed (Rules Library replaced by Skills), Devin Knowledge, Plandex Cloud, Sourcegraph Cody Free/Pro. Cursor now documented as `.mdc`-only; Claude audit gains skills, `CLAUDE.local.md`, permission precedence and a `CheckClaudeSettings` section. `AI_AGENTS_AUDIT.md` gains a Status Review table with preset follow-ups
+- Dropped `PLANDEX_AUDIT.md` and `SOURCEGRAPH_AUDIT.md` (Plandex Cloud wound down; Cody Free/Pro discontinued; neither has a file-based instruction path) -- see "Dropped Agents" in `AI_AGENTS_AUDIT.md`
+- Cursor: `.cursorrules` documented as legacy/deprecated (ignored by Agent mode)
+- Copilot: `.github/prompts/`, `.github/skills/` and `.github/agents/` paths confirmed against GitHub's customization cheat sheet
+- JetBrains: Junie guideline lookup order documented (`.junie/AGENTS.md`, root `AGENTS.md` + `playbook.md` + `rules/*.md`, legacy `guidelines.md`)
+- New `OPENCODE_AUDIT.md`: OpenCode qualifies for a Tier 2 preset (not built); registered in `AI_AGENTS_AUDIT.md`
+- Gemini/Antigravity: `.agents/rules/*.md` rules, `trigger:` frontmatter, flat scanning and `rules.json` documented from antigravity.google/docs/rules; includes (`@[label](path)`, `@filename`) and limits (24 KB per file after expansion, 20k-token always-on budget) added
+- Codex: `.codex/rules/*.rules` (Starlark command-execution policy, trusted projects only) documented from the vendor rules page
+- Primary-source follow-up: Bitbucket `.bitbucket/CODEOWNERS` confirmed; Codex hooks (`.codex/hooks.json`) and custom agents (`.codex/agents/*.toml`) paths confirmed; Windsurf rename to Devin Desktop confirmed on vendor docs
 
-## [v0.7.2] - 2026-06-11
-
-### Changed
-
-- Cross-platform Makefile via the vendored `tools/xplat` helper: recipes
-  contain no shell-specific syntax, so `make` targets work identically
-  under cmd.exe, PowerShell, and POSIX sh (#14, #15)
-
-## [v0.7.1] - 2026-03-23
-
-### Changed
-
-- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.7.2` to `v0.7.3`.
-
-## [v0.7.0] - 2026-03-22
-
-### Added
-
-- **`DetectPlatforms(root)`** (`detect.go`) — inspects a repository for well-known platform markers and returns the detected platform names in stable order: `"bitbucket"` (presence of `bitbucket-pipelines.*`), `"github"` (`.github/` directory), `"gitlab"` (`.gitlab/` directory or `.gitlab-ci.*` file). Used by `-platform auto` in the CLI.
-- **`DefaultGitHubLayout()`** (`presets.go`) — new layout preset for GitHub repository platform conventions, covering `.github/` with optional `ISSUE_TEMPLATE/`, `PULL_REQUEST_TEMPLATE/`, `workflows/`, and standard community health files (`CODE_OF_CONDUCT.md`, `CODEOWNERS`, `CONTRIBUTING.md`, `SECURITY.md`, etc.).
-- **`DefaultBitbucketLayout()`** (`presets.go`) — new layout preset for Bitbucket repository conventions; validates common community health files at the repository root.
-- **`DirRule.Frontmatter`** (`layout.go`) — new field on `DirRule` enforces required YAML frontmatter keys in every matching file within a managed directory. When non-empty, `CheckLayoutContext` validates each file for a `---`-delimited frontmatter block containing all listed keys and emits `FAIL` results for missing delimiters or keys. `.github/instructions/` and `.github/rules/` now require `applyTo` in `DefaultCopilotLayout()`.
-- **`StripFrontmatter(schema)`** (`layout.go`) — returns a copy of a `LayoutSchema` with all `DirRule.Frontmatter` slices cleared; used when `Config.SkipFrontmatter` is true.
-- **`Config.SkipFrontmatter`** (`repogov.go`) — new config field (`skip_frontmatter`); when `true`, frontmatter requirements are stripped from all schemas before layout checks. Supported in both JSON and YAML config formats.
-- **`-platform` CLI flag** (`cmd/repogov/main.go`) — separates repository platform presets (`github`, `gitlab`, `bitbucket`, `root`) from AI agent presets (now `-agent` only). Accepts a comma-separated list, `all` (all repo platforms), or `auto` (auto-detect from repository markers via `DetectPlatforms`). Passing a platform name to `-agent` or an agent name to `-platform` produces a clear error message.
-- **`collectSchemas()`** (`cmd/repogov/main.go`) — builds a unified, de-duplicated list of layout entries from both `-agent` and `-platform` flag values, replacing the previous single-flag expansion logic.
-- **`allAgentSchemas()` / `allRepoSchemas()`** (`cmd/repogov/main.go`) — split from the former `allPlatformSchemas()` to distinguish AI agents from repository platform schemas.
-- **Subdirectory README seeding** (`scaffold.go`) — `createSubdirReadmes()` seeds a `README.md` into each non-`NoCreate` subdirectory defined in a layout schema during `repogov init`. The file describes the directory's purpose, expected file naming glob, and any frontmatter requirements. Existing `README.md` files are never overwritten; `.` (Cline's root-level rule directory) is skipped to avoid conflicting with the project's own README.
-- **`templates/readme/README.md.tmpl`** — embedded template used by `subdirReadmeContent()` to render subdirectory README files.
-- **`golangci-lint config verify`** (`scripts/hooks/pre-commit.go`) — pre-commit now runs `golangci-lint config verify` before `golangci-lint run` to catch config-format errors early; install comment updated to reference the v2 module path.
-- **`.golangci.yml` v2 migration** — migrated from golangci-lint v1 to v2 config format: moved `gofmt` to `formatters`, renamed `linters-settings` to `linters.settings`, replaced `disable-all` with `default: none`, converted `issues` rules to exclusions. Pinned lint version to `v2.11.4`.
-- **CI upgrade** (`.github/workflows/ci.yml`) — upgraded `golangci/golangci-lint-action` from v6 to v9.2.0 with pinned SHA, set `cache: false` to avoid action-cache conflicts, bumped lint job Go version from `1.22.x` to `1.23`.
-- **Compliance audit docs** (`docs/compliance/`) — added `BITBUCKET_PLATFORM_AUDIT.md`, `GITHUB_PLATFORM_AUDIT.md`, and `GITLAB_PLATFORM_AUDIT.md` covering platform-level layout support and governance integration.
-- **Test file splitting** — large omnibus test files broken into focused files to improve navigability:
-  - `config_test.go` -> `config_load_test.go` + `config_validate_test.go`
-  - `init_test.go` -> `init_agents_test.go` + `init_config_test.go` + `init_content_test.go` (plus trimmed `init_test.go`)
-  - `repogov_test.go` -> `repogov_limits_test.go` + `repogov_types_test.go`
-  - `layout_test.go` -> `layout_check_test.go` + `layout_frontmatter_test.go`
-  - `cmd/repogov/main_test.go` -> `main_init_test.go` + `main_paths_test.go` + `main_run_test.go`
-  - `cmd/repogov/scaffold_test.go` -> `scaffold_init_test.go` + `scaffold_subcommands_test.go`
-- **Shared test assertion helpers** (`helpers_test.go`) — `assertExists`, `assertNotExists`, `assertFileContains`, `assertFileNotContains` eliminate repetitive inline `os.Stat`/`strings.Contains` boilerplate; `hasViolation` and `hasAnySeverity` moved to their sole consumer `config_validate_test.go`.
-
-### Changed
-
-- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.7.0` to `v0.7.2`.
-- `scripts/hooks/pre-commit` — bumped `repogov` from `v0.5.1` to `v0.7.0`; converted inline `go run` calls to named `repogov_ref` and `demojify_ref` variables for maintainability.
-- **`-agent` flag scope narrowed** (`cmd/repogov/main.go`) — `gitlab` and `root` removed from `-agent`; they now belong to `-platform`. `isKnownAgentName` updated accordingly. The old `allPlatformSchemas()` removed in favor of `allAgentSchemas()` + `allRepoSchemas()`.
-- **`runLayout()` signature** (`cmd/repogov/main.go`) — now accepts `configPath` and `platformFlag` in addition to `agentFlag`; loads config to check `SkipFrontmatter` before running checks.
-- **`DefaultCopilotLayout()`** (`presets.go`) — added `Frontmatter: []string{"applyTo"}` to both the `instructions` and `rules` directory rules, enforcing that all scoped instruction/rule files declare an `applyTo` scope.
-- **Layout walker** (`layout.go`) — `README.md` files in managed directories are now silently skipped alongside `.gitkeep`, preventing false unexpected-file, frontmatter, or naming warnings on the scaffolded directory READMEs.
-- **`isDirEmpty()` and `dirHasGlobFiles()`** (`scaffold.go`) — both now treat `README.md` as an infrastructure file (alongside `.gitkeep`), so seeded READMEs do not cause directories to be considered non-empty or trigger glob matches.
-- **`schemaConfig()`** (`scaffold.go`) — now propagates `SkipFrontmatter` from the input config to the output config for generated `repogov-config.json`.
-- **`defaultConfigJSON()`** (`scaffold.go`) — outputs `skip_frontmatter` field in generated config JSON.
-
-### Fixed
-
-- **`subdirReadmeInfo` empty `dirName` guard** (`scaffold.go`) — guarded against a panic when `dirName` is an empty string by checking length before `utf8.DecodeRuneInString`; Description punctuation normalized to always end with `.`.
-- **Pre-commit hook shell comment** (`scripts/hooks/pre-commit`) — fixed comment to correctly list `go test` among the checks run by the hook.
-- **`isSafeFileSegment` De Morgan's law** (`repogov.go`) — applied `QF1001` staticcheck suggestion; condition rewritten to an early-return De Morgan form, functionally identical.
-
-## [v0.6.1] - 2026-03-14
-
-### Added
-
-- `-seed` CLI flag for `init` subcommand — seeds missing template files into existing directories without overwriting. Maps to `init_always_create` config option at runtime, providing a convenient CLI alternative to editing the config.
-- `TestCheckDir_FilesOverrideViaCheckDir` regression test (`check_test.go`) — end-to-end test that verifies `files` overrides are applied correctly when limits are resolved through `CheckDir`.
-- `TestResolveLimit_FilesOverridesGlob` test (`repogov_test.go`) — verifies the documented resolution priority (files > rules > default) with the exact config shape used by downstream consumers.
-- `TestScaffold_Copilot_Init_Instructions` test (`scaffold_test.go`) — verifies that when `.github/instructions/` already has content, init detects it, sets `descriptive_names=true`, and generates a config referencing only `instructions/` paths.
-
-### Fixed
-
-- **`CheckDirContext` absolute-path bug** (`check.go`) — `CheckDirContext` passed the absolute filesystem path (e.g. `C:/Users/.../README.md`) to `CheckFile`, which used it for `ResolveLimit`. Neither `files` exact-match lookups nor `rules` glob patterns ever matched absolute paths, so **all overrides were silently ignored** and every file received the `default` limit. Introduced internal `checkFileAt(fsPath, relPath, cfg)` to separate the filesystem path (for `CountLines`) from the repo-relative path (for config lookups). `CheckFile` public API is unchanged.
-- **`schemaConfig` missing `DescriptiveNames` propagation** (`scaffold.go`) — the output `Config` from `schemaConfig` did not copy `cfg.DescriptiveNames`, so generated `repogov-config.json` always had `"descriptive_names": false` even when `instructions/` was detected and descriptive naming was forced.
-- **`schemaConfig` duplicate `rules/`/`instructions/` file entries** (`scaffold.go`) — when `copilotNarrowSchema` removed one directory (e.g. `rules/`), `schemaConfig` still included `files` entries for both directories. Added `firstSegment` helper to skip file entries whose subdirectory is absent from the narrowed `schema.Dirs`.
-
-## [v0.6.0] - 2026-03-14
-
-### Changed
-
-- **Code decomposition**: split `init.go` (1252 lines) into three focused files:
-  - `init.go` (334 lines) — public API and orchestration (`InitLayout`, `InitLayoutWithConfig`, `InitLayoutAll`, `InitLayoutAllWithConfig`, `initLayoutSingle`, `initLayoutAllWithOptions`), plus `initOptions`, `templateStem`, and `shouldSeedFile`.
-  - `template.go` (33 lines) — embedded template filesystem (`templateFS`), `mustReadTemplate`, and `mustRenderTemplate`.
-  - `scaffold.go` (889 lines) — all scaffolding content generators and file-writing helpers: agent-specific file creators (`createCopilotInstructions`, `createClaudeMd`, `createGeminiMd`, `createZedRules`), AGENTS.md management (`createAgentsMd`, `updateAgentsMdContext`, `UpdateAgentsMdContextAll`, context section builders), instruction template seeding (`createDefaultInstructions`, `defaultInstructionFilesFor`, all `*InstructionsContent` functions), config scaffolding (`createDefaultConfig`, `createDefaultConfigAll`, `schemaConfig`, `defaultConfigJSON`), filesystem helpers (`dirIsNew`, `isDirEmpty`, `dirHasGlobFiles`, `copilotNarrowSchema`), and mapping utilities (`schemaRootToAgent`, `rulesLabel`, `placeholderContent`).
-- **Deduplicated `intToStr`/`intStr`**: removed `intToStr` from `layout.go` (identical to `intStr` in `scaffold.go`); `formatDirMinMessage` and `formatDirPassMessage` now call the single `intStr` utility.
-- **Extracted `spliceContextSection` helper** in `scaffold.go`: the read->find-marker->splice->write logic was duplicated between `updateAgentsMdContext` and `UpdateAgentsMdContextAll`; both now delegate to the shared helper.
-- **Simplified `agentsMdContextSection`**: was a 35-line near-duplicate of `agentsMdMergedContextSection`; now a one-liner that delegates via `agentsMdMergedContextSection([]LayoutSchema{schema})`.
-- **Added `writeLine` closure** in `agentsMdMergedContextSection`: replaced 10 repetitions of the dedup-and-write pattern with a single closure.
-- **Fixed misplaced doc comment**: the `agentsMdContextSection` godoc was orphaned above `UpdateAgentsMdContextAll`; moved to its correct function.
-- **Updated `docs/design.md` Package Structure**: added missing files (`scaffold.go`, `template.go`, `yaml.go`), corrected function-to-file attributions, and expanded descriptions for `config.go` and `init.go`.
-
-### Fixed
-
-- `DefaultConfig().Files` — added `.github/instructions/memory.instructions.md: 200` entry. Repos where Copilot init targeted `instructions/` instead of `rules/` were missing the per-file limit for the memory template, falling back to the 300-line glob instead of the intended 200-line limit.
-
-## [v0.5.1] - 2026-03-13
-
-### Added
-
-- `DefaultZedLayout()` preset in `presets.go` — supports Zed AI's single-file `.rules` format at repo root.
-- `-agent zed` CLI preset for `layout`, `init`, and `all` subcommands.
-- `templates/agents/zed-rules.tmpl` — template for Zed's root-level `.rules` project rules file.
-- `createZedRules()` and `zedRulesContent()` in `init.go`; `IsZed` template data field and context section logic for `AGENTS.md`.
-- `".rules": 200` added to `DefaultConfig()` (`repogov.go`).
-- `docs/compliance/ZED_AUDIT.md` — Preset, Seeded Files, Memory Configuration, and Limits sections added; "Not yet supported" section removed.
-- `docs/compliance/AI_AGENTS_AUDIT.md` — Zed AI added to criteria table (all Pass), Supported table, Tier 1 table, and Support Matrix.
-- **Memory Configuration** sections added to all agent audit files: `COPILOT_AUDIT.md`, `CURSOR_AUDIT.md`, `WINDSURF_AUDIT.md`, `CLAUDE_AUDIT.md`, `KIRO_AUDIT.md`, `CLINE_AUDIT.md`, `ROOCODE_AUDIT.md`, `CONTINUE_AUDIT.md`, `JETBRAINS_AUDIT.md`, `GEMINI_AUDIT.md`, `AGENTS_MD_AUDIT.md`, `ZED_AUDIT.md`.
-- `docs/compliance/KIRO_AUDIT.md` — "Not yet supported" section replaced with Preset, Seeded Files, Memory Configuration, and Limits sections.
-- `templates/rules/memory.md.tmpl` — dedicated project memory seed template with sections for Architecture Decisions, Known Issues, Conventions, Dependency Notes, and Session Notes. Kept separate from `general.md` which serves a different purpose.
-- `memoryInstructionsContent()` in `init.go`; `memory.instructions.md` / `memory.md` registered in `defaultInstructionFilesFor()` and seeded for all 9 rule-seeding agents (copilot, cursor, windsurf, claude, kiro, continue, cline, roocode, jetbrains).
-- Nine `memory.md` per-file entries added to `DefaultConfig().Files` at 200 lines each (`.github/rules/memory.md`, `.cursor/rules/memory.md`, `.windsurf/rules/memory.md`, `.claude/rules/memory.md`, `.kiro/steering/memory.md`, `.continue/rules/memory.md`, `.clinerules/memory.md`, `.roo/rules/memory.md`, `.aiassistant/rules/memory.md`).
-- `*.mdc` and `scripts/hooks/pre-commit` added to `.gitattributes` LF normalization rules.
-- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.6.0` to `v0.7.0`.
-
-### Fixed
-
-- `DefaultCopilotLayout()` `workflows` `DirRule` — `NoCreate: true` was missing, causing an empty `workflows/` directory to be created on every `copilot init` even when GitHub Actions was not in use.
-- `schemaConfig()` in `init.go` — changed signature from `(cfg Config, root string)` to `(cfg Config, schema LayoutSchema)` and replaced the `root == "." && !strings.Contains(k, "/")` case with `root == "." && isInRequired(k, schema.Required)`. Added `isInRequired` helper. Gemini and Zed both use `Root == "."` but own different root-level files (`GEMINI.md` and `.rules` respectively); the old code included both in each agent's generated config.
-- `initLayoutSingle` config placement — when no `.github/` directory exists (all non-copilot single-agent inits), the generated `repogov-config.json` now lands at the repo root instead of inside the agent's own directory (e.g., `.cursor/repogov-config.json`). `FindConfig` searches the repo root first, so the config is now auto-discoverable without requiring an explicit `-config` flag.
-- `resolveRoot()` in `cmd/repogov/main.go` — generalized from "only git-walk when root is `.`" to "always resolve to an absolute path, then walk up to the nearest git root". An explicit `-root .cursor` (or any agent subdir path) is now correctly resolved to the repo root, preventing double-nested scaffolding (e.g., `.cursor/.cursor/rules/`).
-- `DefaultConfig().Files` — added `memory.instructions.md` variants alongside each `memory.md` entry (18 entries total, 9 agents × 2 naming conventions). When `descriptive_names` is enabled the scaffolded file is `memory.instructions.md`; without the paired entry it fell back to the 300-line `*.md` glob instead of the intended 200-line limit.
-
-## [v0.5.0] - 2026-03-12
-
-### Added
-
-- `DefaultKiroLayout()`, `DefaultGeminiLayout()`, `DefaultContinueLayout()`, `DefaultClineLayout()`, `DefaultRooCodeLayout()`, `DefaultJetBrainsLayout()` layout presets in `presets.go`.
-- `-agent kiro`, `-agent gemini`, `-agent continue`, `-agent cline`, `-agent roocode`, `-agent jetbrains` CLI presets for `layout`, `init`, and `all` subcommands.
-- `templates/agents/GEMINI.md.tmpl` — template for Gemini CLI's root-level `GEMINI.md` instruction file.
-- `crossAgentRootFile()` helper in `init.go` — explicit allowlist for root-level files that belong in every agent's generated `repogov-config.json`; currently only `AGENTS.md` qualifies. Prevents agent-specific files from being injected into unrelated platform configs.
-- `anyRequiredFileExists()` helper in `cmd/repogov/main.go` — enables `runLayout all` to correctly skip file-only schemas (e.g., Gemini) whose required files are absent, matching existing absent-directory skip behavior for all other platforms.
-- Glob rules for `.kiro/steering/*.md`, `.continue/rules/*.md`, `.clinerules/*.md`, `.roo/rules/*.md`, and `.aiassistant/rules/*.md` added to `DefaultConfig()` (`repogov.go`) and `.github/repogov-config.json`.
-- `docs/compliance/AI_AGENTS_AUDIT.md` — Kiro, Gemini CLI, Continue, Cline, Roo Code, and JetBrains AI Assistant moved from backlog to Supported.
-
-### Changed
-
-- `defaultLimit` constant changed from `300` to `500` (`repogov.go`); raises the built-in fallback limit for all unconfigured files.
-- `schemaConfig()` in `init.go` replaced the blanket "no-slash key = include everywhere" rule with an explicit `crossAgentRootFile()` allowlist check; agent-specific root files (e.g., `GEMINI.md`) no longer appear in unrelated agents' generated `repogov-config.json`.
-- `CheckLayoutContext()` in `layout.go` short-circuits for file-only schemas (`Root == "."`, empty `Dirs`): validates only Required/Optional file existence without walking the directory, preventing false unexpected-file failures on Gemini layout checks.
-- `DefaultRootLayout()` updated with `NoCreate: true` entries for `.kiro/`, `.continue/`, `.clinerules/`, `.roo/`, `.aiassistant/`, and `GEMINI.md` added to the naming exception list.
-- `DefaultConfig()` extended: `GEMINI.md: 200` and corrected `.claude/CLAUDE.md: 200` (was `50`).
-
-### Fixed
-
-- `.claude/CLAUDE.md` default limit corrected from `50` to `200` in `DefaultConfig()` (`repogov.go`).
-
-## [v0.4.0] - 2026-03-09
-
-### Added
-
-- Test assertions in `TestInitLayout_ClaudeSchema` and the claude scaffold test verifying that generated `.claude/CLAUDE.md` contains `-agent claude` and does not contain the literal `{{.Agent}}` string. Catches regressions where `claudeMdContent` returns raw template text instead of rendering through `text/template`.
-
-### Changed
-
-- `scripts/hooks/pre-commit` — bumped `demojify-sanitize` from `v0.5.0` to `v0.6.0`.
-
-## [v0.3.0] - 2026-03-09
-
-### Added
-
-- `mustRenderTemplate` helper in `init.go` — single chokepoint that parses and executes every embedded template through `text/template`. All content functions now route through it, so adding a `{{.Field}}` placeholder to any template in the future will never silently emit literal text.
-- `templates/rules/security.md.tmpl` — new scoped rule template covering secrets hygiene, input validation, authentication/authorization, dependency pinning, and vulnerability disclosure.
-- Embedded template system: `mustReadTemplate` + `embed.FS` in `init.go` replace all inline string-concatenation content builders. Template files live under `templates/` and are embedded at compile time, keeping generated file content fully auditable and diff-friendly.
-- `templates/agents/` subdirectory for agent root files: `AGENTS.md.tmpl`, `CLAUDE.md.tmpl`, `copilot-instructions.md.tmpl`.
-- `templates/rules/` subdirectory for scoped rule templates: `backend.md.tmpl`, `codereview.md.tmpl`, `emoji-prevention.md.tmpl`, `frontend.md.tmpl`, `general.md.tmpl`, `governance.md.tmpl`, `library.md.tmpl`, `repo.md.tmpl`, `testing.md.tmpl`.
-- `agentsMdTemplateData` struct — typed data passed to `agents/AGENTS.md.tmpl`, enabling conditional sections (`HasRules`, `HasInstructions`, `IsCopilot`, `IsClaude`, etc.) without Go code changes.
-- All template files use the `.md.tmpl` extension consistently, including previously static `.md` files, so any file is ready for `{{...}}` directives without a rename.
-- Fix LICENSE, APPENDIX: How to apply the Apache License to your work.
-
-### Changed
-
-- All `*Content()` helper functions in `init.go` (`agentsMdContent`, `claudeMdContent`, `copilotInstructionsContent`, `governanceInstructionsContent`, and all rule-file helpers) now route through `mustRenderTemplate` rather than building output with `strings.Builder` or calling `mustReadTemplate` directly.
-- Template files organized into `templates/agents/` (one-per-agent root files) and `templates/rules/` (granular rule files seeded into platform `rules/` directories). Adding a new agent or rule requires only a new template file, not a Go code change.
-- `templates/rules/general.md.tmpl` — removed `Maintenance` section and generic writing platitudes that provide no agent-specific signal.
-- `templates/rules/emoji-prevention.md.tmpl` — condensed 30-row alternatives table to 6 representative rows; table length was inflating the token count the file itself warns against.
-- `templates/rules/repo.md.tmpl` — replaced three bulleted layout lists (`.github`, `.gitlab`, root) with concise prose lines.
-- `templates/rules/codereview.md.tmpl` — removed `Review Etiquette` section; interpersonal guidance for human reviewers, not actionable agent behavior.
-- `templates/rules/testing.md.tmpl` — removed `Development Section` section; duplicated guidance already covered by `library.md.tmpl`.
-
-### Fixed
-
-- `init.go` `claudeMdContent` — was returning raw `mustReadTemplate` output instead of rendering through `text/template`, causing `{{.Agent}}` to appear verbatim in generated `.claude/CLAUDE.md` files. Now rendered correctly via `mustRenderTemplate`.
-- `templates/agents/CLAUDE.md.tmpl` — replaced hardcoded `claude` in `go run` commands with `{{.Agent}}` so the template renders correctly for any agent target.
-- `scripts/hooks/pre-commit.go` — `go test` failure hint now points to `make test` instead of `go test ./...`, consistent with all other hook failure hints and picking up any flags added to the make target.
-- `*.tmpl` added to `.gitattributes` text/LF normalization rules so template line endings are consistent across platforms.
-- Removed duplicate `temp*` entry from `.gitignore`.
-
-## [v0.2.0] - 2026-03-08
-
-### Added
-
-- `findGitRoot` / `resolveRoot` helpers in `cmd/repogov`: when `-root` is the default `.`, the CLI now walks up from the working directory to find the nearest `.git` ancestor and uses that as the repository root. Running `repogov init` from inside a subdirectory (e.g. `.github/instructions/`) no longer scaffolds files into that subdirectory.
-- Trailing-slash directory glob support in `ResolveLimit`: a rule glob ending with `/` (e.g. `"docs/"`) is now treated as a recursive directory prefix, matching any file under that directory at any depth. Previously, such globs were passed to `filepath.Match` and never matched any file.
-
-### Fixed
-
-- `ResolveLimit` now correctly applies directory-scoped rules written as `"docs/"` — the limit was silently ignored and the global default was used instead.
-
-
-## [v0.1.0] - 2026-03-08
-
-### Added
-
-- Core types: `Status`, `PercentInt`, `Config`, `Rule`, `Result` (`repogov.go`)
-- Line counting: `CountLines`, `CheckFile`, `CheckDir`, `CheckDirContext` (`check.go`)
-- Layout governance: `LayoutSchema`, `DirRule`, `NamingRule`, `LayoutResult` (`layout.go`)
-- Layout validation: `CheckLayout`, `CheckLayoutContext` (`layout.go`)
-- Layout scaffolding: `InitLayout` with default instruction file seeding (`init.go`)
-- Platform presets: `DefaultCopilotLayout`, `DefaultCursorLayout`, `DefaultWindsurfLayout`, `DefaultClaudeLayout`, `DefaultGitLabLayout`, `DefaultRootLayout` (`presets.go`)
-- `DirRule.NoCreate` field — prevents `repogov init` from creating recognized-but-optional directories (`layout.go`)
-- Configuration: `LoadConfig`, `FindConfig`, `SaveConfig`, `ValidateConfig` (`config.go`)
-- Configuration types: `Violation` for structured config validation (`config.go`)
-- YAML config support: load and save `.yaml`/`.yml` config files (`yaml.go`)
-- Output helpers: `Summary`, `Passed`, `LayoutSummary`, `LayoutPassed` (`format.go`)
-- CLI tool: `cmd/repogov` with `limits`, `layout`, `init`, `validate`, `all`, `version` subcommands
-- `-agent root` support for validating repository root layout
-- `-agent all` skips platforms whose root directories are absent; repos adopting a subset of platforms exit 0
-- Table-driven tests for all packages
-- `docs/design.md` architecture documentation
-- `docs/cli.md` CLI reference documentation
-- `docs/git-hooks.md` Git hooks integration guide
-- `docs/compliance/` audit docs for all major AI-agent platforms
-
-### Fixed
-
-- Pre-commit hook: check `command -v demojify` before running; print install instructions and exit 1 if not found (`scripts/hooks/pre-commit`)
-- Layout walker: skip `.git` before the `d.IsDir()` check so worktree gitdir pointer files are also silently skipped, not flagged as unexpected (`layout.go`)
-- `DefaultRootLayout` `Dirs` entries all set `NoCreate: true` so `repogov root init` does not scaffold common project directories (`presets.go`)
-- Sorted keys in default config JSON for deterministic output (`init.go`)
-
-[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/nicholashoule/repogov/compare/v0.9.0...HEAD
+[v0.9.0]: https://github.com/nicholashoule/repogov/compare/v0.8.0...v0.9.0
 [v0.8.0]: https://github.com/nicholashoule/repogov/compare/v0.7.2...v0.8.0
 [v0.7.2]: https://github.com/nicholashoule/repogov/compare/v0.7.1...v0.7.2
 [v0.7.1]: https://github.com/nicholashoule/repogov/compare/v0.7.0...v0.7.1

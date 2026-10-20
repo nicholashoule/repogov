@@ -28,17 +28,23 @@ func DefaultRootLayout() LayoutSchema {
 			"Makefile",
 			"README.md",
 			"SECURITY.md",
+			"opencode.json",
+			"opencode.jsonc",
 		},
 		Dirs: map[string]DirRule{
 			// AI-agent platform dirs — managed by their own layout schemas.
+			".agents":      {Description: "Shared agent configuration (rules, skills)", NoCreate: true},
 			".aiassistant": {Description: "JetBrains AI Assistant configuration", NoCreate: true},
 			".claude":      {Description: "Claude Code configuration", NoCreate: true},
 			".clinerules":  {Description: "Cline rule files", NoCreate: true},
+			".codex":       {Description: "OpenAI Codex configuration", NoCreate: true},
 			".continue":    {Description: "Continue.dev configuration", NoCreate: true},
 			".cursor":      {Description: "Cursor AI configuration", NoCreate: true},
+			".gemini":      {Description: "Gemini CLI / Antigravity configuration", NoCreate: true},
 			".github":      {Description: "GitHub configuration", NoCreate: true},
 			".gitlab":      {Description: "GitLab configuration", NoCreate: true},
 			".kiro":        {Description: "Kiro CLI configuration", NoCreate: true},
+			".opencode":    {Description: "OpenCode configuration", NoCreate: true},
 			".roo":         {Description: "Roo Code configuration", NoCreate: true},
 			".windsurf":    {Description: "Windsurf AI configuration", NoCreate: true},
 			// Common project subdirectories.
@@ -390,7 +396,13 @@ func DefaultGeminiLayout() LayoutSchema {
 			"GEMINI.md",
 		},
 		Optional: []string{},
-		Dirs:     map[string]DirRule{},
+		// Antigravity (Gemini CLI's successor) reads AGENTS.md as workspace
+		// context, but Gemini CLI reads it only when the project's
+		// .gemini/settings.json lists it in context.fileName, so AGENTS.md
+		// satisfies the requirement only with that setting (see
+		// geminiReadsAgentsMd).
+		Alternatives: map[string][]string{"GEMINI.md": {"AGENTS.md"}},
+		Dirs:         map[string]DirRule{},
 		Naming: NamingRule{
 			Case: "lowercase",
 			Exceptions: []string{
@@ -497,6 +509,12 @@ func DefaultZedLayout() LayoutSchema {
 		Required: []string{
 			".rules",
 		},
+		// Zed loads the first match from a fixed priority list, so any of these
+		// satisfies the requirement (docs/compliance/ZED_AUDIT.md).
+		Alternatives: map[string][]string{".rules": {
+			".cursorrules", ".windsurfrules", ".clinerules", ".github/copilot-instructions.md",
+			"AGENT.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md",
+		}},
 		Optional: []string{},
 		Dirs:     map[string]DirRule{},
 		Naming: NamingRule{

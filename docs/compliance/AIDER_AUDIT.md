@@ -1,7 +1,7 @@
 # Aider Audit
 
 Source: https://aider.chat/docs/config/aider_conf.html and https://aider.chat/docs/usage/conventions.html
-Verified: 2026-03-07
+Verified: 2026-10-17 (both source pages fetched; no changes found)
 
 ## Configuration Files
 
@@ -9,7 +9,9 @@ Verified: 2026-03-07
 
 - `.aider.conf.yml` — YAML config for model selection, API keys, linting, git behavior, and other
   tool settings. This file does **not** carry coding instructions or conventions; it is purely
-  operational configuration. Looked up in order: home dir, git root, current dir (last wins).
+  operational configuration. Looked up in order: home dir, git root, current dir (last wins); `--config <file>` loads only that file.
+- `.aider.model.settings.yml` / `.aider.model.metadata.json` — model settings and metadata for unknown
+  models; `.aider.input.history` / `.aider.chat.history.md` are generated history files.
 - `.aiderignore` — git-ignore-style file for excluding paths from the repo map.
 - `.env` — environment variables (API keys, etc.); scoped to the git root by default.
 

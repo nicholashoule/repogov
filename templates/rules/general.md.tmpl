@@ -8,7 +8,9 @@ applyTo: "**"
 
 - Do **not** introduce emoji or Unicode pictographic characters
 - Keep language concise and direct; prefer active voice
-- Use US English spelling (e.g., "behavior", "summarize")
+{{- if .LanguageLine}}
+- {{.LanguageLine}}
+{{- end}}
 - Avoid jargon unless the audience expects it
 
 Emoji prevention rules are detailed in {{.RulesPath}}/emoji-prevention.md.

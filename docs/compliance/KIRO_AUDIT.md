@@ -1,9 +1,9 @@
 # Kiro CLI Audit
 
 Sources:
-- https://kiro.dev/docs/steering/ — verified 2026-03-13
-- https://kiro.dev/docs/cli/custom-agents/creating/ — verified 2026-03-13
-- https://github.com/aws/amazon-q-developer-cli — deprecation notice verified 2026-03-07
+- https://kiro.dev/docs/steering/ — verified 2026-10-17
+- https://kiro.dev/docs/custom-agents/creating/ — verified 2026-10-17 (old URL `/docs/cli/custom-agents/creating/` now redirects here)
+- https://github.com/aws/amazon-q-developer-cli — maintenance/Kiro notice re-verified 2026-10-17 (undated banner; repo not archived)
 
 ## Background
 
@@ -40,8 +40,13 @@ See [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) for Amazon Q Developer CLI history.
   ```
 
   **File references:** Embed live workspace files inline with
-  `#[[file:relative_file_name]]` to keep steering context up-to-date
+  `#[[file:relative_file_name]]` (also line ranges `:start-end` and
+  `#[[folder:name]]` in IDE/CLI V3) to keep steering context up-to-date
   without copy-pasting.
+
+  **Versions:** Kiro V1/V2 auto-load only `always` files; V3 supports all
+  four inclusion modes. Frontmatter must be the first content in the file
+  (no leading blank line).
 
   Recommended foundation files (conventional names only — no schema enforcement):
 
@@ -56,6 +61,8 @@ See [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) for Amazon Q Developer CLI history.
 
 - `AGENTS.md` at workspace root — also detected and always included.
   Can alternatively be placed inside `~/.kiro/steering/` for global scope.
+  Also discovered in subdirectories (beside the code it describes); inclusion
+  modes do not apply to `AGENTS.md`.
 
 ### Global Steering
 
@@ -67,12 +74,17 @@ See [AMAZONQ_AUDIT.md](AMAZONQ_AUDIT.md) for Amazon Q Developer CLI history.
 
 Global steering can be pushed to developer machines via MDM/Group Policy or
 downloaded from a central repository into `~/.kiro/steering/`. Kiro has no
-built-in team-sync mechanism; distribution is manual or tool-assisted.
+built-in team-sync mechanism for the IDE/CLI; distribution is manual or
+tool-assisted. Kiro Web (cloud sandbox) cannot read local `~/.kiro/steering/`
+and uses "Configuration Sync" to upload personal steering.
 
 ### Custom Agents
 
-- `.kiro/agents/` (workspace) or `~/.kiro/agents/` (global) — JSON
-  configuration files defining custom agents.
+- `.kiro/agents/` (workspace) or `~/.kiro/agents/` (global) — JSON **or
+  Markdown** (frontmatter + body as prompt) files defining custom agents. The
+  file name sets the agent name; local agents override global ones of the same
+  name. Config also supports a `permissions.rules` array (`capability`,
+  `effect`, optional `match`).
 
   Example agent configuration:
   ```json
@@ -105,7 +117,7 @@ built-in team-sync mechanism; distribution is manual or tool-assisted.
 | Extension | Notes |
 |-----------|-------|
 | `.md` | `.kiro/steering/*.md` — Markdown with optional `inclusion:` frontmatter |
-| `.json` | `.kiro/agents/*.json` — Custom agent configuration |
+| `.json` / `.md` | `.kiro/agents/*` — Custom agent configuration |
 | `.md` | `.kiro/skills/<name>/SKILL.md` — Skill definition files |
 
 ## Limits

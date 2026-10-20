@@ -41,7 +41,7 @@ func checkFmt() bool {
 
 	// 2. Collect the specific files that need formatting.
 	var unformatted []string
-	for _, f := range strings.Split(files, "\n") {
+	for f := range strings.SplitSeq(files, "\n") {
 		f = strings.TrimSpace(f)
 		if f != "" {
 			unformatted = append(unformatted, f)
@@ -57,9 +57,12 @@ func checkFmt() bool {
 		return false
 	}
 
-	// 4. Re-stage the files that were reformatted.
+	// 4. Re-stage the files that were reformatted. --literal-pathspecs and
+	// "--" make each name match only itself: a name holding pathspec magic
+	// (":(glob)**") or a wildcard, or starting with "-", must never stage
+	// other files or be read as an option.
 	for _, f := range unformatted {
-		add := exec.Command("git", "add", f)
+		add := exec.Command("git", "--literal-pathspecs", "add", "--", f)
 		if err := add.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "WARNING: could not re-stage %s: %v\n", f, err)
 		}

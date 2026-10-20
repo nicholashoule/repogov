@@ -1,14 +1,16 @@
 # Amazon Q Developer CLI Audit
 
 Sources:
-- https://github.com/aws/amazon-q-developer-cli — verified 2026-03-07 (maintenance-mode notice added)
+- https://github.com/aws/amazon-q-developer-cli — verified 2026-10-17 (maintenance-mode and Kiro CLI notice still present; repo not archived; banner is undated)
 - https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/q-chat-custom-instructions.html — blocked/no content (multiple attempts)
 - https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/customizing-q.html — blocked/no content (multiple attempts)
 
-## WARNING Deprecation Notice (verified 2026-03-07)
+## WARNING Deprecation Notice (verified 2026-10-17)
 
 > **Amazon Q Developer CLI is no longer actively maintained** and will only
-> receive critical security fixes. Amazon Q Developer CLI is transitioning to
+> receive critical security fixes. It "is now available as Kiro CLI, a
+> closed-source product" (kiro.dev/cli); Kiro CLI issues go to
+> `kirodotdev/Kiro`, not this repo. Amazon Q Developer CLI is transitioning to
 > **Kiro CLI** (`kiro.dev`), a closed-source product by AWS. For the latest
 > features and updates, teams should migrate to Kiro CLI.
 >

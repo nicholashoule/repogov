@@ -3,6 +3,7 @@ package repogov
 import (
 	"embed"
 	"fmt"
+	"os"
 	"strings"
 	"text/template"
 )
@@ -34,4 +35,20 @@ func mustRenderTemplate(name string, data any) string {
 		panic(fmt.Sprintf("repogov: template render error %q: %v", name, err))
 	}
 	return b.String()
+}
+
+// writeNewFile creates path with data and fails if anything already exists
+// there, including a symlink (dangling or not). O_EXCL makes the existence
+// check and the creation one atomic step, so a scaffold write can neither
+// race a concurrent creator nor be redirected through a planted symlink.
+func writeNewFile(path string, data []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }

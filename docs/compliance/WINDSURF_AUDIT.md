@@ -1,12 +1,27 @@
 # Windsurf (Codeium) Audit
 
-Source: https://docs.windsurf.com/windsurf/cascade/memories — verified 2026-03-13.
+Source: https://docs.devin.ai/desktop/cascade/memories (redirected from
+https://docs.windsurf.com/windsurf/cascade/memories) — verified 2026-10-17.
+
+## Deprecation Notice
+
+Date: 2026-10-17. The official Windsurf docs URL now returns a 307 redirect to
+`docs.devin.ai/desktop/...` (Devin Desktop docs). That page states memories apply to the
+"legacy Cascade agent only", that the Devin Local agent does not persist memories, and points
+to a "Devin: Open Cascade Migration Wizard" for moving memories to skills. "Windsurf" appears
+only as the legacy name for paths. The same page says the product is now called **Devin Desktop** and its default
+agent is **Devin Local** (it still calls the assistant UI "Cascade"), and gives no end-of-life
+date for legacy Cascade or the `.windsurf` paths. Third-party sources (not vendor-verified) date
+the rename to 2026-06-02 and Cascade's retirement to 2026-07-01. Migration target: `.devin/rules/` (preferred), with `.windsurf/rules/` still
+read as fallback.
 
 ## Configuration Files
 
 ### Workspace Rules
 
-- `.windsurf/rules/*.md` — primary multi-file rules directory. Each `.md` file
+- `.devin/rules/*.md` — now the preferred workspace location per current docs; repogov
+  has no preset for it (see Preset).
+- `.windsurf/rules/*.md` — fallback (legacy-named) multi-file rules directory. Each `.md` file
   requires a `trigger:` field in YAML frontmatter that controls when it is applied.
   Windsurf searches `.windsurf/rules/` in subdirectories and walks up to the git
   root, so nested rule files are also loaded.
@@ -32,9 +47,8 @@ Source: https://docs.windsurf.com/windsurf/cascade/memories — verified 2026-03
   `AGENTS.md` is treated as `always_on`; a subdirectory `AGENTS.md` is treated
   as an auto-glob rule scoped to that directory.
 
-- `.windsurfrules` — legacy single-file format. Not documented in current
-  official Windsurf docs (only mentioned in third-party agent cross-compatibility
-  notes). Newer projects should use `.windsurf/rules/*.md`.
+- `.windsurfrules` — legacy single-file format at workspace root; current docs say it is
+  still read.
 
 ### Global Rules
 
@@ -43,8 +57,9 @@ Source: https://docs.windsurf.com/windsurf/cascade/memories — verified 2026-03
 
 ### Enterprise / System Rules
 
-- OS-specific system-level directory (e.g. `/etc/windsurf/rules/*.md` on Linux).
-  Managed by IT/security teams.
+- macOS `/Library/Application Support/Devin/rules/`, Linux/WSL `/etc/devin/rules/`,
+  Windows `C:\ProgramData\Devin\rules\` (legacy `Windsurf` equivalents, e.g.
+  `/etc/windsurf/rules/`). Managed by IT/security teams.
 
 ## File Extensions
 
@@ -95,7 +110,9 @@ Repogov does not govern auto-memories (they are outside the repo). Prefer
 
 - **Workflows** (`~/.codeium/windsurf/workflows/`) — slash-command prompt templates
   (`/workflow-name`). User-written; not project files.
-- **Skills** — multi-step procedures Cascade can invoke. Separate from steering rules.
+- **Skills** — invoked by the model or @mention; the docs page gives no paths
+  (third-party sources mention `.windsurf/skills/`, unverified).
+
 ## Seeded Files
 
 `init -agent windsurf` creates the `.windsurf/rules/` directory and seeds:
@@ -107,4 +124,5 @@ Repogov does not govern auto-memories (they are outside the repo). Prefer
 ## Preset
 
 `DefaultWindsurfLayout()` in `presets.go`. Validates `.windsurf/rules/` with `*.md` glob.
+Follow-up: add `.devin/rules/` support (new preferred path).
 CLI agent name: `windsurf`.

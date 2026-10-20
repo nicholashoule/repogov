@@ -1,6 +1,21 @@
 # Roo Code Audit
 
-Source: https://docs.roocode.com/features/custom-instructions — verified 2026-03-07.
+Sources: https://roocodeinc.github.io/Roo-Code/features/custom-instructions
+(docs.roocode.com 301-redirects here) and https://github.com/RooCodeInc/Roo-Code —
+Verified: 2026-10-17.
+
+## Deprecation Notice
+
+- **Status: shut down and archived.** The GitHub repository states it was archived by
+  its owner on May 15, 2026 (read-only) and that "The Roo Code Extension was shut down
+  on May 15th." Evidence: https://github.com/RooCodeInc/Roo-Code.
+  The archive notice and extension shutdown were re-confirmed from the repo page on
+  2026-10-17. Whether Cloud and Router were also sunset is not stated there (secondary
+  reporting only), so it is not asserted here.
+- **Migration targets named by the repo:** Cline (https://cline.bot) or ZooCode, a
+  community fork (https://github.com/Zoo-Code-Org/Zoo-Code/).
+- repogov keeps the `roocode` preset for existing repositories and forks; expect no new
+  Roo Code features. Conventions below are as last documented.
 
 ## Configuration Files
 
@@ -15,10 +30,15 @@ and global scopes.
   the named mode is active.
   Common mode slugs: `code`, `architect`, `ask`, `debug`, `test`.
   Example: `.roo/rules-code/` applies only in Code mode.
-- `.roorules` — legacy fallback single file at workspace root (still supported).
-- `.roorules-{modeSlug}` — legacy per-mode fallback single file.
-- `AGENTS.md` / `AGENT.md` at workspace root — loaded when the
-  `roo-cline.useAgentRules` setting is enabled (default: on).
+- `.roorules` — legacy fallback single file at workspace root, used only if
+  `.roo/rules/` is missing or empty.
+- `.roorules-{modeSlug}` — legacy per-mode fallback single file, used only if the
+  matching directory is missing or empty.
+- `AGENTS.md` (preferred) / `AGENT.md` at workspace root — loaded when the
+  `roo-cline.useAgentRules` setting is enabled (default: on); loaded after mode rules
+  and before the generic rules directories.
+- Mode rules load before general rules; global and workspace rules are aggregated
+  (workspace wins conflicts); files are read recursively, sorted by basename.
 
 ### Global Rules
 
