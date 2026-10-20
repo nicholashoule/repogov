@@ -85,7 +85,7 @@ func LayoutSummary(results []LayoutResult) string {
 		return "No layout checks performed."
 	}
 	var b strings.Builder
-	pass, warn, fail, info := 0, 0, 0, 0
+	pass, warn, fail, info, skip := 0, 0, 0, 0, 0
 	for _, r := range results {
 		switch r.Status {
 		case Pass:
@@ -96,11 +96,18 @@ func LayoutSummary(results []LayoutResult) string {
 			fail++
 		case Info:
 			info++
+		case Skip:
+			skip++
 		}
 		fmt.Fprintf(&b, "  [%s] %s -- %s\n", r.Status, cleanText(r.Path), cleanText(r.Message))
 	}
-	fmt.Fprintf(&b, "\nLayout: %d checks | %d pass | %d warn | %d fail | %d info\n\n",
+	fmt.Fprintf(&b, "\nLayout: %d checks | %d pass | %d warn | %d fail | %d info",
 		len(results), pass, warn, fail, info)
+	if skip > 0 {
+		// Only shown when present, so existing output is unchanged.
+		fmt.Fprintf(&b, " | %d skip", skip)
+	}
+	b.WriteString("\n\n")
 	return b.String()
 }
 

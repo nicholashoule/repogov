@@ -1,6 +1,10 @@
 # Copilot Instructions
 
 This file provides repository-level context to GitHub Copilot and compatible AI coding agents.
+{{- if .LanguageLine}}
+
+{{.LanguageLine}}
+{{- end}}
 
 ## Context
 {{- if .InstructionsDir}}

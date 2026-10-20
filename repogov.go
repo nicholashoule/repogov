@@ -19,10 +19,12 @@ const (
 	// Fail indicates the file exceeds its limit or a required layout rule is violated.
 	Fail
 	// Skip indicates the file is exempt (limit = 0), does not match the
-	// extension filter, is binary (NUL byte within the first 512 bytes),
-	// or holds certificate/key material (.crt, .pem, .key). Binary and
-	// sensitive files are never line-counted or parsed; sensitive files
-	// are never opened at all.
+	// extension filter, is binary (NUL byte within the first 512 bytes and
+	// no UTF-16/UTF-32 byte order mark), is a symlink or special file, or
+	// holds certificate/key material (.crt, .pem, .key, .p12, .pfx, .jks).
+	// Binary and sensitive files are never line-counted or parsed;
+	// sensitive files and symlinks are never opened at all. A binary file
+	// is still held to its byte limit ([Config.MaxBytes]).
 	Skip
 	// Info indicates an optional file is present (layout checks only).
 	Info
@@ -175,6 +177,17 @@ type Config struct {
 	// keys. When true, frontmatter requirements are stripped from all
 	// schemas before checking.
 	SkipFrontmatter bool `json:"skip_frontmatter,omitempty"`
+
+	// Language is the BCP 47 tag of the natural language the repository's
+	// prose is written in -- Markdown and text files and code comments --
+	// e.g. "en-US" or "pt-BR". It is not a programming language. Scaffolded
+	// agent instruction files (AGENTS.md, CLAUDE.md, copilot-instructions.md,
+	// GEMINI.md, .rules, the general rule) state it so AI agents write in
+	// that language. Must be one of [KnownLanguages] (aliases and bare
+	// subtags are accepted; see [NormalizeLanguage]). The default is
+	// [DefaultLanguage] ("en-US"): [DefaultConfig] sets it and [LoadConfig]
+	// fills a missing or empty value with it.
+	Language string `json:"language,omitempty"`
 }
 
 // Rule maps a glob pattern to a line limit.
@@ -229,7 +242,8 @@ const defaultLimit = 500
 const defaultWarningThreshold PercentInt = 85
 
 // DefaultConfig returns a Config with sensible defaults:
-// Default=500, WarningThreshold=85, standard SkipDirs, and .md/.mdc includes.
+// Default=500, WarningThreshold=85, Language="en-US" ([DefaultLanguage]),
+// standard SkipDirs, and .md/.mdc includes.
 // It applies 300-line limits to AI rule files for:
 //   - GitHub Copilot: .github/rules/*.md
 //   - Cursor: .cursor/rules/*.md, .cursor/rules/*.mdc
@@ -248,6 +262,7 @@ func DefaultConfig() Config {
 	return Config{
 		Default:          defaultLimit,
 		WarningThreshold: defaultWarningThreshold,
+		Language:         DefaultLanguage,
 		IncludeExts:      []string{".md", ".mdc"},
 		SkipDirs:         []string{".git", "vendor", "workflows"},
 		Rules: []Rule{

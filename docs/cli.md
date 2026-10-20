@@ -22,18 +22,23 @@ go install github.com/nicholashoule/repogov/cmd/repogov@latest
 ## Synopsis
 
 ```
-repogov [flags] <subcommand>
+repogov [flags] <subcommand> [flags]
 ```
+
+Flags may appear before or after the subcommand (`repogov limits -json`,
+`repogov validate -config x.json`). Any other argument after the subcommand is an
+error (exit `2`).
 
 ## Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-config <path>` | auto-discovered | Path to a JSON or YAML config file. Searched in repo root, then `.github/`. |
-| `-root <dir>` | `.` | Repository root directory. |
+| `-config <path>` | auto-discovered | Path to a JSON or YAML config file. Searched in repo root, then `.github/`. An explicit path that does not exist is an error (exit `2`); only auto-discovery falls back to defaults. |
+| `-root <dir>` | `.` | Repository root directory. When omitted, `.` is walked up to the nearest `.git` ancestor; an explicit `-root` is used exactly as given. |
 | `-exts .md,.mdc` | from config `include_exts` | Comma-separated extension filter. Use `all` to scan every file type. |
 | `-agent <name[,name…]>` | _(none)_ | AI agent preset(s): `copilot`, `cursor`, `windsurf`, `claude`, `kiro`, `gemini`, `continue`, `cline`, `roocode`, `jetbrains`, `zed`, or `all`. Required for `init` (unless `-platform` is given). Comma-separate for multiple. |
-| `-platform <name[,name…]>` | _(none)_ | Repository platform preset(s): `github`, `gitlab`, `bitbucket`, `root`, or `auto`. Comma-separate for multiple. Use explicitly — not included in `-agent all`. |
+| `-platform <name[,name…]>` | _(none)_ | Repository platform preset(s): `github`, `gitlab`, `bitbucket`, `root`, `auto`, or `all`. Comma-separate for multiple. Use explicitly — not included in `-agent all`. |
+| `-language <tag>` | _(none)_ | Prose language as a BCP 47 tag (e.g. `en-US`), for `init` and `update-config` only (exit `2` elsewhere or for an unknown tag). See [Prose Language](#prose-language). |
 | `-descriptive` | `false` | Use `*.instructions.md` naming convention for seeded files (overrides config `descriptive_names`). |
 | `-seed` | `false` | Seed missing template files into existing directories without overwriting (`init` only). Maps to `init_always_create` at runtime. |
 | `-quiet` | false | Suppress output; rely on exit code only. |
@@ -55,11 +60,19 @@ repogov -root . -config .github/repogov-config.json limits
 Walks the repository, checks every matching file against its resolved limit, and prints
 a per-file summary. Exits `1` if any file exceeds its limit, `0` otherwise.
 
-Files that must never be parsed are skipped automatically: binaries and
-compiled files (NUL byte within the first 512 bytes -- only the sniff prefix
-is read) and certificate/key material (`.crt`, `.pem`, `.key` --
-skipped before the file is even opened). There is no maximum line length;
-minified or generated files with very long lines are counted normally.
+Files that must never be parsed are reported as SKIP:
+
+| SKIP reason | Detection | Notes |
+|-------------|-----------|-------|
+| exempt | resolved limit `0` | a byte limit (`max_bytes`) still applies |
+| binary | NUL byte within the first 512 bytes | only the sniff prefix is read; a byte limit still applies (from the file size) |
+| sensitive | `.crt`, `.pem`, `.key`, `.p12`, `.pfx`, `.jks` | never opened |
+| symlink or special file | `Lstat` type | never opened or followed |
+
+Text saved as UTF-16 or UTF-32 with a byte order mark is not binary: its lines are
+counted in the decoded text. There is no maximum line length; minified or generated
+files with very long lines are counted normally. A file that cannot be read is a FAIL,
+never silently dropped.
 
 **Output columns:** `[STATUS]  path -- N/limit lines (pct% of limit)`
 
@@ -141,6 +154,7 @@ repogov -root . -agent copilot,windsurf init
 repogov -root . -agent all init
 repogov -root . -agent copilot -seed init       # seed missing files into existing dirs
 repogov -root . -agent copilot -descriptive init # use *.instructions.md naming
+repogov -root . -agent claude init -language en-GB # state British English in agent files
 ```
 
 Creates:
@@ -150,19 +164,35 @@ Creates:
 - A curated set of scoped rule templates seeded into the platform's rules directory:
   `general`, `memory`, `codereview`, `governance`, `security`, `testing`, `library`,
   `backend`, `frontend`, `emoji-prevention`, `repo`
-- `AGENTS.md` at the repository root (created or context-section updated)
-- `repogov-config.json` — for Copilot, placed in `.github/`; for all other agents,
-  placed at `.github/` if it already exists, otherwise at the repository root so
-  `FindConfig` can discover it without an explicit `-config` flag
+- `AGENTS.md` at the repository root (created, or only its marked Context section updated)
+- `repogov-config.json`, only when no config exists yet at the repository root or in
+  `.github/` (so init never adds a second, shadowed config) — for Copilot, placed in
+  `.github/`; for all other agents, placed at `.github/` if that directory exists,
+  otherwise at the repository root. Its `language` key (right after `_agent_hints`) is
+  `en-US` unless `-language` gives another tag.
 
-Existing files are **never overwritten**. Re-running `init` is safe.
+Existing files are **never overwritten**, with one exception: in an existing root
+`AGENTS.md`, init replaces only the text between the marker comments
+`<!-- repogov:context:begin -->` and `<!-- repogov:context:end -->` (a generated
+`AGENTS.md` wraps its `## Context` section in them) and preserves every other byte.
+Section bounds are never guessed from Markdown headings. When the file does not hold
+exactly one begin marker followed by exactly one end marker -- markers missing,
+duplicated or out of order -- init leaves it byte-for-byte unchanged and prints a
+`note:` that the Context section was not refreshed, with the reason (a `notice`
+field with `-json`); init still exits `0`, and `layout` lists it as INFO. To opt in, put the begin marker on the line before `## Context` and the
+end marker after the section's last line, then re-run init. Init writes atomically,
+skips the write when nothing changed, and refuses a symlinked or special
+`AGENTS.md`. Re-running `init` is safe.
 
-> **Note:** `-root` is resolved to the nearest `.git` ancestor when one exists;
-> if no `.git` directory is found, the resolved absolute `-root` path is used.
-> Running `init` from inside an agent subdirectory (e.g., `.cursor/rules/`) or
-> passing an explicit agent path via `-root .cursor` both correctly target the
-> repository root for Git repositories, while non-git or temporary directories
-> are scaffolded in-place, preventing double-nested directories.
+Every scaffolded agent file states the prose language: `-language <tag>`, else the
+active config's `language` key, else `en-US`; see [Prose Language](#prose-language). An
+existing config is not modified by init -- use `update-config -language` for that.
+
+> **Note:** When `-root` is omitted, `.` is resolved to the nearest `.git` ancestor,
+> so running `init` from inside an agent subdirectory (e.g., `.cursor/rules/`)
+> targets the repository root instead of double-nesting directories. An explicit
+> `-root` is used exactly as given (made absolute), never walked up; with no `.git`
+> ancestor the working directory is used.
 
 ### `validate`
 
@@ -186,7 +216,14 @@ guidance for AI agents.
 ```sh
 repogov -root . update-config
 repogov -root . -config .github/repogov-config.json update-config
+repogov -root . update-config -language en-US   # add or replace the language key
 ```
+
+With `-language <tag>` the top-level `language` key is added (or its value replaced)
+by the same kind of textual edit. Without `-language`, an absent key is added as
+`"language": "en-US"` (the default) and an existing value is never touched. A newly
+added key goes right after `_agent_hints`. The hints are the same for every config:
+the `language` key's own one-line hint tells an agent to write in it.
 
 The edit is textual: all other content (key order, compact arrays, indentation,
 line endings) is preserved byte-for-byte, and the effective configuration is
@@ -223,7 +260,7 @@ repogov version
 |------|---------|
 | `0` | All checks passed |
 | `1` | One or more checks failed |
-| `2` | Usage error or configuration problem |
+| `2` | Usage error or configuration problem (unknown flag, subcommand or extra argument; unreadable or invalid config; explicit `-config` not found; unknown `-language`) |
 
 ## Config File Discovery
 
@@ -235,7 +272,8 @@ When `-config` is not provided, `repogov` searches in this order:
 4. `<root>/.github/repogov-config.yaml` / `.yml`
 
 If no file is found, built-in defaults are used (500-line default limit, 85% warning
-threshold).
+threshold). An explicit `-config` path must exist: a missing one exits `2` with the
+path in the message.
 
 ## JSON Output
 
@@ -325,10 +363,16 @@ repogov -root . -json limits
 
 ## Configuration Keys
 
-The config file supports these keys (JSON and YAML):
+The config file supports these keys (JSON and YAML). Parsing is strict: an unknown
+key, tab indentation, or inline YAML flow syntax (other than an empty `[]`, or `{}`
+for `files`) is an error naming the key or line. Top-level keys starting with `_`
+(e.g. `_agent_hints`) are metadata and are ignored, as is a top-level `$schema` key
+in JSON. YAML keys may be quoted (`"default": 300`).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| `language` | string | `en-US` | Prose language (BCP 47 tag) stated in scaffolded agent files. A missing or empty value means `en-US`; set another tag to change it. Unknown tags are a `validate` warning. See [Prose Language](#prose-language). |
+| `max_bytes` | object[] | `AGENTS.md`, `GEMINI.md`, `.agents/rules/*.md` at 24000 | Glob-based byte limits (`glob`, `limit`), first match wins; checked in addition to line limits. `[]` disables. |
 | `default` | int | `500` | Global fallback line limit when no per-file or glob rule matches. |
 | `warning_threshold` | int or string | `85` / `"85%"` | Percentage of the limit at which PASS becomes WARN. Accepts bare int or percent string. |
 | `include_exts` | string[] | `[".md", ".mdc"]` | File extensions to scan. Empty array scans all types. |
@@ -352,7 +396,30 @@ requirement is validated for:
 2. A closing delimiter (`---`)
 3. All required keys present (e.g. `applyTo`)
 
-Set `skip_frontmatter: true` in the config to disable this validation globally.
+Set `skip_frontmatter: true` in the config to disable this validation globally. A
+UTF-8 byte order mark before the opening delimiter is accepted. A rule file that is a
+symlink or special file is a SKIP (as in the limits check) and is never followed or
+opened.
+
+### Prose Language
+
+`language` is the natural language of the repository's prose (Markdown and text
+files, code comments, commit messages) -- not a programming language. The default is
+`en-US`: a missing or empty `language` key means `en-US`, and there is no opt-out --
+choosing another language means setting it. The scaffolded `AGENTS.md`,
+`.claude/CLAUDE.md`, `.github/copilot-instructions.md`, `GEMINI.md`, Zed `.rules` and
+the `general` rule state it, for example: "Prose language: British English (en-GB).
+Write documentation (.md, .txt), code comments and commit messages in British
+English, with its spelling and conventions (British spelling: colour, behaviour,
+-ise); keep identifiers, code and quoted text as they are." Every config `init`
+generates writes the key right after `_agent_hints`. Existing repos are not
+re-scaffolded, so `init` also writes the line into the marked Context section of an
+existing `AGENTS.md`, and `layout` WARNs when `AGENTS.md` does not contain the
+language's tag in parentheses (e.g. `(en-US)`). There is no detection: set another
+tag with `init -language` or `update-config -language`, or edit the config. Tags
+match case-insensitively, accept `_`, and bare tags resolve to a default (`en` ->
+`en-US`, `pt` -> `pt-BR`, `zh` -> `zh-Hans`). The full tag list is in the README
+[Prose Language](../README.md#prose-language) table and `repogov.KnownLanguages()`.
 
 ## See Also
 

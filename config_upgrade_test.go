@@ -100,7 +100,7 @@ func TestUpgradeConfigHints_IdempotentAndRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(refreshed, []byte(`"old"`)) || !bytes.Contains(refreshed, []byte("on_limit_fail")) {
+	if bytes.Contains(refreshed, []byte(`"old"`)) || !bytes.Contains(refreshed, []byte(`"on_fail"`)) {
 		t.Errorf("stale hints not refreshed:\n%s", refreshed)
 	}
 	if !bytes.Equal(refreshed, first) {
@@ -267,15 +267,18 @@ func TestAgentHintsYAML_MatchesJSON(t *testing.T) {
 			got[t2[:i]] = v
 		}
 	}
-	if got["about"] != want["about"] || got["on_limit_fail"] != want["on_limit_fail"] || got["verify"] != want["verify"] {
+	if got["about"] != want["about"] || got["on_fail"] != want["on_fail"] || got["verify"] != want["verify"] {
 		t.Errorf("YAML scalar hints differ from JSON hints: %v", got)
 	}
 	keys := want["keys"].(map[string]any)
 	if got["warning_threshold"] != keys["warning_threshold"] {
 		t.Errorf("escaped quotes round trip failed: %q vs %q", got["warning_threshold"], keys["warning_threshold"])
 	}
-	nd := want["never_do"].([]any)
+	nd := want["never"].([]any)
+	if len(nd) != 3 {
+		t.Errorf("never lists %d agent rules, want 3 (outside the repo, secrets, bypassing security controls)", len(nd))
+	}
 	if c := strings.Count(agentHintsYAML(), "\n    - \""); c != len(nd) {
-		t.Errorf("never_do items = %d, want %d", c, len(nd))
+		t.Errorf("never items = %d, want %d", c, len(nd))
 	}
 }

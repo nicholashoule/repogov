@@ -3,7 +3,12 @@
 Agent instructions for AI coding assistants working in this repository.
 See [agents.md](https://agents.md) for the open format specification.
 
+<!-- repogov:context:begin -->
 ## Context
+{{- if .LanguageLine}}
+
+{{.LanguageLine}}
+{{- end}}
 
 - Project overview: [README.md](README.md)
 - Extended documentation: [docs/](docs/)
@@ -34,6 +39,7 @@ See [agents.md](https://agents.md) for the open format specification.
 {{- if .IsZed}}
 - Zed rules: [.rules](.rules)
 {{- end}}
+<!-- repogov:context:end -->
 
 ## Nested Instructions
 

@@ -3,28 +3,35 @@
 //
 // Usage:
 //
-//	repogov [flags] <subcommand>
+//	repogov [flags] <subcommand> [flags]
+//
+// Flags may appear before or after the subcommand.
 //
 // Subcommands:
 //
-//	limits    Check file line counts against configured limits.
-//	layout    Validate directory structure against a platform preset.
-//	init      Scaffold the platform directory structure.
-//	validate  Validate the configuration file and report issues.
-//	all       Run both limits and layout checks.
-//	version   Print version and exit.
+//	limits         Check file line counts against configured limits.
+//	layout         Validate directory structure against a platform preset.
+//	init           Scaffold the platform directory structure.
+//	validate       Validate the configuration file and report issues.
+//	update-config  Add or refresh the _agent_hints block (and, with -language, the language key) in the JSON or YAML config.
+//	all            Run both limits and layout checks.
+//	version        Print version and exit.
 //
 // Flags:
 //
-//	-config <path>        Path to config file (default: auto-discovered)
-//	-root <dir>           Repository root directory (default: .)
+//	-config <path>        Path to config file (default: auto-discovered; an explicit path that does not exist is an error)
+//	-root <dir>           Repository root directory (default: . walked up to the git root; an explicit -root is used as given)
 //	-exts .md,.mdc        Extension filter override; default from config include_exts; use "all" to scan every type
 //	-agent <name[,name…]>  AI agent preset(s): copilot, cursor, windsurf, claude, kiro, gemini, continue, cline, roocode, jetbrains, zed, or all
-//	-platform <name[,name…]>  Repository platform preset(s): github, gitlab, bitbucket, root, or all
+//	-platform <name[,name…]>  Repository platform preset(s): github, gitlab, bitbucket, root, auto, or all
+//	-language <tag>       Prose language (BCP 47 tag, e.g. en-US) for init and update-config
 //	-descriptive          Use *.instructions.md naming convention for seeded files (overrides config descriptive_names)
 //	-seed                 Seed missing template files into existing directories without overwriting (init only)
 //	-quiet                Suppress output; exit code only
 //	-json                 Output results as JSON
+//
+// Exit codes: 0 all checks passed; 1 one or more checks failed; 2 usage or
+// configuration error.
 package main
 
 import (
@@ -76,6 +83,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		exts        string
 		agent       string
 		platform    string
+		language    string
 		quiet       bool
 		jsonOut     bool
 		descriptive bool
@@ -83,18 +91,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 	)
 
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), `Usage: repogov [flags] <subcommand>
+		fmt.Fprintf(fs.Output(), `Usage: repogov [flags] <subcommand> [flags]
 
 Subcommands:
-  limits    Check file line counts against configured limits (default)
-  layout    Validate directory structure against a platform preset
-  init      Scaffold the platform directory structure
-  validate  Validate the configuration file and report issues
-  update-config  Add or refresh the _agent_hints block in the JSON config
-  all       Run both limits and layout checks
-  version   Print version and exit
+  all            Run both limits and layout checks (default)
+  limits         Check file line counts against configured limits
+  layout         Validate directory structure against a platform preset
+  init           Scaffold the platform directory structure
+  validate       Validate the configuration file and report issues
+  update-config  Add or refresh the _agent_hints block in the JSON or YAML config
+                 (with -language, also set the language key)
+  version        Print version and exit
 
-Flags:
+Exit codes: 0 all checks passed, 1 a check failed, 2 usage or config error.
+
+Flags (accepted before or after the subcommand):
 `)
 		fs.PrintDefaults()
 		fmt.Fprintf(fs.Output(), `
@@ -146,6 +157,7 @@ Examples:
 	fs.BoolVar(&jsonOut, "json", false, "output results as JSON")
 	fs.BoolVar(&descriptive, "descriptive", false, "use *.instructions.md naming convention for seeded files (overrides config descriptive_names)")
 	fs.BoolVar(&seed, "seed", false, "seed missing template files into existing directories without overwriting (init only)")
+	fs.StringVar(&language, "language", "", "prose language of the repository as a BCP 47 tag (e.g. en-US, en-GB, pt-BR): init writes it into a new config and states it in scaffolded agent files; update-config sets it in the existing config")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -177,24 +189,55 @@ Examples:
 	sub := ""
 	if len(remaining) > 0 {
 		sub = remaining[0]
+		// Flags may also follow the subcommand (repogov limits -json); parse
+		// them with the same FlagSet so they are never silently dropped.
+		if err := fs.Parse(remaining[1:]); err != nil {
+			return 2
+		}
+		if extra := fs.Args(); len(extra) > 0 {
+			fmt.Fprintf(stderr, "unexpected argument %q after subcommand %q; flags may come before or after the subcommand, but only one subcommand is allowed\n", extra[0], sub)
+			fmt.Fprintf(stderr, "usage: repogov [flags] <limits|layout|init|validate|update-config|all|version> [flags]\n")
+			return 2
+		}
 	}
 	if sub == "" {
 		sub = "all"
 	}
 
-	// Auto-detect the git repository root when root is the default ".".
+	explicit := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+
+	// Auto-detect the git repository root only when -root was not given.
 	// This prevents the tool from scaffolding inside a subdirectory (e.g.
-	// .github/ or .gitlab/) when the user forgot to pass an explicit -root.
-	root = resolveRoot(root)
+	// .github/ or .gitlab/) when the user runs it from there; an explicit
+	// -root is honored as given (made absolute), never walked up.
+	if explicit["root"] {
+		root = absRoot(root)
+	} else {
+		root = resolveRoot(root)
+	}
+
+	// An explicit -config must exist: falling back to defaults would make
+	// every check run against a configuration the user did not ask for.
+	if sub != "version" {
+		if code := checkExplicitConfig(root, configPath, stderr); code != 0 {
+			return code
+		}
+	}
+
+	if explicit["language"] && sub != "init" && sub != "update-config" {
+		fmt.Fprintf(stderr, "-language applies only to init and update-config, not %q; set the language key in the config instead\n", sub)
+		return 2
+	}
 
 	switch sub {
 	case "version":
 		fmt.Fprintln(stdout, "repogov", effectiveVersion())
 		return 0
 	case "init":
-		return runInit(root, configPath, agent, platform, quiet, jsonOut, descriptive, seed, stdout, stderr)
+		return runInitWithLanguage(root, configPath, agent, platform, language, quiet, jsonOut, descriptive, seed, stdout, stderr)
 	case "update-config":
-		return runUpdateConfig(root, configPath, quiet, stdout, stderr)
+		return runUpdateConfig(root, configPath, language, quiet, stdout, stderr)
 	case "validate":
 		return runValidate(root, configPath, quiet, jsonOut, stdout, stderr)
 	case "limits":
@@ -233,6 +276,30 @@ Examples:
 	}
 }
 
+// checkExplicitConfig reports exit code 2 (with the reason on stderr) when
+// configPath was given explicitly but does not name an existing file. An
+// omitted -config is auto-discovered and may legitimately be absent
+// (defaults apply); an explicit one must not silently fall back to defaults.
+func checkExplicitConfig(root, configPath string, stderr io.Writer) int {
+	if configPath == "" {
+		return 0
+	}
+	p := resolveConfigPath(root, configPath)
+	info, err := os.Stat(p)
+	switch {
+	case os.IsNotExist(err):
+		fmt.Fprintf(stderr, "error: config file %s not found (given by -config); check the path, or omit -config to auto-discover repogov-config.json\n", p)
+		return 2
+	case err != nil:
+		fmt.Fprintf(stderr, "error: cannot read config file %s (given by -config): %v\n", p, err)
+		return 2
+	case info.IsDir():
+		fmt.Fprintf(stderr, "error: -config %s is a directory; pass the path of a repogov-config.json or .yaml file\n", p)
+		return 2
+	}
+	return 0
+}
+
 // resolveConfigPath returns the absolute config file path to use.
 // If configPath is explicit and relative, it is joined to root.
 // If empty, standard locations are searched and a default is returned.
@@ -250,6 +317,9 @@ func resolveConfigPath(root, configPath string) string {
 }
 
 func runLimits(root, configPath, exts string, suppressConfig, quiet, jsonOut bool, stdout, stderr io.Writer) int {
+	if code := checkExplicitConfig(root, configPath, stderr); code != 0 {
+		return code
+	}
 	cfgPath := resolveConfigPath(root, configPath)
 
 	cfg, err := repogov.LoadConfig(cfgPath)
@@ -584,6 +654,9 @@ func collectSchemas(root, agentFlag, platformFlag string, stderr io.Writer) ([]p
 
 func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
 	// Load config to check SkipFrontmatter.
+	if code := checkExplicitConfig(root, configPath, stderr); code != 0 {
+		return code
+	}
 	cfgPath := resolveConfigPath(root, configPath)
 	cfg, err := repogov.LoadConfig(cfgPath)
 	if err != nil {
@@ -654,6 +727,13 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 				}
 			}
 		}
+		// AGENTS.md: the prose-language WARN and the Context-marker INFO.
+		if lr := agentsMdResults(root, cfg.Language); len(lr) > 0 {
+			out["agents_md"] = lr
+			if !repogov.LayoutPassed(lr) {
+				code = 1
+			}
+		}
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		enc.Encode(out) //nolint:errcheck
@@ -712,15 +792,48 @@ func runLayout(root, configPath, agentFlag, platformFlag string, quiet, jsonOut 
 			}
 		}
 	}
+	// AGENTS.md: the prose-language WARN and the Context-marker INFO.
+	if lr := agentsMdResults(root, cfg.Language); len(lr) > 0 {
+		if !quiet {
+			fmt.Fprintln(stdout)
+			fmt.Fprintln(stdout, "Checking AGENTS.md...")
+			fmt.Fprintln(stdout)
+			fmt.Fprint(stdout, repogov.LayoutSummary(lr))
+		}
+		if !repogov.LayoutPassed(lr) {
+			code = 1
+		}
+	}
 	return code
 }
 
 func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, descriptive, seed bool, stdout, stderr io.Writer) int {
+	return runInitWithLanguage(root, configPath, agentFlag, platformFlag, "", quiet, jsonOut, descriptive, seed, stdout, stderr)
+}
+
+// runInitWithLanguage is runInit with the -language flag value: a non-empty
+// language must be a known tag and overrides the config's language for this
+// run (it is written into a newly generated config and stated in every
+// scaffolded agent file; an existing config is not modified -- use
+// update-config -language for that).
+func runInitWithLanguage(root, configPath, agentFlag, platformFlag, language string, quiet, jsonOut, descriptive, seed bool, stdout, stderr io.Writer) int {
 	if agentFlag == "" && platformFlag == "" {
 		fmt.Fprintln(stderr, "error: -agent or -platform is required for init")
 		fmt.Fprintln(stderr, "usage: repogov -agent <name[,name…]> init")
 		fmt.Fprintln(stderr, "       repogov -platform <name[,name…]> init")
 		return 2
+	}
+	if code := checkExplicitConfig(root, configPath, stderr); code != 0 {
+		return code
+	}
+	langTag := ""
+	if language != "" {
+		tag, ok := repogov.NormalizeLanguage(language)
+		if !ok {
+			fmt.Fprintln(stderr, unknownLanguageMessage(language))
+			return 2
+		}
+		langTag = tag
 	}
 
 	// Load config so that init_always_create (and any future init options) are
@@ -744,6 +857,9 @@ func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, d
 	if seed {
 		cfg.InitAlwaysCreate = true
 	}
+	if langTag != "" {
+		cfg.Language = langTag
+	}
 
 	entries, code := collectSchemas(root, agentFlag, platformFlag, stderr)
 	if code != 0 {
@@ -765,6 +881,10 @@ func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, d
 			fmt.Fprintf(stderr, "error initializing layouts: %v\n", err)
 			return 2
 		}
+		notice := initNotice(root)
+		if notice != "" && !quiet {
+			fmt.Fprintln(stderr, "note: "+notice)
+		}
 		displayName := strings.Join(platformNames, "+")
 		if forAll {
 			displayName = "all"
@@ -779,13 +899,14 @@ func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, d
 			type initResult struct {
 				Platform string   `json:"platform"`
 				Created  []string `json:"created"`
+				Notice   string   `json:"notice,omitempty"`
 			}
 			if created == nil {
 				created = []string{}
 			}
 			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode([]initResult{{Platform: displayName, Created: created}}) //nolint:errcheck
+			enc.Encode([]initResult{{Platform: displayName, Created: created, Notice: notice}}) //nolint:errcheck
 		}
 		return 0
 	}
@@ -806,14 +927,20 @@ func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, d
 		fmt.Fprintf(stderr, "error initializing layout: %v\n", err)
 		return 2
 	}
+	notice := initNotice(root)
+	if notice != "" && !quiet {
+		fmt.Fprintln(stderr, "note: "+notice)
+	}
 
 	if jsonOut {
 		out := struct {
 			Platform string   `json:"platform"`
 			Created  []string `json:"created"`
+			Notice   string   `json:"notice,omitempty"`
 		}{
 			Platform: name,
 			Created:  created,
+			Notice:   notice,
 		}
 		if out.Created == nil {
 			out.Created = []string{}
@@ -841,6 +968,9 @@ func runInit(root, configPath, agentFlag, platformFlag string, quiet, jsonOut, d
 }
 
 func runValidate(root, configPath string, quiet, jsonOut bool, stdout, stderr io.Writer) int {
+	if code := checkExplicitConfig(root, configPath, stderr); code != 0 {
+		return code
+	}
 	// Resolve config path the same way as runLimits.
 	cfgPath := configPath
 	if cfgPath == "" {
@@ -939,26 +1069,29 @@ func findGitRoot(dir string) string {
 	}
 }
 
-// resolveRoot returns the effective repository root to use for all operations.
-// It resolves the given root to an absolute path and then walks up to the
-// nearest git repository root. This handles two cases:
-//
-//  1. root is "." and the CWD is inside a subdirectory (e.g. .github/rules).
-//  2. An explicit agent subdirectory is passed via -root (e.g. -root .cursor)
-//     — it is walked up to the repo root rather than double-nesting files.
+// absRoot resolves root against the working directory without any git-root
+// detection. It is used for an explicit -root, which is honored as given.
+func absRoot(root string) string {
+	if !isAbsolute(root) {
+		if wd, err := os.Getwd(); err == nil {
+			return filepath.Join(wd, root)
+		}
+	}
+	return root
+}
+
+// resolveRoot returns the effective repository root when -root was NOT given
+// explicitly: it resolves root (normally ".") to an absolute path and walks
+// up to the nearest git repository root, so running from a subdirectory
+// (e.g. .github/rules) targets the repository root rather than
+// double-nesting scaffolded files. An explicit -root is never walked up (see
+// absRoot).
 //
 // Falls back to the resolved absolute path when no .git is found (covers temp
 // directories in tests and non-git working trees).
 func resolveRoot(root string) string {
-	// Resolve relative roots against the working directory.
-	abs := root
-	if !isAbsolute(root) {
-		if wd, err := os.Getwd(); err == nil {
-			abs = filepath.Join(wd, root)
-		}
-	}
-	// Walk up to the nearest git root. Handles both "."
-	// (CWD inside a subdirectory) and an explicit agent path (e.g. ".cursor").
+	abs := absRoot(root)
+	// Walk up to the nearest git root.
 	if git := findGitRoot(abs); git != "" {
 		return git
 	}
@@ -981,9 +1114,55 @@ func isAbsolute(path string) bool {
 	return false
 }
 
+// agentsMdResults returns the layout findings for the root AGENTS.md: the
+// prose-language check (WARN when the language is not stated; existing
+// repos are never re-scaffolded) and, when the file exists but init cannot
+// refresh its Context section (no single ordered marker pair), an INFO that
+// says why and how to opt in. INFO never fails the run.
+func agentsMdResults(root, lang string) []repogov.LayoutResult {
+	rs := repogov.CheckAgentsMdLanguage(root, lang)
+	info, err := os.Lstat(filepath.Join(root, "AGENTS.md"))
+	if err != nil || !info.Mode().IsRegular() {
+		return rs // absent, or reported as SKIP by the language check
+	}
+	if ok, reason := repogov.AgentsMdContextStatus(root); !ok {
+		rs = append(rs, repogov.LayoutResult{Path: "AGENTS.md", Status: repogov.Info, Message: reason})
+	}
+	return rs
+}
+
+// initNotice returns the note init prints when the existing AGENTS.md at
+// root was left unchanged because it lacks one ordered pair of Context
+// markers (init itself succeeds; see [repogov.AgentsMdContextStatus]), or
+// "" when its Context section is refreshable.
+func initNotice(root string) string {
+	if ok, reason := repogov.AgentsMdContextStatus(root); !ok {
+		return reason
+	}
+	return ""
+}
+
+// unknownLanguageMessage explains why a -language value was refused and how
+// to find a supported tag.
+func unknownLanguageMessage(language string) string {
+	return fmt.Sprintf("error: unknown -language %q; use a BCP 47 tag such as en-US, en-GB, es-419, pt-BR or zh-Hans (the full list is in the README language table)", language)
+}
+
 // runUpdateConfig adds or refreshes the "_agent_hints" block in the active
-// JSON config, leaving every other byte of the file untouched.
-func runUpdateConfig(root, configPath string, quiet bool, stdout, stderr io.Writer) int {
+// JSON or YAML config, leaving every other byte of the file untouched. With
+// a non-empty language it also sets the top-level language key (added when
+// absent, replaced when present); without one an absent key is added as the
+// default, en-US, and an existing value is never touched.
+func runUpdateConfig(root, configPath, language string, quiet bool, stdout, stderr io.Writer) int {
+	if code := checkExplicitConfig(root, configPath, stderr); code != 0 {
+		return code
+	}
+	if language != "" {
+		if _, ok := repogov.NormalizeLanguage(language); !ok {
+			fmt.Fprintln(stderr, unknownLanguageMessage(language))
+			return 2
+		}
+	}
 	cfgPath := configPath
 	if cfgPath == "" {
 		cfgPath = repogov.FindConfig(root)
@@ -998,16 +1177,21 @@ func runUpdateConfig(root, configPath string, quiet bool, stdout, stderr io.Writ
 	if rel, err := filepath.Rel(root, cfgPath); err == nil {
 		displayPath = filepath.ToSlash(rel)
 	}
-	changed, err := repogov.UpgradeConfigHints(cfgPath)
+	changed, err := repogov.UpgradeConfigWithLanguage(cfgPath, language)
 	if err != nil {
 		fmt.Fprintf(stderr, "error updating %s: %v\n", displayPath, err)
 		return 2
 	}
 	if !quiet {
+		what := "the current _agent_hints and a language key"
+		if language != "" {
+			tag, _ := repogov.NormalizeLanguage(language)
+			what = "the current _agent_hints and language " + tag
+		}
 		if changed {
-			fmt.Fprintf(stdout, "Updated %s with the current _agent_hints.\n", displayPath)
+			fmt.Fprintf(stdout, "Updated %s with %s.\n", displayPath, what)
 		} else {
-			fmt.Fprintf(stdout, "%s already has the current _agent_hints.\n", displayPath)
+			fmt.Fprintf(stdout, "%s already has %s.\n", displayPath, what)
 		}
 	}
 	return 0
@@ -1021,7 +1205,7 @@ func wantPitfalls(agentFlag string, isAll bool) bool {
 		return true
 	}
 	for _, a := range strings.Split(agentFlag, ",") {
-		switch strings.TrimSpace(a) {
+		switch strings.ToLower(strings.TrimSpace(a)) {
 		case "cursor", "gemini":
 			return true
 		}

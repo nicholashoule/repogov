@@ -18,13 +18,19 @@ func isYAML(path string) bool {
 //
 // Supported schema: top-level int scalars (default, warning_threshold), a string
 // list (skip_dirs), a list of objects (rules with glob/limit), and a
-// string-to-int map (files). Unknown keys (including _-prefixed metadata)
-// are silently ignored. Flow syntax (inline [] and {}) is not supported;
-// use block style.
+// string-to-int map (files). Keys may be quoted ("default": 300). Keys
+// starting with "_" are metadata (e.g. _agent_hints) and are skipped
+// together with their indented children.
+//
+// Anything outside that subset is an error rather than being silently
+// ignored, so a typo cannot quietly fall back to defaults: unknown keys,
+// tab indentation, and flow syntax (inline [a, b] or {k: v}) other than an
+// empty [] (or {} for files) all fail with the offending line number.
 func unmarshalYAML(data []byte, cfg *Config) error {
 	type section int
 	const (
 		sNone section = iota
+		sMeta         // inside a _-prefixed metadata key: children skipped
 		sSkipDirs
 		sIncludeExts
 		sRules
@@ -49,6 +55,14 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 		curRule = nil
 	}
 
+	isList := func(s section) bool {
+		switch s {
+		case sSkipDirs, sIncludeExts, sRules, sMaxBytes, sInitInclude, sInitExclude:
+			return true
+		}
+		return false
+	}
+
 	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
 	lines := strings.Split(normalized, "\n")
 
@@ -60,14 +74,39 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 		}
 
 		indent := yamlCountIndent(line)
+		if strings.ContainsRune(line[:len(line)-len(strings.TrimLeft(line, " \t"))], '\t') {
+			return fmt.Errorf("line %d: tab indentation is not supported; indent with spaces", i+1)
+		}
 
-		if indent == 0 {
+		// An indentless block sequence ("skip_dirs:\n- vendor") is valid
+		// YAML: treat a top-level "- " item as part of the open list section.
+		indentlessItem := indent == 0 && isList(sec) && (strings.HasPrefix(trimmed, "- ") || trimmed == "-")
+
+		if indent == 0 && !indentlessItem {
 			// Top-level key.
 			flushRule()
 			key, val, ok := yamlSplitKV(trimmed)
 			if !ok {
+				return fmt.Errorf("line %d: expected \"key: value\" at top level, got %q", i+1, trimmed)
+			}
+			key = yamlUnquote(key) // "default": 300 is the same key as default: 300
+			if strings.HasPrefix(key, "_") {
+				sec = sMeta
 				continue
 			}
+			// Flow collections are not supported, except an explicit empty
+			// list ([]) for list keys or empty map ({}) for files.
+			if strings.HasPrefix(val, "[") || strings.HasPrefix(val, "{") {
+				switch {
+				case val == "[]" && yamlIsListKey(key):
+				case val == "{}" && key == "files":
+				default:
+					return fmt.Errorf("line %d: inline (flow) value %q for %q is not supported; use a block list or map, or [] for an empty list", i+1, val, key)
+				}
+			} else if val != "" && (yamlIsListKey(key) || key == "files") {
+				return fmt.Errorf("line %d: %q takes a block list or map on the following lines, not the value %q", i+1, key, val)
+			}
+			sec = sNone
 			switch key {
 			case "default":
 				n, err := strconv.Atoi(val)
@@ -82,15 +121,23 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 					return fmt.Errorf("line %d: invalid warning_threshold: %w", i+1, err)
 				}
 				cfg.WarningThreshold = PercentInt(n)
+			case "language":
+				cfg.Language = yamlUnquote(val)
 			case "skip_dirs":
 				sec = sSkipDirs
 				cfg.SkipDirs = nil
+				if val == "[]" {
+					cfg.SkipDirs = []string{} // explicit empty: skip nothing
+				}
 			case "include_exts":
 				sec = sIncludeExts
 				cfg.IncludeExts = []string{} // explicit empty means scan all
 			case "rules":
 				sec = sRules
 				cfg.Rules = nil
+				if val == "[]" {
+					cfg.Rules = []Rule{} // explicit empty: no glob rules
+				}
 				ruleDst = &cfg.Rules
 			case "max_bytes":
 				sec = sMaxBytes
@@ -124,43 +171,51 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 				sec = sInitExclude
 				cfg.InitExcludeFiles = []string{}
 			default:
-				sec = sNone
+				return fmt.Errorf("line %d: unknown key %q; check the spelling against the documented config keys (prefix metadata keys with _)", i+1, key)
 			}
 			continue
 		}
 
-		// Indented line — part of current section.
+		// Indented line (or indentless list item) -- part of current section.
+		item, isItem := yamlListItem(trimmed)
 		switch sec {
-		case sSkipDirs:
-			if strings.HasPrefix(trimmed, "- ") {
-				val := yamlUnquote(strings.TrimSpace(trimmed[2:]))
-				cfg.SkipDirs = append(cfg.SkipDirs, val)
-			}
+		case sMeta:
+			// Children of a _-prefixed metadata key are not interpreted.
 
-		case sIncludeExts:
-			if strings.HasPrefix(trimmed, "- ") {
-				val := yamlUnquote(strings.TrimSpace(trimmed[2:]))
+		case sSkipDirs, sIncludeExts, sInitInclude, sInitExclude:
+			if !isItem {
+				return fmt.Errorf("line %d: expected a \"- value\" list item, got %q", i+1, trimmed)
+			}
+			if strings.HasPrefix(item, "[") || strings.HasPrefix(item, "{") {
+				return fmt.Errorf("line %d: inline (flow) list item %q is not supported; use one \"- value\" per line", i+1, item)
+			}
+			val := yamlUnquote(item)
+			switch sec {
+			case sSkipDirs:
+				cfg.SkipDirs = append(cfg.SkipDirs, val)
+			case sIncludeExts:
 				cfg.IncludeExts = append(cfg.IncludeExts, val)
+			case sInitInclude:
+				cfg.InitIncludeFiles = append(cfg.InitIncludeFiles, val)
+			case sInitExclude:
+				cfg.InitExcludeFiles = append(cfg.InitExcludeFiles, val)
 			}
 
 		case sRules, sMaxBytes:
-			if strings.HasPrefix(trimmed, "- ") {
+			rest := trimmed
+			if isItem {
 				flushRule()
 				curRule = &Rule{}
-				rest := strings.TrimSpace(trimmed[2:])
-				key, val, ok := yamlSplitKV(rest)
-				if ok {
-					if err := yamlSetRuleField(curRule, key, val); err != nil {
-						return fmt.Errorf("line %d: %w", i+1, err)
-					}
-				}
-			} else if curRule != nil {
-				key, val, ok := yamlSplitKV(trimmed)
-				if ok {
-					if err := yamlSetRuleField(curRule, key, val); err != nil {
-						return fmt.Errorf("line %d: %w", i+1, err)
-					}
-				}
+				rest = item
+			} else if curRule == nil {
+				return fmt.Errorf("line %d: expected a \"- glob: ...\" list item, got %q", i+1, trimmed)
+			}
+			key, val, ok := yamlSplitKV(rest)
+			if !ok {
+				return fmt.Errorf("line %d: expected \"glob: ...\" or \"limit: ...\", got %q", i+1, rest)
+			}
+			if err := yamlSetRuleField(curRule, yamlUnquote(key), val); err != nil {
+				return fmt.Errorf("line %d: %w", i+1, err)
 			}
 
 		case sFiles:
@@ -168,25 +223,17 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 				cfg.Files = make(map[string]int)
 			}
 			key, val, ok := yamlSplitKV(trimmed)
-			if ok {
-				n, err := strconv.Atoi(val)
-				if err != nil {
-					return fmt.Errorf("line %d: invalid file limit for %q: %w", i+1, key, err)
-				}
-				cfg.Files[yamlUnquote(key)] = n
+			if !ok || isItem {
+				return fmt.Errorf("line %d: expected \"path: limit\" under files, got %q", i+1, trimmed)
 			}
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return fmt.Errorf("line %d: invalid file limit for %q: %w", i+1, key, err)
+			}
+			cfg.Files[yamlUnquote(key)] = n
 
-		case sInitInclude:
-			if strings.HasPrefix(trimmed, "- ") {
-				val := yamlUnquote(strings.TrimSpace(trimmed[2:]))
-				cfg.InitIncludeFiles = append(cfg.InitIncludeFiles, val)
-			}
-
-		case sInitExclude:
-			if strings.HasPrefix(trimmed, "- ") {
-				val := yamlUnquote(strings.TrimSpace(trimmed[2:]))
-				cfg.InitExcludeFiles = append(cfg.InitExcludeFiles, val)
-			}
+		default:
+			return fmt.Errorf("line %d: unexpected indented line %q; only list and map keys take indented values", i+1, trimmed)
 		}
 	}
 
@@ -194,14 +241,37 @@ func unmarshalYAML(data []byte, cfg *Config) error {
 	return nil
 }
 
+// yamlIsListKey reports whether key is a top-level config key whose value
+// is a block list.
+func yamlIsListKey(key string) bool {
+	switch key {
+	case "skip_dirs", "include_exts", "rules", "max_bytes", "init_include_files", "init_exclude_files":
+		return true
+	}
+	return false
+}
+
+// yamlListItem returns the text after a block-sequence "- " marker.
+func yamlListItem(trimmed string) (string, bool) {
+	if strings.HasPrefix(trimmed, "- ") {
+		return strings.TrimSpace(trimmed[2:]), true
+	}
+	return "", false
+}
+
 // marshalYAML produces a minimal YAML representation of cfg.
 // Map keys are sorted for deterministic output.
 func marshalYAML(cfg Config) ([]byte, error) { //nolint:gocritic // hugeParam: intentional value semantics
 	var b bytes.Buffer
+	// The prose language always comes first, written out even when it is
+	// the default (an empty value means en-US).
+	fmt.Fprintf(&b, "language: %s\n", yamlQuote(effectiveLanguage(cfg.Language)))
 	fmt.Fprintf(&b, "default: %d\n", cfg.Default)
 	fmt.Fprintf(&b, "warning_threshold: %d%%\n", int(cfg.WarningThreshold))
 
-	if len(cfg.SkipDirs) > 0 {
+	if cfg.SkipDirs != nil && len(cfg.SkipDirs) == 0 {
+		fmt.Fprintln(&b, "skip_dirs: []")
+	} else if len(cfg.SkipDirs) > 0 {
 		fmt.Fprintln(&b, "skip_dirs:")
 		for _, d := range cfg.SkipDirs {
 			fmt.Fprintf(&b, "  - %s\n", yamlQuote(d))
@@ -215,7 +285,9 @@ func marshalYAML(cfg Config) ([]byte, error) { //nolint:gocritic // hugeParam: i
 		}
 	}
 
-	if len(cfg.Rules) > 0 {
+	if cfg.Rules != nil && len(cfg.Rules) == 0 {
+		fmt.Fprintln(&b, "rules: []") // explicit empty: no glob rules
+	} else if len(cfg.Rules) > 0 {
 		fmt.Fprintln(&b, "rules:")
 		for _, r := range cfg.Rules {
 			fmt.Fprintf(&b, "  - glob: %s\n", yamlQuote(r.Glob))
@@ -329,9 +401,11 @@ func yamlUnquote(s string) string {
 	return s
 }
 
-// yamlQuote returns s quoted if it contains YAML-special characters.
+// yamlQuote returns s quoted if it contains YAML-special characters. The
+// empty string is quoted ("") so that a list item or value holding it
+// round-trips instead of reading back as a bare "-" or a missing value.
 func yamlQuote(s string) string {
-	if strings.ContainsAny(s, ":{}[]#&*!|>'\"%@`,?") ||
+	if s == "" || strings.ContainsAny(s, ":{}[]#&*!|>'\"%@`,?") ||
 		strings.ContainsAny(s, " \t") {
 		return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
 	}
@@ -349,6 +423,8 @@ func yamlSetRuleField(r *Rule, key, val string) error {
 			return fmt.Errorf("invalid limit %q: %w", val, err)
 		}
 		r.Limit = &n
+	default:
+		return fmt.Errorf("unknown rule key %q; rules take only glob and limit", key)
 	}
 	return nil
 }

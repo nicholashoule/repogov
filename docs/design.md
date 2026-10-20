@@ -28,20 +28,27 @@ programmatically or formatted for human-readable output.
 ## Package Structure
 
 ```
-repogov.go      -- Core types: Status, Config, Rule, Result, ResolveLimit, DefaultConfig
-check.go        -- CountLines, CheckFile, CheckDir, CheckDirContext
-config.go       -- LoadConfig, FindConfig, SaveConfig, ValidateConfig
-format.go       -- Summary, Passed, LayoutSummary, LayoutPassed
-init.go         -- InitLayout, InitLayoutAll, InitLayoutWithConfig, InitLayoutAllWithConfig
-layout.go       -- LayoutSchema, LayoutResult, CheckLayout, CheckLayoutContext
-presets.go      -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout,
-                   DefaultClaudeLayout, DefaultKiroLayout, DefaultGeminiLayout,
-                   DefaultContinueLayout, DefaultClineLayout, DefaultRooCodeLayout,
-                   DefaultJetBrainsLayout, DefaultZedLayout, DefaultGitLabLayout, DefaultRootLayout
-scaffold.go     -- File creators, AGENTS.md management, config scaffolding, instruction seeding
-template.go     -- Embedded template FS, mustReadTemplate, mustRenderTemplate
-yaml.go         -- Minimal YAML parser and serializer (stdlib only)
-cmd/repogov/    -- CLI with limits/layout/init/validate/all/version subcommands
+repogov.go        -- Core types: Status, Config, Rule, Result, ResolveLimit, DefaultConfig
+check.go          -- CountLines, CheckFile, CheckDir, CheckDirContext (UTF-16/32 aware)
+config.go         -- LoadConfig (strict), FindConfig, FindAllConfigs, SaveConfig, ValidateConfig
+config_hints.go   -- The _agent_hints block every generated config carries
+config_upgrade.go -- UpgradeConfigHints, UpgradeConfigWithLanguage (update-config); atomic writes
+language.go       -- Prose language: KnownLanguages, NormalizeLanguage, LookupLanguage, DefaultLanguage
+format.go         -- Summary, Passed, LayoutSummary, LayoutPassed
+init.go           -- InitLayout, InitLayoutAll, InitLayoutWithConfig, InitLayoutAllWithConfig
+layout.go         -- LayoutSchema, LayoutResult, CheckLayout, CheckLayoutContext
+pitfalls.go       -- CheckAgentPitfalls: files an agent would silently ignore
+presets.go        -- DefaultCopilotLayout, DefaultCursorLayout, DefaultWindsurfLayout,
+                     DefaultClaudeLayout, DefaultKiroLayout, DefaultGeminiLayout,
+                     DefaultContinueLayout, DefaultClineLayout, DefaultRooCodeLayout,
+                     DefaultJetBrainsLayout, DefaultZedLayout, DefaultGitLabLayout, DefaultRootLayout
+scaffold.go       -- File creators, AGENTS.md (marked Context section, AgentsMdContextStatus),
+                     config scaffolding, instruction seeding
+settings.go       -- Read-only audit of agent settings files
+template.go       -- Embedded template FS, mustReadTemplate, mustRenderTemplate
+yaml.go           -- Minimal strict YAML parser and serializer (stdlib only)
+rename_*.go       -- Platform rename retry for atomic writes (Windows sharing violations)
+cmd/repogov/      -- CLI: limits, layout, init, update-config, validate, all, version
 ```
 
 ## Configuration
@@ -51,6 +58,8 @@ in repo root then `.github/`):
 
 ```json
 {
+  "_agent_hints": { "about": "Keys starting with _ guide AI agents; repogov ignores them." },
+  "language": "en-US",
   "default": 500,
   "warning_threshold": "85%",
   "skip_dirs": [".git", "vendor", "workflows"],
@@ -63,12 +72,23 @@ in repo root then `.github/`):
   "rules": [
     {"glob": "docs/*.md", "limit": 1000}
   ],
+  "max_bytes": [
+    {"glob": ".agents/rules/*.md", "limit": 24000}
+  ],
   "files": {
     "README.md": 1200,
     "CHANGELOG.md": 0
   }
 }
 ```
+
+`_agent_hints` (abridged above) is a block of one-line hints for AI agents
+that open the file; keys starting with `_` (and a top-level `$schema`) are
+ignored, and `update-config` refreshes the block in place. `language` is the
+BCP 47 tag of the repository's prose (docs, comments, commits), `en-US` by
+default; scaffolded agent files and AGENTS.md's marked Context section state
+it. Parsing is strict: an unknown key, YAML flow syntax or tab indentation is
+an error, so a typo never silently falls back to a default.
 
 `warning_threshold` accepts a bare integer (80) or a percent string ("80%")
 via the `PercentInt` type. `descriptive_names` controls `*.instructions.md`
@@ -124,19 +144,22 @@ projects with non-standard top-level directories.
 ## CLI
 
 ```
-repogov [flags] <limits|layout|init|validate|all|version>
+repogov [flags] <limits|layout|init|update-config|validate|all|version> [flags]
 
-Flags:
-  -config       Path to JSON/YAML config (default: auto-discovered)
-  -root         Repository root (default: .; resolved to git root when available, otherwise to the absolute path)
+Flags (accepted before or after the subcommand):
+  -config       Path to JSON/YAML config (default: auto-discovered; a given path must exist)
+  -root         Repository root (default: . resolved to the git root; a given -root is used as is)
   -exts         Extension filter (e.g., .go,.md)
   -agent        AI agent preset: copilot, cursor, windsurf, claude, kiro, gemini,
                 continue, cline, roocode, jetbrains, zed, or all
-  -platform     Repository platform preset: gitlab, root, or all
+  -platform     Repository platform preset: github, gitlab, bitbucket, root, all, or auto
   -descriptive  Use *.instructions.md naming (overrides config descriptive_names)
   -seed         Seed missing files into existing dirs (init only)
+  -language     Prose language tag (init and update-config only; default en-US)
   -quiet        Exit code only
   -json         JSON output
+
+Exit codes: 0 pass, 1 a check failed, 2 usage or config error.
 ```
 
 ## Constraints
@@ -144,4 +167,10 @@ Flags:
 - Zero external dependencies (stdlib only)
 - Go 1.24+
 - Cross-platform (Windows, Linux, macOS)
-- Auditing is read-only; `init` scaffolds new files but never overwrites existing ones
+- Auditing is read-only. `init` creates missing files and never overwrites
+  existing ones, with one opt-in exception: in an AGENTS.md that carries the
+  `<!-- repogov:context:begin -->` / `<!-- repogov:context:end -->` markers, it
+  refreshes only the text between them. An unmarked AGENTS.md is left untouched
+  (a note, not an error; `AgentsMdContextStatus` says why).
+- `update-config` rewrites only the `_agent_hints` block and a missing
+  `language` key; every write is atomic and refuses symlinks.

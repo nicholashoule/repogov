@@ -15,7 +15,9 @@ Runs `repogov -agent copilot` via `go run` to check line limits and layout.
 ### Phase 2: demojify-sanitize
 
 Runs `demojify` to detect emoji characters. If emoji are found, automatically
-substitutes them, re-stages changes, and aborts so the user can review.
+substitutes them, re-stages only the staged files the substitution changed, and
+aborts so the user can review. Unstaged files and partially staged files are never
+added; partially staged ones are listed for the user to stage by hand.
 
 ### Phase 3: Go checks (pre-commit.go)
 

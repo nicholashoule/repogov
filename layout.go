@@ -86,7 +86,8 @@ type LayoutResult struct {
 	// Path is the repo-relative path using forward slashes.
 	Path string
 
-	// Status is the check outcome: Pass, Warn, Fail, or Info.
+	// Status is the check outcome: Pass, Warn, Fail, or Info; Skip for a
+	// file that is not opened (a symlink or special file).
 	Status Status
 
 	// Message is a human-readable explanation of the result.
@@ -438,10 +439,31 @@ func StripFrontmatter(schema LayoutSchema) LayoutSchema { //nolint:gocritic // h
 // checkFrontmatter validates that the file at absPath contains a YAML
 // frontmatter block (delimited by "---") with all requiredKeys present.
 // It returns zero or more LayoutResult entries (PASS for valid, FAIL for
-// missing delimiter or missing keys). displayPath is used in results.
+// missing delimiter or missing keys, SKIP for a symlink or special file).
+// displayPath is used in results.
 func checkFrontmatter(absPath, displayPath string, requiredKeys []string) []LayoutResult {
 	if len(requiredKeys) == 0 {
 		return nil
+	}
+
+	// Only regular files are opened: a symlink could expose a file outside
+	// the repo and a FIFO or device would block the check indefinitely. Such
+	// a file is reported as Skip, never followed, consistent with the line
+	// limit check ([CheckDir]).
+	info, err := os.Lstat(absPath)
+	if err != nil {
+		return []LayoutResult{{
+			Path:    displayPath,
+			Status:  Fail,
+			Message: fmt.Sprintf("frontmatter: unable to read file: %v", err),
+		}}
+	}
+	if !info.Mode().IsRegular() {
+		return []LayoutResult{{
+			Path:    displayPath,
+			Status:  Skip,
+			Message: "frontmatter not checked: not a regular file (symlink or special file); not followed",
+		}}
 	}
 
 	f, err := os.Open(absPath)
@@ -456,8 +478,9 @@ func checkFrontmatter(absPath, displayPath string, requiredKeys []string) []Layo
 
 	scanner := bufio.NewScanner(f)
 
-	// First line must be "---".
-	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
+	// First line must be "---" (after a UTF-8 BOM, which Windows editors
+	// often prepend).
+	if !scanner.Scan() || strings.TrimSpace(strings.TrimPrefix(scanner.Text(), string(utf8BOM))) != "---" {
 		return []LayoutResult{{
 			Path:    displayPath,
 			Status:  Fail,

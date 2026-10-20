@@ -103,7 +103,10 @@ func CheckFile(path string, cfg Config) (Result, error) { //nolint:gocritic // h
 //
 // Binary and compiled files (detected by a NUL byte within the first 512
 // bytes) are never line-counted or otherwise parsed: they produce a Skip
-// result, and only the sniff prefix is ever read from them.
+// result, and only the sniff prefix is ever read from them. A byte limit
+// still applies to them (checked from the file size). Text with a UTF-16 or
+// UTF-32 byte order mark is not binary: its lines are counted in the
+// decoded code units.
 func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:gocritic // hugeParam: stable public API
 	// Certificate and key material is skipped before the file is opened:
 	// its content must never be read, counted, or parsed.
@@ -140,21 +143,52 @@ func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:
 	if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
 		return Result{}, readErr
 	}
-	if bytes.IndexByte(sniff[:n], 0) >= 0 {
-		// Binary file: report Skip without reading any further content.
+	warnThreshold := effectiveWarningThreshold(cfg)
+
+	// UTF-16 and UTF-32 text (common from Windows tools) contains NUL bytes
+	// but is text: recognize its byte order mark before the binary sniff so
+	// it is line-counted instead of skipped.
+	total := int64(n)
+	if readErr == nil { // the sniff buffer filled: the file may be longer
+		fi, statErr := f.Stat()
+		if statErr != nil {
+			return Result{}, statErr
+		}
+		total = fi.Size()
+	}
+	unit, bigEndian := wideEncoding(sniff[:n], total)
+	if unit == 0 && bytes.IndexByte(sniff[:n], 0) >= 0 {
+		// Binary file: never line-counted or parsed. Its size still counts
+		// against a byte limit (from Stat, without reading further).
+		if byteLimit > 0 {
+			fi, statErr := f.Stat()
+			if statErr != nil {
+				return Result{}, statErr // never pass a byte check on an unknown size
+			}
+			size := clampInt(fi.Size())
+			if bStatus, msg := checkByteLimit(size, byteLimit, warnThreshold); bStatus != Pass {
+				return Result{
+					Path: relPath, Limit: limit, Bytes: size, ByteLimit: byteLimit,
+					Status: bStatus, Action: "binary file; " + msg,
+				}, nil
+			}
+		}
 		return Result{Path: relPath, Limit: limit, Status: Skip}, nil
 	}
 
 	status := Pass
 	action := ""
 	count, pct := 0, 0
-	warnThreshold := effectiveWarningThreshold(cfg)
 
 	// Line limit. A limit of 0 exempts the file from the line check only; a
 	// byte limit (below) may still apply.
 	if limit > 0 {
 		var err error
-		count, err = countLinesFrom(f, sniff[:n])
+		if unit > 0 {
+			count, err = countWideLinesFrom(f, sniff[:n], unit, bigEndian)
+		} else {
+			count, err = countLinesFrom(f, sniff[:n])
+		}
 		if err != nil {
 			return Result{}, err
 		}
@@ -174,22 +208,12 @@ func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:
 	// file inside its line limit can still be cut off.
 	size := 0
 	if byteLimit > 0 {
-		if fi, statErr := f.Stat(); statErr == nil {
-			size = clampInt(fi.Size())
+		fi, statErr := f.Stat()
+		if statErr != nil {
+			return Result{}, statErr // never pass a byte check on an unknown size
 		}
-		bpct := int(100 * int64(size) / int64(byteLimit))
-		var bStatus Status
-		switch {
-		case size > byteLimit:
-			bStatus = Fail
-		case bpct >= warnThreshold:
-			bStatus = Warn
-		}
-		if bStatus != Pass {
-			msg := fmt.Sprintf("%d bytes is %d%% of the %d-byte limit; trim the file (agents truncate or ignore oversized instructions) or raise max_bytes in repogov-config.json", size, bpct, byteLimit)
-			if bStatus == Fail {
-				msg = fmt.Sprintf("over byte limit by %d bytes (%d / %d); trim the file (agents truncate or ignore oversized instructions) or raise max_bytes in repogov-config.json", size-byteLimit, size, byteLimit)
-			}
+		size = clampInt(fi.Size())
+		if bStatus, msg := checkByteLimit(size, byteLimit, warnThreshold); bStatus != Pass {
 			if action != "" {
 				action += "; "
 			}
@@ -215,6 +239,93 @@ func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:
 		Status:    status,
 		Action:    action,
 	}, nil
+}
+
+// checkByteLimit classifies a file size against a positive byte limit and
+// returns the status (Pass, Warn or Fail) with a remediation message for
+// Warn and Fail.
+func checkByteLimit(size, byteLimit, warnThreshold int) (Status, string) {
+	bpct := int(100 * int64(size) / int64(byteLimit))
+	switch {
+	case size > byteLimit:
+		return Fail, fmt.Sprintf("over byte limit by %d bytes (%d / %d); trim the file (agents truncate or ignore oversized instructions) or raise max_bytes in repogov-config.json", size-byteLimit, size, byteLimit)
+	case bpct >= warnThreshold:
+		return Warn, fmt.Sprintf("%d bytes is %d%% of the %d-byte limit; trim the file (agents truncate or ignore oversized instructions) or raise max_bytes in repogov-config.json", size, bpct, byteLimit)
+	}
+	return Pass, ""
+}
+
+// wideEncoding inspects the start of a file for a UTF-32 or UTF-16 byte
+// order mark and returns the code-unit size (4 or 2; 0 when there is no such
+// BOM) and whether the encoding is big-endian. size is the file's total
+// length. FF FE 00 00 is ambiguous: a UTF-32LE BOM, or a UTF-16LE BOM
+// followed by U+0000. It is read as UTF-32LE only when size is a whole
+// number of 4-byte units, and as UTF-16LE otherwise.
+func wideEncoding(prefix []byte, size int64) (unit int, bigEndian bool) {
+	switch {
+	case bytes.HasPrefix(prefix, []byte{0xFF, 0xFE, 0x00, 0x00}) && size%4 == 0:
+		return 4, false
+	case bytes.HasPrefix(prefix, []byte{0x00, 0x00, 0xFE, 0xFF}):
+		return 4, true
+	case bytes.HasPrefix(prefix, []byte{0xFF, 0xFE}):
+		return 2, false
+	case bytes.HasPrefix(prefix, []byte{0xFE, 0xFF}):
+		return 2, true
+	}
+	return 0, false
+}
+
+// countWideLinesFrom counts lines in UTF-16/UTF-32 text (prefix, which starts
+// with the BOM, followed by the rest of r) with the same semantics as
+// [CountLines]: each U+000A code unit ends a line and a non-empty final line
+// without one still counts. unit is 2 or 4 bytes. Reads are chunked, so
+// memory use is constant.
+func countWideLinesFrom(r io.Reader, prefix []byte, unit int, bigEndian bool) (int, error) {
+	count := 0
+	sawUnit := false
+	lastNewline := true
+	var pending []byte
+	consume := func(b []byte) {
+		pending = append(pending, b...)
+		whole := len(pending) - len(pending)%unit
+		for i := 0; i < whole; i += unit {
+			u := pending[i : i+unit]
+			var v uint32
+			if bigEndian {
+				for _, c := range u {
+					v = v<<8 | uint32(c)
+				}
+			} else {
+				for j := unit - 1; j >= 0; j-- {
+					v = v<<8 | uint32(u[j])
+				}
+			}
+			sawUnit = true
+			lastNewline = v == '\n'
+			if lastNewline {
+				count++
+			}
+		}
+		pending = append(pending[:0], pending[whole:]...)
+	}
+	consume(prefix[unit:]) // skip the BOM
+	buf := make([]byte, 64*1024)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			consume(buf[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return 0, err
+		}
+	}
+	if sawUnit && !lastNewline {
+		count++
+	}
+	return count, nil
 }
 
 // CheckDir walks a directory tree rooted at root, checks every file

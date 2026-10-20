@@ -37,6 +37,7 @@ func TestInitGemini_StillCreatesGeminiMd(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "AGENTS.md", "# a\n")
 	created, err := repogov.InitLayout(root, repogov.DefaultGeminiLayout())
+	// The unmarked AGENTS.md is a notice, not an error: init completes.
 	if err != nil {
 		t.Fatal(err)
 	}
