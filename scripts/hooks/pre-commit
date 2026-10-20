@@ -12,7 +12,7 @@ cd "$root"
 # being prepared in the current branch -- a not-yet-existing tag would fail
 # 'go run' and block every commit until release. Bump it in the pin sweep
 # that follows each release.
-repogov_ref="github.com/nicholashoule/repogov/cmd/repogov@v0.8.0"
+repogov_ref="github.com/nicholashoule/repogov/cmd/repogov@v0.9.0"
 go run "$repogov_ref" -root "$root" -agent copilot
 repogov_exit=$?
 if [ "$repogov_exit" -ne 0 ]; then
