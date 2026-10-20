@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -553,13 +554,138 @@ func TestPreCommitHook_DoesNotRestageEverything(t *testing.T) {
 	if strings.Contains(string(data), "git add -u") {
 		t.Error("pre-commit must restage only files demojify changed, not every modified tracked file (git add -u)")
 	}
-	// Non-ASCII paths must print verbatim, or the re-stage never matches them.
-	if n := strings.Count(string(data), "git diff"); n != 0 {
-		t.Errorf("%d git diff call(s) without -c core.quotePath=false", n)
+}
+
+// TestPreCommitHook_RestageIsNULSafeAndLiteral runs the hook's
+// restage_changed function in a scratch repository. Names git would quote
+// (", tab, newline, backslash) must be re-staged (a quoted name never matches
+// in 'git add'), and a name holding a wildcard or pathspec magic must stage
+// only itself, never the user's other unstaged work.
+func TestPreCommitHook_RestageIsNULSafeAndLiteral(t *testing.T) {
+	data, err := os.ReadFile("scripts/hooks/pre-commit")
+	if err != nil {
+		t.Skipf("hook not found: %v", err)
 	}
-	if n := strings.Count(string(data), "git -c core.quotePath=false diff"); n < 3 {
-		t.Errorf("want the staged/unstaged path listings to use core.quotePath=false, found %d", n)
+	s := string(data)
+	begin, end := strings.Index(s, "# BEGIN restage_changed"), strings.Index(s, "# END restage_changed")
+	if begin < 0 || end < begin {
+		t.Fatal("pre-commit must define restage_changed between # BEGIN/# END restage_changed markers")
 	}
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := t.TempDir()
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(kv), "GIT_") { // a hook run sets GIT_INDEX_FILE etc.
+			env = append(env, kv)
+		}
+	}
+	env = append(env, "GIT_CONFIG_NOSYSTEM=1")
+	run := func(name string, args ...string) (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir, cmd.Env = repo, env
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := run("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "--literal-pathspecs"}, args...)...)
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Staged, clean, changed by the substitution: must be re-staged.
+	targets := []string{"x[ab].md", "plain.md"}
+	if runtime.GOOS != "windows" { // names Windows file systems cannot hold
+		targets = append(targets, `q"uote.md`, "tab\tname.md", "new\nline.md", `back\slash.md`, ":(glob)**")
+	}
+	all := append([]string{"xa.md", "partial.md", "keep.md"}, targets...)
+
+	git("init", "-q")
+	git("config", "core.autocrlf", "false")
+	for _, n := range all {
+		write(n, "a\n")
+	}
+	git("add", "--all")
+	git("commit", "-q", "-m", "init")
+	for _, n := range targets {
+		write(n, "staged\n")
+		git("add", "--", n)
+	}
+	write("keep.md", "staged\n") // staged, untouched by the substitution
+	git("add", "--", "keep.md")
+	write("partial.md", "staged\n") // partially staged: never added
+	git("add", "--", "partial.md")
+	write("partial.md", "staged\nunstaged\n")
+	write("xa.md", "user work in progress\n") // never staged: never added
+
+	subst := "git ls-files -z | xargs -0 sh -c 'for f in \"$@\"; do [ \"$f\" = keep.md ] || printf \"sub\\n\" >> \"$f\"; done' sh"
+	script := s[begin:end] + "\nrestage_changed sh -c " + shellSingleQuote(subst) + "\n"
+	scriptPath := filepath.Join(t.TempDir(), "restage.sh")
+	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := run("sh", scriptPath)
+	if err != nil {
+		t.Fatalf("restage_changed: %v\n%s", err, out)
+	}
+
+	list := func(args ...string) map[string]bool {
+		m := map[string]bool{}
+		for n := range strings.SplitSeq(git(args...), "\x00") {
+			if n != "" {
+				m[n] = true
+			}
+		}
+		return m
+	}
+	unstaged := list("diff", "--name-only", "-z")
+	staged := list("diff", "--cached", "--name-only", "-z")
+	for _, n := range targets {
+		if unstaged[n] {
+			t.Errorf("%q was changed by the substitution but not re-staged\n%s", n, out)
+		}
+	}
+	if staged["xa.md"] {
+		t.Errorf("xa.md (unstaged user work) was staged by a wildcard or pathspec-magic name\n%s", out)
+	}
+	if !unstaged["partial.md"] || !strings.Contains(out, "NOTE: partial.md is partially staged") {
+		t.Errorf("partial.md must stay unstaged and be listed\n%s", out)
+	}
+	if strings.Contains(out, "re-staged keep.md") || strings.Contains(out, "re-staged xa.md") {
+		t.Errorf("only files the substitution changed may be re-staged\n%s", out)
+	}
+}
+
+// The Go half of the hook (build-ignored, so checked as source) re-stages
+// gofmt'd files by name: each name must be a literal pathspec after "--".
+func TestPreCommitGo_ReStagesLiterally(t *testing.T) {
+	data, err := os.ReadFile("scripts/hooks/pre-commit.go")
+	if err != nil {
+		t.Skipf("hook not found: %v", err)
+	}
+	s := string(data)
+	if n, lit := strings.Count(s, `"add"`), strings.Count(s, `"git", "--literal-pathspecs", "add", "--", `); n == 0 || n != lit {
+		t.Errorf(`every git add in pre-commit.go must be "git", "--literal-pathspecs", "add", "--", name (%d add, %d literal)`, n, lit)
+	}
+}
+
+// shellSingleQuote quotes s for a POSIX shell command line.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // --- atomic write: Windows rename retry ---

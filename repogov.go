@@ -141,8 +141,11 @@ type Config struct {
 	// truncate or drop instruction files by size rather than line count
 	// (e.g. Antigravity truncates rule files over 24,000 bytes), so a file
 	// inside its line limit can still be cut off. Rule.Limit is in bytes;
-	// 0 or nil means no byte limit. Exact paths work as globs.
-	MaxBytes []Rule `json:"max_bytes,omitempty"`
+	// 0 or nil means no byte limit. Exact paths work as globs. A nil list
+	// means the defaults; an explicit empty list ([]) means no byte limits
+	// and survives SaveConfig (no omitempty: it would drop the [] and the
+	// reload would restore the defaults).
+	MaxBytes []Rule `json:"max_bytes"`
 
 	// InitAlwaysCreate controls whether [InitLayout] and [InitLayoutAll]
 	// seed default template files even when the target directory already

@@ -71,6 +71,72 @@ func TestByteLimit_LineExemptStillByteChecked(t *testing.T) {
 	}
 }
 
+// Only 0 exempts: a negative line or byte limit is invalid config and must
+// FAIL, naming the entry, instead of skipping the count and passing.
+func TestCheckFile_NegativeLimitFailsNamingEntry(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "doc.md", "one line\n")
+	writeFile(t, root, "notes/a.md", "one line\n")
+	writeFile(t, root, "AGENTS.md", "one line\n")
+	cfg := repogov.DefaultConfig()
+	cfg.Files["doc.md"] = -1
+	cfg.Rules = append([]repogov.Rule{{Glob: "notes/*.md", Limit: repogov.RuleLimit(-5)}}, cfg.Rules...)
+	cfg.MaxBytes = []repogov.Rule{{Glob: "AGENTS.md", Limit: repogov.RuleLimit(-1)}}
+	res, err := repogov.CheckDir(root, []string{".md"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"doc.md":     `invalid line limit -1 from files["doc.md"]`,
+		"notes/a.md": `invalid line limit -5 from rules[0] (glob "notes/*.md")`,
+		"AGENTS.md":  `invalid byte limit -1 from max_bytes[0] (glob "AGENTS.md")`,
+	}
+	for _, r := range res {
+		frag, ok := want[r.Path]
+		if !ok {
+			continue
+		}
+		delete(want, r.Path)
+		if r.Status != repogov.Fail || !strings.Contains(r.Action, frag) || !strings.Contains(r.Action, "0 exempts") {
+			t.Errorf("%s: want FAIL naming %q, got %+v", r.Path, frag, r)
+		}
+	}
+	for p := range want {
+		t.Errorf("%s: no result", p)
+	}
+	if repogov.Passed(res) {
+		t.Error("a negative limit must fail the run")
+	}
+}
+
+// An explicit empty max_bytes (opt out of byte limits) must survive
+// SaveConfig and LoadConfig in JSON and YAML; nil still means the defaults.
+func TestByteLimit_ExplicitEmptySurvivesSave(t *testing.T) {
+	for _, name := range []string{"repogov-config.json", "repogov-config.yaml"} {
+		p := filepath.Join(t.TempDir(), name)
+		cfg := repogov.DefaultConfig()
+		cfg.MaxBytes = []repogov.Rule{}
+		if err := repogov.SaveConfig(p, cfg); err != nil {
+			t.Fatal(err)
+		}
+		back, err := repogov.LoadConfig(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if back.MaxBytes == nil || len(back.MaxBytes) != 0 || repogov.ResolveByteLimit("AGENTS.md", back) != 0 {
+			raw, _ := os.ReadFile(p)
+			t.Errorf("%s: explicit empty max_bytes lost on save (defaults restored): %+v\n%s", name, back.MaxBytes, raw)
+		}
+		cfg.MaxBytes = nil
+		if err := repogov.SaveConfig(p, cfg); err != nil {
+			t.Fatal(err)
+		}
+		if back, err = repogov.LoadConfig(p); err != nil || repogov.ResolveByteLimit("AGENTS.md", back) != 24000 {
+			t.Errorf("%s: nil max_bytes must reload as the defaults: %v %+v", name, err, back.MaxBytes)
+		}
+	}
+}
+
 func TestByteLimit_ConfigRoundTripAndValidation(t *testing.T) {
 	// A config without max_bytes inherits the defaults.
 	p := filepath.Join(t.TempDir(), "repogov-config.json")

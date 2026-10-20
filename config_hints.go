@@ -84,10 +84,12 @@ func yamlWriteValue(dec *json.Decoder, b *strings.Builder, pad, key string, dept
 		return err
 	}
 	switch v := tok.(type) {
+	// key is a member name of the defaultAgentHints constant ([a-z_]), never
+	// config text, so it is written bare; every value is double-quoted.
 	case string:
-		b.WriteString(pad + key + ": " + yamlDoubleQuote(v) + "\n")
+		fmt.Fprintf(b, "%s%s: %s\n", pad, key, yamlDoubleQuote(v))
 	case json.Delim:
-		b.WriteString(pad + key + ":\n")
+		fmt.Fprintf(b, "%s%s:\n", pad, key)
 		switch v {
 		case '[':
 			for dec.More() {
@@ -96,7 +98,7 @@ func yamlWriteValue(dec *json.Decoder, b *strings.Builder, pad, key string, dept
 					return err
 				}
 				s, _ := t.(string)
-				b.WriteString(pad + "  - " + yamlDoubleQuote(s) + "\n")
+				fmt.Fprintf(b, "%s  - %s\n", pad, yamlDoubleQuote(s))
 			}
 		case '{':
 			for dec.More() {

@@ -119,6 +119,17 @@ func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:
 	if limit == 0 && byteLimit == 0 {
 		return Result{Path: relPath, Limit: 0, Status: Skip}, nil
 	}
+	// Only 0 exempts. A negative limit is invalid config and never passes:
+	// skipping the count for it would turn a typo into a silent exemption.
+	if limit < 0 || byteLimit < 0 {
+		return Result{
+			Path:      relPath,
+			Limit:     limit,
+			ByteLimit: byteLimit,
+			Status:    Fail,
+			Action:    negativeLimitAction(relPath, cfg, limit, byteLimit),
+		}, nil
+	}
 
 	// Only regular files are opened. A symlink could point at a secret
 	// outside the repo (its content would be read to count lines) and a FIFO
@@ -239,6 +250,37 @@ func checkFileAt(fsPath, relPath string, cfg Config) (Result, error) { //nolint:
 		Status:    status,
 		Action:    action,
 	}, nil
+}
+
+// negativeLimitAction explains a negative resolved line or byte limit and
+// names the config entry it came from, so the fix is unambiguous.
+func negativeLimitAction(path string, cfg Config, limit, byteLimit int) string { //nolint:gocritic // hugeParam: intentional value semantics
+	var parts []string
+	if limit < 0 {
+		src := "default"
+		if _, ok := cfg.Files[path]; ok {
+			src = fmt.Sprintf("files[%q]", path)
+		} else {
+			for i, r := range cfg.Rules {
+				if ruleGlobMatches(r.Glob, path) {
+					src = fmt.Sprintf("rules[%d] (glob %q)", i, r.Glob)
+					break
+				}
+			}
+		}
+		parts = append(parts, fmt.Sprintf("invalid line limit %d from %s", limit, src))
+	}
+	if byteLimit < 0 {
+		src := "max_bytes"
+		for i, r := range cfg.MaxBytes {
+			if ruleGlobMatches(r.Glob, path) {
+				src = fmt.Sprintf("max_bytes[%d] (glob %q)", i, r.Glob)
+				break
+			}
+		}
+		parts = append(parts, fmt.Sprintf("invalid byte limit %d from %s", byteLimit, src))
+	}
+	return strings.Join(parts, "; ") + " in repogov-config.json: limits must be >= 0 (0 exempts the file); fix the entry ('repogov validate' lists every invalid entry)"
 }
 
 // checkByteLimit classifies a file size against a positive byte limit and

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,7 +16,7 @@ import (
 // createCopilotInstructions creates .github/copilot-instructions.md with
 // references to the instructions/ directory. If the file already exists,
 // nothing is created. Returns the list of created paths.
-func createCopilotInstructions(root, layoutDir string, schema LayoutSchema, descriptive bool, lang string) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
+func createCopilotInstructions(layoutDir string, schema LayoutSchema, descriptive bool, lang string) ([]string, error) { //nolint:gocritic // hugeParam: mirrors public InitLayout signature
 	filePath := filepath.Join(layoutDir, "copilot-instructions.md")
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		// File exists or stat failed for another reason; either way skip.
@@ -663,7 +664,8 @@ func agentsMdMergedContextSection(schemas []LayoutSchema, lang string) string { 
 	var b strings.Builder
 	b.WriteString("## Context\n\n")
 	if d := languageDirective(lang); d != "" {
-		b.WriteString(d + "\n\n")
+		b.WriteString(d) // from the fixed language table, never config text
+		b.WriteString("\n\n")
 	}
 	b.WriteString("- Project overview: [README.md](README.md)\n")
 	b.WriteString("- Extended documentation: [docs/](docs/)\n")
@@ -894,20 +896,15 @@ func schemaConfig(cfg Config, schema LayoutSchema) Config { //nolint:gocritic //
 
 // isInRequired reports whether name appears in the schema's Required list.
 func isInRequired(name string, required []string) bool {
-	for _, r := range required {
-		if r == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(required, name)
 }
 
 // firstSegment returns the first path segment of rel (the text before the
 // first "/"). If rel contains no slash it returns "" — the path is a direct
 // child of the schema root, not inside a subdirectory.
 func firstSegment(rel string) string {
-	if idx := strings.Index(rel, "/"); idx >= 0 {
-		return rel[:idx]
+	if before, _, found := strings.Cut(rel, "/"); found {
+		return before
 	}
 	return ""
 }
@@ -929,9 +926,9 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	b.WriteString("{\n")
 	b.WriteString(agentHints())
 	if tag, ok := NormalizeLanguage(effectiveLanguage(cfg.Language)); ok {
-		b.WriteString("  \"language\": " + jsonString(tag) + ",\n")
+		fmt.Fprintf(&b, "  \"language\": %s,\n", jsonString(tag))
 	}
-	b.WriteString("  \"default\": " + intStr(cfg.Default) + ",\n")
+	fmt.Fprintf(&b, "  \"default\": %d,\n", cfg.Default)
 	if cfg.DescriptiveNames {
 		b.WriteString("  \"descriptive_names\": true,\n")
 	} else {
@@ -942,7 +939,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	} else {
 		b.WriteString("  \"skip_frontmatter\": false,\n")
 	}
-	b.WriteString("  \"warning_threshold\": \"" + intStr(int(cfg.WarningThreshold)) + "%\",\n")
+	fmt.Fprintf(&b, "  \"warning_threshold\": \"%d%%\",\n", int(cfg.WarningThreshold))
 
 	// skip_dirs as compact array.
 	b.WriteString("  \"skip_dirs\": [")
@@ -967,11 +964,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	// rules as compact single-line objects.
 	b.WriteString("  \"rules\": [\n")
 	for i, r := range cfg.Rules {
-		if r.Limit != nil {
-			b.WriteString("    {\"glob\": " + jsonString(r.Glob) + ", \"limit\": " + intStr(*r.Limit) + "}")
-		} else {
-			b.WriteString("    {\"glob\": " + jsonString(r.Glob) + "}")
-		}
+		writeRuleJSON(&b, r)
 		if i < len(cfg.Rules)-1 {
 			b.WriteString(",")
 		}
@@ -983,11 +976,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	if len(cfg.MaxBytes) > 0 {
 		b.WriteString("  \"max_bytes\": [\n")
 		for i, r := range cfg.MaxBytes {
-			if r.Limit != nil {
-				b.WriteString("    {\"glob\": " + jsonString(r.Glob) + ", \"limit\": " + intStr(*r.Limit) + "}")
-			} else {
-				b.WriteString("    {\"glob\": " + jsonString(r.Glob) + "}")
-			}
+			writeRuleJSON(&b, r)
 			if i < len(cfg.MaxBytes)-1 {
 				b.WriteString(",")
 			}
@@ -1004,7 +993,7 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	}
 	sort.Strings(fileKeys)
 	for i, k := range fileKeys {
-		b.WriteString("    " + jsonString(k) + ": " + intStr(cfg.Files[k]))
+		fmt.Fprintf(&b, "    %s: %d", jsonString(k), cfg.Files[k])
 		if i < len(fileKeys)-1 {
 			b.WriteString(",")
 		}
@@ -1013,6 +1002,16 @@ func defaultConfigJSON(cfg Config) string { //nolint:gocritic // hugeParam: inte
 	b.WriteString("  }\n")
 	b.WriteString("}\n")
 	return b.String()
+}
+
+// writeRuleJSON writes one rule as a compact single-line JSON object, its
+// glob encoded by jsonString.
+func writeRuleJSON(b *strings.Builder, r Rule) {
+	if r.Limit != nil {
+		fmt.Fprintf(b, "    {\"glob\": %s, \"limit\": %d}", jsonString(r.Glob), *r.Limit)
+		return
+	}
+	fmt.Fprintf(b, "    {\"glob\": %s}", jsonString(r.Glob))
 }
 
 // jsonString is s as a JSON string literal, quotes and all. Every string

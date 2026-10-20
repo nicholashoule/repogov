@@ -17,7 +17,10 @@ Runs `repogov -agent copilot` via `go run` to check line limits and layout.
 Runs `demojify` to detect emoji characters. If emoji are found, automatically
 substitutes them, re-stages only the staged files the substitution changed, and
 aborts so the user can review. Unstaged files and partially staged files are never
-added; partially staged ones are listed for the user to stage by hand.
+added; partially staged ones are listed for the user to stage by hand. File names
+are handled NUL-delimited (`git diff -z`, `xargs -0`) and as literal pathspecs
+(`git --literal-pathspecs`), so any name -- quotes, tabs, newlines, wildcards,
+pathspec magic -- re-stages exactly that file.
 
 ### Phase 3: Go checks (pre-commit.go)
 

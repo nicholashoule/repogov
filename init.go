@@ -282,7 +282,7 @@ func initLayoutSingle(root string, schema LayoutSchema, opts initOptions) ([]str
 	// Create copilot-instructions.md for GitHub schemas when it doesn't
 	// already exist. References whichever scoped-rule directory is in schema.Dirs.
 	if schema.Root == ".github" {
-		paths, err := createCopilotInstructions(root, layoutDir, schema, opts.descriptive, opts.language)
+		paths, err := createCopilotInstructions(layoutDir, schema, opts.descriptive, opts.language)
 		if err != nil {
 			return created, err
 		}

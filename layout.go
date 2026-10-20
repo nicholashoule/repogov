@@ -23,9 +23,12 @@ type LayoutSchema struct {
 
 	// Alternatives maps a Required file to other files (paths relative to
 	// Root) that satisfy the requirement when the required file is absent.
-	// Layout checks accept any one of them; 'repogov init' still creates the
-	// required file itself. Example: Gemini requires GEMINI.md, but a repo
-	// that only has AGENTS.md is read by Antigravity and passes.
+	// Layout checks accept any one of them that is a regular file (never a
+	// directory, symlink or special file); 'repogov init' still creates the
+	// required file itself. Example: Gemini requires GEMINI.md; AGENTS.md
+	// satisfies it only when .gemini/settings.json lists AGENTS.md in
+	// context.fileName, because Gemini CLI does not read AGENTS.md by
+	// default (Antigravity does).
 	Alternatives map[string][]string
 
 	// Optional lists known files that may or may not exist.
@@ -128,7 +131,8 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 		for _, req := range schema.Required {
 			filePath := filepath.Join(root, filepath.FromSlash(req))
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				if alt := presentAlternative(root, "", schema.Alternatives[req]); alt != "" {
+				alt, why := presentAlternative(root, "", req, schema.Alternatives[req])
+				if alt != "" {
 					results = append(results, LayoutResult{
 						Path:    req,
 						Status:  Pass,
@@ -139,7 +143,7 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 				results = append(results, LayoutResult{
 					Path:    req,
 					Status:  Fail,
-					Message: "missing required file -- FIX: create " + req + " or run 'repogov init'",
+					Message: "missing required file" + why + " -- FIX: create " + req + " or run 'repogov init'",
 				})
 			} else {
 				results = append(results, LayoutResult{
@@ -324,7 +328,8 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 	// Report missing required files.
 	for _, r := range schema.Required {
 		if !requiredFound[r] {
-			if alt := presentAlternative(root, schema.Root, schema.Alternatives[r]); alt != "" {
+			alt, why := presentAlternative(root, schema.Root, r, schema.Alternatives[r])
+			if alt != "" {
 				results = append(results, LayoutResult{
 					Path:    filepath.ToSlash(filepath.Join(schema.Root, r)),
 					Status:  Pass,
@@ -335,7 +340,7 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 			results = append(results, LayoutResult{
 				Path:    filepath.ToSlash(filepath.Join(schema.Root, r)),
 				Status:  Fail,
-				Message: "missing required file -- FIX: create " + filepath.ToSlash(filepath.Join(schema.Root, r)) + " or run 'repogov init'",
+				Message: "missing required file" + why + " -- FIX: create " + filepath.ToSlash(filepath.Join(schema.Root, r)) + " or run 'repogov init'",
 			})
 		}
 	}
@@ -359,15 +364,30 @@ func CheckLayoutContext(ctx context.Context, root string, schema LayoutSchema) (
 	return results, nil
 }
 
-// presentAlternative returns the first file in alts that exists under
-// root/base, or "" when none does.
-func presentAlternative(root, base string, alts []string) string {
+// presentAlternative returns the first file in alts that is a regular file
+// under root/base, or "" when none is. A directory, symlink or special file
+// with an alternative's name is not an instruction file the agent reads, so
+// it never satisfies the requirement. A pairing listed in
+// [conditionalAlternatives] counts only when its condition holds; when it
+// does not, why explains the rejection (for the missing-file message).
+func presentAlternative(root, base, required string, alts []string) (alt, why string) {
 	for _, a := range alts {
-		if _, err := os.Stat(filepath.Join(root, base, filepath.FromSlash(a))); err == nil {
-			return a
+		info, err := os.Lstat(filepath.Join(root, base, filepath.FromSlash(a)))
+		if err != nil || !info.Mode().IsRegular() {
+			continue
 		}
+		key := [2]string{path.Join(filepath.ToSlash(base), required), path.Join(filepath.ToSlash(base), a)}
+		if cond := conditionalAlternatives[key]; cond != nil {
+			if reason := cond(root); reason != "" {
+				if why == "" {
+					why = " (" + a + " is present, but " + reason + ")"
+				}
+				continue
+			}
+		}
+		return a, ""
 	}
-	return ""
+	return "", why
 }
 
 // matchGlob wraps filepath.Match against a bare filename (no path

@@ -397,7 +397,10 @@ func DefaultGeminiLayout() LayoutSchema {
 		},
 		Optional: []string{},
 		// Antigravity (Gemini CLI's successor) reads AGENTS.md as workspace
-		// context, so a repo with only AGENTS.md satisfies the requirement.
+		// context, but Gemini CLI reads it only when the project's
+		// .gemini/settings.json lists it in context.fileName, so AGENTS.md
+		// satisfies the requirement only with that setting (see
+		// geminiReadsAgentsMd).
 		Alternatives: map[string][]string{"GEMINI.md": {"AGENTS.md"}},
 		Dirs:         map[string]DirRule{},
 		Naming: NamingRule{

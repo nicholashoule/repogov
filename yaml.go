@@ -297,7 +297,9 @@ func marshalYAML(cfg Config) ([]byte, error) { //nolint:gocritic // hugeParam: i
 		}
 	}
 
-	if len(cfg.MaxBytes) > 0 {
+	if cfg.MaxBytes != nil && len(cfg.MaxBytes) == 0 {
+		fmt.Fprintln(&b, "max_bytes: []") // explicit empty: no byte limits
+	} else if len(cfg.MaxBytes) > 0 {
 		fmt.Fprintln(&b, "max_bytes:")
 		for _, r := range cfg.MaxBytes {
 			fmt.Fprintf(&b, "  - glob: %s\n", yamlQuote(r.Glob))

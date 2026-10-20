@@ -129,7 +129,8 @@ silently ignores:
 | FAIL `.agents/rules/*.md` without frontmatter or `trigger` | Antigravity silently discards the rule |
 | FAIL unrecognized `trigger` (e.g. `alwaysOn`) | Must be `always_on`, `model_decision`, `glob`, or `manual` |
 | WARN `model_decision` without `description`; FAIL `glob` without `globs` | Rule cannot work as written |
-| WARN nested `.agents/rules/<dir>/*.md` | Scanned flat; ignored unless listed in `.agents/rules.json` |
+| WARN nested `.agents/rules/<dir>/*.md` | Scanned flat; ignored unless registered in `.agents/rules.json` `entries` (`path` relative to `.agents/`, `include_only`, `exclude`; exact paths). A registered nested rule is validated like a top-level one |
+| WARN `.agents/rules.json` | Malformed, holds an unknown key, or not a regular file: nothing in it counts as registered |
 
 `README.md` files are never flagged. Each finding carries a `-- FIX:` hint.
 

@@ -74,9 +74,17 @@ truncated (where the cut falls, and whether a notice is added, is not stated). A
 budget; on overflow the largest rule files are replaced by `- <path>: <description>` pointers the agent
 reads on demand. No character limit is stated.
 
-**repogov support:** `-agent gemini` accepts `AGENTS.md` when `GEMINI.md` is absent
-(`LayoutSchema.Alternatives`; `init` still creates `GEMINI.md`). `.agents/rules/*.md` is covered by the
-byte limit and the agent-pitfall checks, but there is no `.agents/` layout preset yet.
+**repogov support:** `-agent gemini` accepts `AGENTS.md` when `GEMINI.md` is absent only if the
+project's `.gemini/settings.json` lists `"AGENTS.md"` in `context.fileName` (`LayoutSchema.Alternatives`;
+`init` still creates `GEMINI.md`). Antigravity reads `AGENTS.md` by default, but Gemini CLI's default
+context file is `GEMINI.md` only (see Configurable Filename), and repogov cannot tell which CLI a
+contributor runs; a user-level `~/.gemini/settings.json` is invisible to other contributors and CI, so it
+is not consulted. A missing, non-regular, unreadable or malformed settings file (JSON with comments
+included) means no fallback, and the FAIL names the reason. `.agents/rules/*.md` is covered by the byte
+limit and the agent-pitfall checks; nested rule files are matched exactly against the parsed
+`rules.json` `entries` (`path` relative to `.agents/`, `include_only`, `exclude`; `inherits` is not
+followed), and registered ones are validated like top-level rules. There is no `.agents/` layout preset
+yet.
 
 **repogov implications (not implemented):** repogov's line limits do not bound these byte and token
 limits -- a 300-line rule can exceed 24 KB, and includes expand *after* repogov counts lines, so a short

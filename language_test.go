@@ -189,6 +189,25 @@ func TestAgentFiles_StateLanguageWhenSet(t *testing.T) {
 	}
 }
 
+// An unknown configured tag (en-NZ) is preserved and reported by
+// ValidateConfig; no scaffolded file may tell the agent to write in some
+// other language (the general rule used to fall back to US English).
+func TestAgentFiles_UnknownLanguageStatesNone(t *testing.T) {
+	for name, content := range agentFileRenders("en-NZ") {
+		for _, bad := range []string{"US English", "Prose language", "(en-US)", "\n\n\n"} {
+			if strings.Contains(content, bad) {
+				t.Errorf("%s: unknown language must state no language, found %q:\n%s", name, bad, content)
+			}
+		}
+	}
+	if got := generalInstructionsContent(".github", "rules", "en-NZ"); !strings.Contains(got, "prefer active voice\n- Avoid jargon") {
+		t.Errorf("general.md must keep its list intact without a language line:\n%s", got)
+	}
+	if d := languageDirective("en-US"); !strings.Contains(generalInstructionsContent(".github", "rules", ""), "prefer active voice\n- "+d+"\n- Avoid jargon") {
+		t.Errorf("general.md must state the directive as a list item")
+	}
+}
+
 // With no language set every scaffolded agent file states the default,
 // en-US: an empty language renders exactly what "en-US" renders.
 func TestAgentFiles_DefaultLanguageIsEnUS(t *testing.T) {
